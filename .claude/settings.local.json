@@ -2,7 +2,10 @@
   "permissions": {
     "allow": [
       "Bash(rm -rf \"d:/projetos/frontend/src/app/\\(admin\\)/mapa\")",
-      "Bash(rm -rf \"d:/projetos/frontend/src/app/\\(admin\\)/seletor-municipio\")"
+      "Bash(rm -rf \"d:/projetos/frontend/src/app/\\(admin\\)/seletor-municipio\")",
+      "Bash(gh auth:*)",
+      "Bash(winget install:*)",
+      "Bash(gh --version)"
     ]
   }
 }
