@@ -21,7 +21,6 @@ export default function SeletorMunicipioPage() {
         <SeletorMunicipio onSelect={setMunicipio} />
       </div>
 
-      {/* Área de depuração — remova quando integrar a ação real */}
       {municipio && (
         <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm dark:border-blue-800 dark:bg-blue-900/20">
           <span className="text-blue-500 dark:text-blue-400">Município selecionado: </span>

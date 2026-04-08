@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(rm -rf \"d:/projetos/frontend/src/app/\\(admin\\)/mapa\")",
+      "Bash(rm -rf \"d:/projetos/frontend/src/app/\\(admin\\)/seletor-municipio\")"
+    ]
+  }
+}

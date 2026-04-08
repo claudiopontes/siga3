@@ -47,13 +47,11 @@ const navItems: NavItem[] = [
   },
   {
     icon: <MapIcon />,
-    name: "Mapa IDEB",
-    path: "/mapa",
-  },
-  {
-    icon: <MapIcon />,
-    name: "Seletor de Município",
-    path: "/seletor-municipio",
+    name: "Gabinete Digital",
+    subItems: [
+      { name: "Mapa IDEB", path: "/gabinete-digital/mapa" },
+      { name: "Seletor de Município", path: "/gabinete-digital/seletor-municipio" },
+    ],
   },
   {
     icon: <UserCircleIcon />,
