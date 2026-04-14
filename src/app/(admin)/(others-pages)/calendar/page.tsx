@@ -4,8 +4,8 @@ import { Metadata } from "next";
 import React from "react";
 
 export const metadata: Metadata = {
-  title: "Agenda | Gabinete Digital",
-  description: "Agenda de compromissos — Gabinete Digital TCE-AC",
+  title: "Agenda | Varadouro Digital",
+  description: "Agenda de compromissos — Varadouro Digital TCE-AC",
 };
 export default function page() {
   return (

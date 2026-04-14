@@ -5,8 +5,8 @@ import { Metadata } from "next";
 import React from "react";
 
 export const metadata: Metadata = {
-  title: "Perfil | Gabinete Digital",
-  description: "Perfil do usuário — Gabinete Digital TCE-AC",
+  title: "Perfil | Varadouro Digital",
+  description: "Perfil do usuário — Varadouro Digital TCE-AC",
 };
 
 export default function Profile() {

@@ -1,8 +1,8 @@
-# Gabinete Digital — Contexto do Projeto
+# Varadouro Digital — Contexto do Projeto
 
 ## Visão Geral
 
-Sistema web chamado **Gabinete Digital**, desenvolvido para uso interno no gabinete dos conselheiros do **Tribunal de Contas do Estado do Acre (TCE-AC)**.
+Sistema web chamado **Varadouro Digital**, desenvolvido para uso interno no gabinete dos conselheiros do **Tribunal de Contas do Estado do Acre (TCE-AC)**.
 
 - **Repositório:** `https://github.com/claudiopontes/gabinete-digital`
 - **Base:** TailAdmin (template Next.js + Tailwind CSS)
@@ -10,7 +10,7 @@ Sistema web chamado **Gabinete Digital**, desenvolvido para uso interno no gabin
 
 ---
 
-## Estrutura do Módulo Gabinete Digital
+## Estrutura do Módulo Varadouro Digital
 
 ```
 src/
@@ -60,7 +60,7 @@ Todos os 22 municípios estão mapeados com `codIBGE`, coordenadas, IDEB e popul
 
 ## Sidebar (AppSidebar.tsx)
 
-O módulo **Gabinete Digital** aparece no menu principal com sub-itens:
+O módulo **Varadouro Digital** aparece no menu principal com sub-itens:
 - Mapa IDEB → `/gabinete-digital/mapa`
 - Seletor de Município → `/gabinete-digital/seletor-municipio`
 
@@ -70,7 +70,7 @@ O módulo **Gabinete Digital** aparece no menu principal com sub-itens:
 
 - [ ] Definir ações a executar após seleção de município no `SeletorMunicipio`
 - [ ] Integrar dados reais do TCE-AC (substituir dados simulados de IDEB)
-- [ ] Desenvolver demais funcionalidades do Gabinete Digital
+- [ ] Desenvolver demais funcionalidades do Varadouro Digital
 
 ---
 

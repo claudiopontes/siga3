@@ -1,11 +1,15 @@
 import type { Metadata } from "next";
-import MapaAcre from "@/components/Maps/MapaAcre";
+import HomeClient from "@/components/home/HomeClient";
 
 export const metadata: Metadata = {
-  title: "Dashboard | Gabinete Digital",
-  description: "Gabinete Digital — TCE-AC",
+  title: "Início | Varadouro Digital",
+  description: "Varadouro Digital — TCE-AC",
 };
 
-export default function Dashboard() {
-  return <MapaAcre />;
+export default function Home() {
+  return (
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-1 sm:p-2">
+      <HomeClient />
+    </div>
+  );
 }
