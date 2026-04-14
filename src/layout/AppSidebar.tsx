@@ -110,6 +110,20 @@ const othersItems: NavItem[] = [
   },
 ];
 
+const getSubmenuFromPath = (
+  path: string
+): { type: "main" | "others"; index: number } | null => {
+  for (const menuType of ["main", "others"] as const) {
+    const items = menuType === "main" ? navItems : othersItems;
+    for (let index = 0; index < items.length; index++) {
+      if (items[index].subItems?.some((sub) => sub.path === path)) {
+        return { type: menuType, index };
+      }
+    }
+  }
+  return null;
+};
+
 const AppSidebar: React.FC = () => {
   const { isExpanded, isMobileOpen, isHovered, setIsHovered } = useSidebar();
   const pathname = usePathname();
@@ -243,40 +257,20 @@ const AppSidebar: React.FC = () => {
   const [openSubmenu, setOpenSubmenu] = useState<{
     type: "main" | "others";
     index: number;
-  } | null>(null);
+  } | null>(() => getSubmenuFromPath(pathname));
   const [subMenuHeight, setSubMenuHeight] = useState<Record<string, number>>(
     {}
   );
   const subMenuRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const [prevPathname, setPrevPathname] = useState(pathname);
 
-  // const isActive = (path: string) => path === pathname;
-   const isActive = useCallback((path: string) => path === pathname, [pathname]);
+  const isActive = useCallback((path: string) => path === pathname, [pathname]);
 
-  useEffect(() => {
-    // Check if the current path matches any submenu item
-    let submenuMatched = false;
-    ["main", "others"].forEach((menuType) => {
-      const items = menuType === "main" ? navItems : othersItems;
-      items.forEach((nav, index) => {
-        if (nav.subItems) {
-          nav.subItems.forEach((subItem) => {
-            if (isActive(subItem.path)) {
-              setOpenSubmenu({
-                type: menuType as "main" | "others",
-                index,
-              });
-              submenuMatched = true;
-            }
-          });
-        }
-      });
-    });
-
-    // If no submenu item matches, close the open submenu
-    if (!submenuMatched) {
-      setOpenSubmenu(null);
-    }
-  }, [pathname,isActive]);
+  // Atualiza o submenu aberto quando a rota muda (sem useEffect para evitar render cascata)
+  if (prevPathname !== pathname) {
+    setPrevPathname(pathname);
+    setOpenSubmenu(getSubmenuFromPath(pathname));
+  }
 
   useEffect(() => {
     // Set the height of the submenu items when the submenu is opened
