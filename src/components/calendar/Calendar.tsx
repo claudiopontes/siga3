@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useRef, useEffect } from "react";
+import React, { useRef, useState } from "react";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
@@ -20,49 +20,52 @@ interface CalendarEvent extends EventInput {
   };
 }
 
+function createInitialEvents(): CalendarEvent[] {
+  const hoje = new Date();
+  const em1Dia = new Date(hoje.getTime() + 86400000);
+  const em2Dias = new Date(hoje.getTime() + 172800000);
+  const em3Dias = new Date(hoje.getTime() + 259200000);
+
+  return [
+    {
+      id: "1",
+      title: "Reunião",
+      start: hoje.toISOString().split("T")[0],
+      extendedProps: { calendar: "Danger" },
+    },
+    {
+      id: "2",
+      title: "Audiência",
+      start: em1Dia.toISOString().split("T")[0],
+      extendedProps: { calendar: "Success" },
+    },
+    {
+      id: "3",
+      title: "Capacitação",
+      start: em2Dias.toISOString().split("T")[0],
+      end: em3Dias.toISOString().split("T")[0],
+      extendedProps: { calendar: "Primary" },
+    },
+  ];
+}
+
 const Calendar: React.FC = () => {
-  const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(
-    null
-  );
+  const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [eventTitle, setEventTitle] = useState("");
   const [eventStartDate, setEventStartDate] = useState("");
   const [eventEndDate, setEventEndDate] = useState("");
   const [eventLevel, setEventLevel] = useState("");
-  const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const [events, setEvents] = useState<CalendarEvent[]>(createInitialEvents);
+  const nextEventIdRef = useRef(4);
   const calendarRef = useRef<FullCalendar>(null);
   const { isOpen, openModal, closeModal } = useModal();
 
   const calendarsEvents: Record<string, { value: string; label: string }> = {
-    Danger:  { value: "danger",  label: "Urgente"    },
-    Success: { value: "success", label: "Concluído"  },
-    Primary: { value: "primary", label: "Principal"  },
-    Warning: { value: "warning", label: "Atenção"    },
+    Danger: { value: "danger", label: "Urgente" },
+    Success: { value: "success", label: "Concluído" },
+    Primary: { value: "primary", label: "Principal" },
+    Warning: { value: "warning", label: "Atenção" },
   };
-
-  useEffect(() => {
-    // Initialize with some events
-    setEvents([
-      {
-        id: "1",
-        title: "Reunião",
-        start: new Date().toISOString().split("T")[0],
-        extendedProps: { calendar: "Danger" },
-      },
-      {
-        id: "2",
-        title: "Audiência",
-        start: new Date(Date.now() + 86400000).toISOString().split("T")[0],
-        extendedProps: { calendar: "Success" },
-      },
-      {
-        id: "3",
-        title: "Capacitação",
-        start: new Date(Date.now() + 172800000).toISOString().split("T")[0],
-        end: new Date(Date.now() + 259200000).toISOString().split("T")[0],
-        extendedProps: { calendar: "Primary" },
-      },
-    ]);
-  }, []);
 
   const handleDateSelect = (selectInfo: DateSelectArg) => {
     resetModalFields();
@@ -83,7 +86,6 @@ const Calendar: React.FC = () => {
 
   const handleAddOrUpdateEvent = () => {
     if (selectedEvent) {
-      // Update existing event
       setEvents((prevEvents) =>
         prevEvents.map((event) =>
           event.id === selectedEvent.id
@@ -98,9 +100,8 @@ const Calendar: React.FC = () => {
         )
       );
     } else {
-      // Add new event
       const newEvent: CalendarEvent = {
-        id: Date.now().toString(),
+        id: String(nextEventIdRef.current++),
         title: eventTitle,
         start: eventStartDate,
         end: eventEndDate,
@@ -183,9 +184,7 @@ const Calendar: React.FC = () => {
               <div className="flex flex-wrap items-center gap-4 sm:gap-5">
                 {Object.entries(calendarsEvents).map(([key, { value, label }]) => (
                   <div key={key} className="n-chk">
-                    <div
-                      className={`form-check form-check-${value} form-check-inline`}
-                    >
+                    <div className={`form-check form-check-${value} form-check-inline`}>
                       <label
                         className="flex items-center text-sm text-gray-700 form-check-label dark:text-gray-400"
                         htmlFor={`modal${key}`}
@@ -271,9 +270,7 @@ const Calendar: React.FC = () => {
 const renderEventContent = (eventInfo: EventContentArg) => {
   const colorClass = `fc-bg-${eventInfo.event.extendedProps.calendar.toLowerCase()}`;
   return (
-    <div
-      className={`event-fc-color flex fc-event-main ${colorClass} p-1 rounded-sm`}
-    >
+    <div className={`event-fc-color flex fc-event-main ${colorClass} p-1 rounded-sm`}>
       <div className="fc-daygrid-event-dot"></div>
       <div className="fc-event-time">{eventInfo.timeText}</div>
       <div className="fc-event-title">{eventInfo.event.title}</div>

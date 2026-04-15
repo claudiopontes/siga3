@@ -1,22 +1,29 @@
 /**
- * Agendador de jobs ETL — Varadouro Digital
- * Executa: ts-node schedule.ts
+ * ETL scheduler - Varadouro Digital
+ * Run with: ts-node schedule.ts
  */
 
-import cron from 'node-cron'
-import { executarETLCombustivel } from './jobs/combustivel'
+import "dotenv/config";
+import cron from "node-cron";
+import { executarETLCombustivel } from "./jobs/combustivel";
 
-console.log('Agendador ETL iniciado — Varadouro Digital')
-console.log('Combustível: todo dia às 06:00 e 18:00\n')
+const TIMEZONE = process.env.ETL_TIMEZONE || "America/Rio_Branco";
+const FACT_ETL_CRON = process.env.FACT_ETL_CRON || "0 1 * * *"; // 01:00 daily
 
-// Combustível: duas vezes por dia (06:00 e 18:00)
-cron.schedule('0 6,18 * * *', async () => {
-  console.log('\n[CRON] Disparando job: combustivel')
-  await executarETLCombustivel().catch(console.error)
-}, { timezone: 'America/Rio_Branco' })
+console.log("ETL scheduler started - Varadouro Digital");
+console.log(`Facts (combustivel/NFE): cron="${FACT_ETL_CRON}" timezone="${TIMEZONE}"\n`);
 
-// Manter processo vivo
-process.on('SIGINT', () => {
-  console.log('\nAgendador encerrado.')
-  process.exit(0)
-})
+// Facts: nightly, once per day
+cron.schedule(
+  FACT_ETL_CRON,
+  async () => {
+    console.log("\n[CRON] Starting nightly job: combustivel (NFE)");
+    await executarETLCombustivel().catch(console.error);
+  },
+  { timezone: TIMEZONE },
+);
+
+process.on("SIGINT", () => {
+  console.log("\nScheduler stopped.");
+  process.exit(0);
+});

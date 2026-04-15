@@ -62,7 +62,7 @@ SELECT
     LTRIM(RTRIM(ENTIDADE))       AS entidade,
     TIPO_COMBUSTIVEL             AS tipo_combustivel,
     SUM(QUANTIDADE)              AS litros,
-    SUM(VALOR)                   AS valor_total,
+    SUM(VALOR * QUANTIDADE)      AS valor_total,
     COUNT(*)                     AS qtd_notas
 FROM dbo.vw_NF_combustiveis
 GROUP BY ANO, MES, ENTIDADE, TIPO_COMBUSTIVEL
@@ -73,7 +73,7 @@ const SQL_ENTIDADE = `
 SELECT
     LTRIM(RTRIM(ENTIDADE))  AS entidade,
     SUM(QUANTIDADE)         AS litros,
-    SUM(VALOR)              AS valor_total,
+    SUM(VALOR * QUANTIDADE) AS valor_total,
     COUNT(*)                AS qtd_notas
 FROM dbo.vw_NF_combustiveis
 GROUP BY ENTIDADE
@@ -84,7 +84,7 @@ const SQL_TIPO = `
 SELECT
     TIPO_COMBUSTIVEL        AS tipo_combustivel,
     SUM(QUANTIDADE)         AS litros,
-    SUM(VALOR)              AS valor_total,
+    SUM(VALOR * QUANTIDADE) AS valor_total,
     COUNT(*)                AS qtd_notas
 FROM dbo.vw_NF_combustiveis
 GROUP BY TIPO_COMBUSTIVEL
@@ -102,7 +102,7 @@ SELECT
         END
     ))                      AS emitente,
     SUM(QUANTIDADE)         AS litros,
-    SUM(VALOR)              AS valor_total,
+    SUM(VALOR * QUANTIDADE) AS valor_total,
     COUNT(*)                AS qtd_notas
 FROM dbo.vw_NF_combustiveis
 GROUP BY
@@ -117,10 +117,10 @@ ORDER BY valor_total DESC
 
 const SQL_KPIS = `
 SELECT
-    SUM(VALOR)                                                        AS valor_total,
+    SUM(VALOR * QUANTIDADE)                                           AS valor_total,
     SUM(QUANTIDADE)                                                   AS litros_total,
     CASE
-        WHEN SUM(QUANTIDADE) > 0 THEN SUM(VALOR) / SUM(QUANTIDADE)
+        WHEN SUM(QUANTIDADE) > 0 THEN SUM(VALOR * QUANTIDADE) / SUM(QUANTIDADE)
         ELSE 0
     END                                                               AS preco_medio,
     COUNT(DISTINCT ID_ENTIDADE)                                       AS total_entidades,

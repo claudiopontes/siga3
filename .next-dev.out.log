@@ -1,0 +1,15 @@
+
+> free-nextjs-admin-dashboard@2.2.3 dev
+> next dev
+
+▲ Next.js 16.2.2 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://54.232.189.113:3000
+- Environments: .env.local
+✓ Ready in 859ms
+Creating turbopack project { dir: 'D:\\projetos\\frontend', testMode: true }
+
+○ Compiling / ...
+ GET / 200 in 7.6s (next.js: 7.1s, application-code: 554ms)
+ GET /painel-combustivel 200 in 2.2s (next.js: 2.1s, application-code: 62ms)
+ GET /painel-combustivel 200 in 207ms (next.js: 4ms, application-code: 203ms)

@@ -1,5 +1,5 @@
 import 'dotenv/config'
-import sql = require('mssql/msnodesqlv8')
+import sql from 'mssql/msnodesqlv8'
 
 const config: sql.config = {
   server:   process.env.SQLSERVER_HOST!,

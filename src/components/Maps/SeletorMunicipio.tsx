@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { MapContainer, TileLayer, GeoJSON, useMap } from "react-leaflet";
-import type { Layer } from "leaflet";
+import type { GeoJsonObject, Geometry, Feature } from "geojson";
+import type { Layer, Path, LeafletMouseEvent } from "leaflet";
 import "leaflet/dist/leaflet.css";
 
 // ---------------------------------------------------------------------------
@@ -21,6 +22,8 @@ interface Props {
   /** Município pré-selecionado ao montar o componente */
   defaultValue?: string; // codIBGE
 }
+
+type AcreFeature = Feature<Geometry, { codarea?: string }>;
 
 // ---------------------------------------------------------------------------
 // Lista de municípios do Acre
@@ -103,12 +106,12 @@ export default function SeletorMunicipio({ onSelect, defaultValue }: Props) {
     () => (defaultValue ? (municipioByCode[defaultValue] ?? null) : null)
   );
   const [busca, setBusca] = useState("");
-  const [geoData, setGeoData] = useState<object | null>(null);
+  const [geoData, setGeoData] = useState<GeoJsonObject | null>(null);
   const [loadingGeo, setLoadingGeo] = useState(true);
   const [geoError, setGeoError] = useState(false);
 
   const selectedRef = useRef<MunicipioBase | null>(selected);
-  const layersRef = useRef<Record<string, any>>({});
+  const layersRef = useRef<Record<string, Path>>({});
 
   // Busca GeoJSON do IBGE
   useEffect(() => {
@@ -134,7 +137,7 @@ export default function SeletorMunicipio({ onSelect, defaultValue }: Props) {
     if (!selected) return;
     const layer = layersRef.current[selected.codIBGE];
     if (layer) layer.setStyle(STYLE_SELECTED);
-  }, [geoData]); // roda após o GeoJSON ser carregado
+  }, [geoData, selected]); // roda após o GeoJSON ser carregado
 
   const handleSelect = useCallback(
     (municipio: MunicipioBase) => {
@@ -165,25 +168,26 @@ export default function SeletorMunicipio({ onSelect, defaultValue }: Props) {
   }, [onSelect]);
 
   const onEachFeature = useCallback(
-    (feature: any, layer: Layer) => {
+    (feature: AcreFeature, layer: Layer) => {
       const municipio = municipioByCode[feature?.properties?.codarea];
       if (!municipio) return;
 
-      layersRef.current[municipio.codIBGE] = layer;
+      const pathLayer = layer as Path;
+      layersRef.current[municipio.codIBGE] = pathLayer;
 
-      layer.bindTooltip(municipio.nome, { sticky: true, opacity: 0.9 });
+      pathLayer.bindTooltip(municipio.nome, { sticky: true, opacity: 0.9 });
 
-      layer.on({
+      pathLayer.on({
         click: () => handleSelect(municipio),
-        mouseover: (e: any) => {
+        mouseover: (e: LeafletMouseEvent) => {
           if (selectedRef.current?.codIBGE !== municipio.codIBGE) {
-            e.target.setStyle(STYLE_HOVER);
-            e.target.bringToFront();
+            (e.target as Path).setStyle(STYLE_HOVER);
+            (e.target as Path).bringToFront();
           }
         },
-        mouseout: (e: any) => {
+        mouseout: (e: LeafletMouseEvent) => {
           if (selectedRef.current?.codIBGE !== municipio.codIBGE) {
-            e.target.setStyle(STYLE_DEFAULT);
+            (e.target as Path).setStyle(STYLE_DEFAULT);
           }
         },
       });
@@ -319,7 +323,7 @@ export default function SeletorMunicipio({ onSelect, defaultValue }: Props) {
           {geoData && (
             <GeoJSON
               key="seletor-municipios"
-              data={geoData as any}
+              data={geoData}
               style={() => STYLE_DEFAULT}
               onEachFeature={onEachFeature}
             />

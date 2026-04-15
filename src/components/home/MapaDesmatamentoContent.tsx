@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { MapContainer, TileLayer, GeoJSON, useMap } from "react-leaflet";
-import type { Layer, Map as LMap } from "leaflet";
+import type { GeoJsonObject, Geometry, Feature } from "geojson";
+import type { Layer, Path, LeafletMouseEvent } from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { desmatamentoPorCodigo, MunicipioDesmatamento } from "@/data/desmatamentoAcre";
 
@@ -14,6 +15,8 @@ interface Props {
   onSelect?: (municipio: MunicipioSelecionado | null) => void;
   municipioSelecionado?: MunicipioSelecionado | null;
 }
+
+type AcreFeature = Feature<Geometry, { codarea?: string }>;
 
 // ---------------------------------------------------------------------------
 // Pane customizado para rótulos ficarem acima dos polígonos
@@ -52,12 +55,12 @@ function buildStyle(pct: number, isSelected = false) {
 // Componente
 // ---------------------------------------------------------------------------
 export default function MapaDesmatamentoContent({ onSelect, municipioSelecionado }: Props) {
-  const [geoData, setGeoData] = useState<object | null>(null);
+  const [geoData, setGeoData] = useState<GeoJsonObject | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [sobreAberto, setSobreAberto] = useState(false);
 
-  const layersRef = useRef<Record<string, any>>({});
+  const layersRef = useRef<Record<string, Path>>({});
   const selectedRef = useRef<MunicipioSelecionado | null>(null);
 
   useEffect(() => {
@@ -97,36 +100,37 @@ export default function MapaDesmatamentoContent({ onSelect, municipioSelecionado
     onSelect?.(municipio);
   }, [onSelect]);
 
-  const styleFeature = useCallback((feature?: any) => {
+  const styleFeature = useCallback((feature?: AcreFeature) => {
     const dados = desmatamentoPorCodigo[feature?.properties?.codarea];
     const isSelected = municipioSelecionado?.codIBGE === feature?.properties?.codarea;
     return buildStyle(dados?.pct ?? 5, isSelected);
   }, [municipioSelecionado]);
 
-  const onEachFeature = useCallback((feature: any, layer: Layer) => {
+  const onEachFeature = useCallback((feature: AcreFeature, layer: Layer) => {
     const cod = feature?.properties?.codarea;
     const dados = desmatamentoPorCodigo[cod];
     if (!dados) return;
 
-    layersRef.current[cod] = layer;
+    const pathLayer = layer as Path;
+    layersRef.current[cod] = pathLayer;
 
     const municipio: MunicipioSelecionado = { codIBGE: cod, ...dados };
 
-    layer.bindTooltip(
+    pathLayer.bindTooltip(
       `<strong>${dados.nome}</strong><br/>
        Desmatado: <strong>${dados.pct}%</strong> — ${dados.kmDesmatado.toLocaleString("pt-BR")} km²`,
       { sticky: true, opacity: 0.95 }
     );
 
-    layer.on({
+    pathLayer.on({
       click: () => handleClick(municipio),
-      mouseover: (e: any) => {
+      mouseover: (e: LeafletMouseEvent) => {
         if (selectedRef.current?.codIBGE !== cod)
-          e.target.setStyle({ weight: 2, color: "#94a3b8", fillOpacity: 0.92 });
+          (e.target as Path).setStyle({ weight: 2, color: "#94a3b8", fillOpacity: 0.92 });
       },
-      mouseout: (e: any) => {
+      mouseout: (e: LeafletMouseEvent) => {
         if (selectedRef.current?.codIBGE !== cod)
-          e.target.setStyle(buildStyle(dados.pct, false));
+          (e.target as Path).setStyle(buildStyle(dados.pct, false));
       },
     });
   }, [handleClick]);
@@ -194,7 +198,7 @@ export default function MapaDesmatamentoContent({ onSelect, municipioSelecionado
           {geoData && (
             <GeoJSON
               key={`desmatamento-${municipioSelecionado?.codIBGE ?? "none"}`}
-              data={geoData as any}
+              data={geoData}
               style={styleFeature}
               onEachFeature={onEachFeature}
             />

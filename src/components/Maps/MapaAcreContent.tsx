@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { MapContainer, TileLayer, GeoJSON } from "react-leaflet";
-import type { Layer } from "leaflet";
+import type { GeoJsonObject, Geometry, Feature } from "geojson";
+import type { Layer, Path, LeafletMouseEvent } from "leaflet";
 import "leaflet/dist/leaflet.css";
 
 // ---------------------------------------------------------------------------
@@ -21,6 +22,8 @@ export type Municipio = {
 interface Props {
   onSelect?: (municipio: Municipio | null) => void;
 }
+
+type AcreFeature = Feature<Geometry, { codarea?: string }>;
 
 // ---------------------------------------------------------------------------
 // Dados dos municípios do Acre
@@ -81,13 +84,13 @@ function buildStyle(ideb: number, isSelected: boolean) {
 export default function MapaAcreContent({ onSelect }: Props = {}) {
   const [viewMode, setViewMode] = useState<"mapa" | "lista">("mapa");
   const [selected, setSelected] = useState<Municipio | null>(null);
-  const [geoData, setGeoData] = useState<object | null>(null);
+  const [geoData, setGeoData] = useState<GeoJsonObject | null>(null);
   const [loadingGeo, setLoadingGeo] = useState(true);
   const [geoError, setGeoError] = useState(false);
 
   // Refs para manipular layers diretamente sem re-render do GeoJSON
   const selectedRef = useRef<Municipio | null>(null);
-  const layersRef = useRef<Record<string, any>>({});
+  const layersRef = useRef<Record<string, Path>>({});
 
   // Busca os polígonos reais dos municípios no IBGE
   useEffect(() => {
@@ -137,31 +140,32 @@ export default function MapaAcreContent({ onSelect }: Props = {}) {
   }, [onSelect]);
 
   // Estilo inicial de cada feature
-  const styleFeature = useCallback((feature?: any) => {
+  const styleFeature = useCallback((feature?: AcreFeature) => {
     const municipio = municipioByCode[feature?.properties?.codarea];
     return buildStyle(municipio?.ideb ?? 3.0, false);
   }, []);
 
   // Registra handlers em cada polígono
   const onEachFeature = useCallback(
-    (feature: any, layer: Layer) => {
+    (feature: AcreFeature, layer: Layer) => {
       const municipio = municipioByCode[feature?.properties?.codarea];
       if (!municipio) return;
 
-      layersRef.current[municipio.codIBGE] = layer;
+      const pathLayer = layer as Path;
+      layersRef.current[municipio.codIBGE] = pathLayer;
 
-      layer.bindTooltip(municipio.nome, { sticky: true, opacity: 0.95 });
+      pathLayer.bindTooltip(municipio.nome, { sticky: true, opacity: 0.95 });
 
-      layer.on({
+      pathLayer.on({
         click: () => handleSelect(municipio),
-        mouseover: (e: any) => {
+        mouseover: (e: LeafletMouseEvent) => {
           if (selectedRef.current?.codIBGE !== municipio.codIBGE) {
-            e.target.setStyle({ fillOpacity: 0.88, weight: 2, color: "#94a3b8" });
+            (e.target as Path).setStyle({ fillOpacity: 0.88, weight: 2, color: "#94a3b8" });
           }
         },
-        mouseout: (e: any) => {
+        mouseout: (e: LeafletMouseEvent) => {
           if (selectedRef.current?.codIBGE !== municipio.codIBGE) {
-            e.target.setStyle(buildStyle(municipio.ideb, false));
+            (e.target as Path).setStyle(buildStyle(municipio.ideb, false));
           }
         },
       });
@@ -251,7 +255,7 @@ export default function MapaAcreContent({ onSelect }: Props = {}) {
               {geoData && (
                 <GeoJSON
                   key="acre-municipios"
-                  data={geoData as any}
+                  data={geoData}
                   style={styleFeature}
                   onEachFeature={onEachFeature}
                 />

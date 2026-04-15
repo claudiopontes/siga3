@@ -1,0 +1,15 @@
+import type { Metadata } from "next";
+import PainelCombustivelClient from "@/components/combustivel/PainelCombustivelClient";
+
+export const metadata: Metadata = {
+  title: "Painel de Combustivel | Varadouro Digital",
+  description: "Painel analitico de gastos com combustivel (NFE)",
+};
+
+export default function PainelCombustivelPage() {
+  return (
+    <div className="min-h-screen bg-gray-50 p-1 sm:p-2 dark:bg-gray-900">
+      <PainelCombustivelClient />
+    </div>
+  );
+}

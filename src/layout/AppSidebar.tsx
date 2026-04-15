@@ -25,6 +25,7 @@ const navItems: NavItem[] = [
     icon: <GridIcon />,
     name: "Painéis",
     subItems: [
+      { name: "Combustível", path: "/painel-combustivel" },
       { name: "IDEB Acre", path: "/gabinete-digital/mapa" },
       { name: "Seletor de Município", path: "/gabinete-digital/seletor-municipio" },
     ],

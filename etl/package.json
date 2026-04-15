@@ -5,6 +5,7 @@
   "private": true,
   "scripts": {
     "combustivel": "ts-node jobs/combustivel.ts",
+    "dimensoes": "ts-node jobs/dimensoes-csv.ts",
     "agendar": "ts-node schedule.ts"
   },
   "dependencies": {
