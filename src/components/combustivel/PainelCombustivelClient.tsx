@@ -3,7 +3,15 @@
 import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import type { ApexOptions } from "apexcharts";
-import { supabase } from "@/lib/supabase";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import CombustivelHeaderFilters from "@/components/combustivel/CombustivelHeaderFilters";
+import {
+  buildMunicipioIndex,
+  inferMunicipioCodeFromEntidade,
+  normalizeCode,
+  normalizeName,
+} from "@/components/combustivel/filter-utils";
+import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 
 const Chart = dynamic(() => import("react-apexcharts"), { ssr: false });
 
@@ -11,11 +19,14 @@ type MensalRow = {
   ano: number;
   mes: number;
   entidade: string;
+  emitente: string;
   tipo_combustivel: string;
   litros: number;
   valor_total: number;
   qtd_notas: number;
 };
+
+type LegacyMensalRow = Omit<MensalRow, "emitente">;
 
 type EmitenteRow = {
   emitente: string;
@@ -25,31 +36,10 @@ type EmitenteRow = {
 };
 
 type MunicipioRow = {
-  codigo: string;
   nome: string;
+  codigo: string;
   uf_codigo: string | null;
 };
-
-type EntidadeDimRow = {
-  codigo: string;
-  nome: string;
-  municipio_codigo: string | null;
-};
-
-type EntidadeOption = {
-  codigo: string;
-  nome: string;
-  municipioCodigo: string | null;
-};
-
-function normalizeName(value: string): string {
-  return value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toUpperCase()
-    .replace(/\s+/g, " ")
-    .trim();
-}
 
 function formatMoney(value: number): string {
   return new Intl.NumberFormat("pt-BR", {
@@ -74,31 +64,46 @@ function monthKey(year: number, month: number): string {
   return `${year}-${String(month).padStart(2, "0")}`;
 }
 
+function extractErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "object" && error !== null && "message" in error) {
+    const msg = (error as { message?: unknown }).message;
+    return typeof msg === "string" ? msg : String(msg);
+  }
+  return String(error);
+}
+
 export default function PainelCombustivelClient() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const [mensalRows, setMensalRows] = useState<MensalRow[]>([]);
   const [emitenteRows, setEmitenteRows] = useState<EmitenteRow[]>([]);
   const [municipios, setMunicipios] = useState<MunicipioRow[]>([]);
-  const [dimEntidades, setDimEntidades] = useState<EntidadeDimRow[]>([]);
+  const [hasMensalEmitente, setHasMensalEmitente] = useState(false);
 
-  const [selectedMunicipio, setSelectedMunicipio] = useState("all");
-  const [selectedEntidade, setSelectedEntidade] = useState("all");
-  const [selectedTipos, setSelectedTipos] = useState<string[]>([]);
+  const selectedMunicipio = searchParams.get("municipio") ?? "all";
+  const selectedEntidade = searchParams.get("entidade") ?? "all";
+  const selectedTipos = searchParams.getAll("tipo").filter((item) => item.length > 0);
+  const selectedEmitente = searchParams.get("emitente") ?? "all";
 
   useEffect(() => {
     let active = true;
 
-    async function fetchAllMensalRows(): Promise<MensalRow[]> {
+    async function fetchAllMensalRows(
+      client: NonNullable<typeof supabase>,
+    ): Promise<{ rows: MensalRow[]; hasEmitente: boolean }> {
       const pageSize = 1000;
       let offset = 0;
       const out: MensalRow[] = [];
 
       while (true) {
-        const { data, error } = await supabase
+        const { data, error } = await client
           .from("combustivel_mensal")
-          .select("ano, mes, entidade, tipo_combustivel, litros, valor_total, qtd_notas")
+          .select("ano, mes, entidade, emitente, tipo_combustivel, litros, valor_total, qtd_notas")
           .order("ano", { ascending: true })
           .order("mes", { ascending: true })
           .range(offset, offset + pageSize - 1);
@@ -112,44 +117,120 @@ export default function PainelCombustivelClient() {
         offset += pageSize;
       }
 
+      return { rows: out, hasEmitente: true };
+    }
+
+    async function fetchAllMunicipioRows(
+      client: NonNullable<typeof supabase>,
+    ): Promise<MunicipioRow[]> {
+      const pageSize = 1000;
+      let offset = 0;
+      const out: MunicipioRow[] = [];
+
+      while (true) {
+        const { data, error } = await client
+          .from("aux_dim_municipio")
+          .select("codigo, nome, uf_codigo")
+          .eq("uf_codigo", "12")
+          .order("nome", { ascending: true })
+          .range(offset, offset + pageSize - 1);
+
+        if (error) throw error;
+
+        const batch = (data ?? []) as MunicipioRow[];
+        out.push(...batch);
+
+        if (batch.length < pageSize) break;
+        offset += pageSize;
+      }
+
       return out;
+    }
+
+    async function fetchAllMensalRowsLegacy(
+      client: NonNullable<typeof supabase>,
+    ): Promise<{ rows: MensalRow[]; hasEmitente: boolean }> {
+      const pageSize = 1000;
+      let offset = 0;
+      const out: MensalRow[] = [];
+
+      while (true) {
+        const { data, error } = await client
+          .from("combustivel_mensal")
+          .select("ano, mes, entidade, tipo_combustivel, litros, valor_total, qtd_notas")
+          .order("ano", { ascending: true })
+          .order("mes", { ascending: true })
+          .range(offset, offset + pageSize - 1);
+
+        if (error) throw error;
+
+        const batch = (data ?? []) as LegacyMensalRow[];
+        out.push(
+          ...batch.map((row) => ({
+            ...row,
+            emitente: "",
+          })),
+        );
+
+        if (batch.length < pageSize) break;
+        offset += pageSize;
+      }
+
+      return { rows: out, hasEmitente: false };
     }
 
     async function load() {
       setLoading(true);
       setError(null);
 
-      const [mensalData, emitenteRes, municipiosRes, entidadeRes] = await Promise.all([
-        fetchAllMensalRows(),
-        supabase
-          .from("combustivel_emitente")
-          .select("emitente, litros, valor_total, qtd_notas")
-          .order("valor_total", { ascending: false }),
-        supabase
-          .from("aux_dim_municipio")
-          .select("codigo, nome, uf_codigo")
-          .eq("uf_codigo", "12")
-          .order("nome", { ascending: true }),
-        supabase
-          .from("aux_dim_entidade")
-          .select("codigo, nome, municipio_codigo")
-          .order("nome", { ascending: true }),
-      ]);
-
-      if (!active) return;
-
-      const failure = emitenteRes.error || municipiosRes.error || entidadeRes.error;
-      if (failure) {
-        setError(failure.message);
+      if (!isSupabaseConfigured || !supabase) {
+        setError(
+          "Supabase nao configurado. Defina NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_ANON_KEY no arquivo .env.local.",
+        );
         setLoading(false);
         return;
       }
 
-      setMensalRows(mensalData);
-      setEmitenteRows((emitenteRes.data ?? []) as EmitenteRow[]);
-      setMunicipios((municipiosRes.data ?? []) as MunicipioRow[]);
-      setDimEntidades((entidadeRes.data ?? []) as EntidadeDimRow[]);
-      setLoading(false);
+      const client = supabase;
+
+      try {
+        const [mensalResult, emitenteRes, municipioData] = await Promise.all([
+          (async () => {
+            try {
+              return await fetchAllMensalRows(client);
+            } catch (error) {
+              const message = extractErrorMessage(error).toLowerCase();
+              if (message.includes("emitente") || message.includes("column") || message.includes("coluna")) {
+                return fetchAllMensalRowsLegacy(client);
+              }
+              throw error;
+            }
+          })(),
+          client
+            .from("combustivel_emitente")
+            .select("emitente, litros, valor_total, qtd_notas")
+            .order("valor_total", { ascending: false }),
+          fetchAllMunicipioRows(client),
+        ]);
+
+        if (!active) return;
+
+        if (emitenteRes.error) {
+          setError(emitenteRes.error.message);
+          setLoading(false);
+          return;
+        }
+
+        setMensalRows(mensalResult.rows);
+        setHasMensalEmitente(mensalResult.hasEmitente);
+        setEmitenteRows((emitenteRes.data ?? []) as EmitenteRow[]);
+        setMunicipios(municipioData);
+        setLoading(false);
+      } catch (error) {
+        if (!active) return;
+        setError(extractErrorMessage(error) || "Falha ao carregar dados");
+        setLoading(false);
+      }
     }
 
     load();
@@ -164,42 +245,31 @@ export default function PainelCombustivelClient() {
     );
   }, [mensalRows]);
 
-  const entidadeOptions = useMemo(() => {
-    const entidadeNames = new Set(mensalRows.map((row) => normalizeName(row.entidade)));
-    const options: EntidadeOption[] = dimEntidades
-      .filter((row) => entidadeNames.has(normalizeName(row.nome)))
-      .map((row) => ({
-        codigo: row.codigo,
-        nome: row.nome,
-        municipioCodigo: row.municipio_codigo,
-      }));
-
-    const uniqueByCode = new Map<string, EntidadeOption>();
-    options.forEach((item) => uniqueByCode.set(item.codigo, item));
-    return [...uniqueByCode.values()].sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
-  }, [dimEntidades, mensalRows]);
-
-  const entidadeCodigoToNormName = useMemo(() => {
-    const out = new Map<string, string>();
-    entidadeOptions.forEach((item) => out.set(item.codigo, normalizeName(item.nome)));
-    return out;
-  }, [entidadeOptions]);
+  const uniqueEntidadeNorms = useMemo(
+    () => new Set(mensalRows.map((row) => normalizeName(row.entidade))),
+    [mensalRows],
+  );
+  const municipioIndex = useMemo(() => buildMunicipioIndex(municipios), [municipios]);
 
   const selectedMunicipioEntityNames = useMemo(() => {
     if (selectedMunicipio === "all") return null;
+    const targetMunicipio = normalizeCode(selectedMunicipio);
     const names = new Set<string>();
-    entidadeOptions.forEach((opt) => {
-      if (opt.municipioCodigo === selectedMunicipio) {
-        names.add(normalizeName(opt.nome));
+    mensalRows.forEach((row) => {
+      const entityNorm = normalizeName(row.entidade);
+      const municipioCode = inferMunicipioCodeFromEntidade(row.entidade, municipioIndex);
+      if (municipioCode && municipioCode === targetMunicipio) {
+        names.add(entityNorm);
       }
     });
-    return names;
-  }, [entidadeOptions, selectedMunicipio]);
+    return names.size > 0 ? names : null;
+  }, [mensalRows, municipioIndex, selectedMunicipio]);
 
   const resolvedSelectedEntidade = useMemo(() => {
     if (selectedEntidade === "all") return "all";
-    return entidadeCodigoToNormName.has(selectedEntidade) ? selectedEntidade : "all";
-  }, [entidadeCodigoToNormName, selectedEntidade]);
+    const normalized = normalizeName(selectedEntidade);
+    return uniqueEntidadeNorms.has(normalized) ? normalized : "all";
+  }, [selectedEntidade, uniqueEntidadeNorms]);
 
   const resolvedSelectedTipos = useMemo(
     () => selectedTipos.filter((tipo) => availableTipos.includes(tipo)),
@@ -215,19 +285,23 @@ export default function PainelCombustivelClient() {
     }
 
     if (resolvedSelectedEntidade !== "all") {
-      const targetName = entidadeCodigoToNormName.get(resolvedSelectedEntidade);
-      if (targetName) rows = rows.filter((row) => normalizeName(row.entidade) === targetName);
+      rows = rows.filter((row) => normalizeName(row.entidade) === resolvedSelectedEntidade);
     }
 
     if (selectedMunicipioEntityNames) {
       rows = rows.filter((row) => selectedMunicipioEntityNames.has(normalizeName(row.entidade)));
     }
 
+    if (hasMensalEmitente && selectedEmitente !== "all") {
+      rows = rows.filter((row) => row.emitente === selectedEmitente);
+    }
+
     return rows;
   }, [
-    entidadeCodigoToNormName,
     mensalRows,
     resolvedSelectedEntidade,
+    hasMensalEmitente,
+    selectedEmitente,
     selectedMunicipioEntityNames,
     resolvedSelectedTipos,
   ]);
@@ -279,12 +353,31 @@ export default function PainelCombustivelClient() {
   }, [filteredMensalRows]);
 
   const emitenteBar = useMemo(() => {
-    return [...emitenteRows].sort((a, b) => b.valor_total - a.valor_total).slice(0, 12);
-  }, [emitenteRows]);
+    if (hasMensalEmitente) {
+      const grouped = new Map<string, number>();
+      filteredMensalRows.forEach((row) => {
+        if (!row.emitente) return;
+        grouped.set(row.emitente, (grouped.get(row.emitente) ?? 0) + row.valor_total);
+      });
+      return [...grouped.entries()]
+        .map(([emitente, valor_total]) => ({ emitente, valor_total }))
+        .sort((a, b) => b.valor_total - a.valor_total)
+        .slice(0, 12);
+    }
+
+    const ordered = [...emitenteRows].sort((a, b) => b.valor_total - a.valor_total);
+    if (selectedEmitente === "all") return ordered.slice(0, 12);
+    return ordered.filter((item) => item.emitente === selectedEmitente).slice(0, 12);
+  }, [emitenteRows, filteredMensalRows, hasMensalEmitente, selectedEmitente]);
 
   const lineOptions: ApexOptions = useMemo(
     () => ({
-      chart: { type: "line", toolbar: { show: false }, fontFamily: "inherit" },
+      chart: {
+        type: "line",
+        toolbar: { show: false },
+        fontFamily: "inherit",
+      },
+      markers: { size: 3, hover: { size: 5 } },
       stroke: { curve: "smooth", width: 2 },
       dataLabels: { enabled: false },
       grid: { borderColor: "#e5e7eb", strokeDashArray: 4 },
@@ -297,14 +390,35 @@ export default function PainelCombustivelClient() {
       tooltip: {
         y: { formatter: (value) => formatMoney(Number(value)) },
       },
-      colors: ["#1d87e4"],
+      colors: ["#0f766e"],
     }),
     [monthlySeries.labels],
   );
 
   const treemapOptions: ApexOptions = useMemo(
     () => ({
-      chart: { type: "treemap", toolbar: { show: false }, fontFamily: "inherit" },
+      chart: {
+        type: "treemap",
+        toolbar: { show: false },
+        fontFamily: "inherit",
+        events: {
+          dataPointSelection: (_event, _chart, config) => {
+            const index = config.dataPointIndex;
+            const entity = entidadeTreemap[index]?.x;
+            if (!entity) return;
+            const params = new URLSearchParams(searchParams.toString());
+            params.set("entidade", normalizeName(entity));
+            router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+          },
+        },
+      },
+      plotOptions: {
+        treemap: {
+          distributed: false,
+          enableShades: true,
+          shadeIntensity: 0.6,
+        },
+      },
       dataLabels: {
         enabled: true,
         formatter: (_text, opts) => {
@@ -314,16 +428,47 @@ export default function PainelCombustivelClient() {
       },
       legend: { show: false },
       tooltip: { y: { formatter: (value) => formatMoney(Number(value)) } },
-      colors: ["#1e3a8a", "#1d4ed8", "#0284c7", "#7e22ce", "#a21caf", "#d97706", "#0f766e"],
+      colors: ["#0f766e"],
     }),
-    [],
+    [entidadeTreemap, pathname, router, searchParams],
   );
 
   const pieOptions: ApexOptions = useMemo(
     () => ({
-      chart: { type: "pie", fontFamily: "inherit" },
+      chart: {
+        type: "pie",
+        fontFamily: "inherit",
+        events: {
+          dataPointSelection: (_event, _chart, config) => {
+            const index = config.dataPointIndex;
+            const tipo = tipoPie.labels[index];
+            if (!tipo) return;
+            const params = new URLSearchParams(searchParams.toString());
+            const current = params.getAll("tipo");
+            params.delete("tipo");
+            if (current.includes(tipo)) {
+              current.filter((item) => item !== tipo).forEach((item) => params.append("tipo", item));
+            } else {
+              [...current, tipo].forEach((item) => params.append("tipo", item));
+            }
+            router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+          },
+        },
+      },
       labels: tipoPie.labels,
       legend: { position: "right" },
+      colors: [
+        "#0f766e",
+        "#1d4ed8",
+        "#f59e0b",
+        "#be123c",
+        "#7c3aed",
+        "#16a34a",
+        "#0369a1",
+        "#ea580c",
+        "#0891b2",
+        "#65a30d",
+      ],
       tooltip: {
         y: {
           formatter: (value) => formatMoney(Number(value)),
@@ -333,12 +478,28 @@ export default function PainelCombustivelClient() {
         formatter: (value) => `${Number(value).toFixed(2)}%`,
       },
     }),
-    [tipoPie.labels],
+    [pathname, router, searchParams, tipoPie.labels],
   );
 
   const barOptions: ApexOptions = useMemo(
     () => ({
-      chart: { type: "bar", toolbar: { show: false }, fontFamily: "inherit" },
+      chart: {
+        type: "bar",
+        toolbar: { show: false },
+        fontFamily: "inherit",
+        events: {
+          dataPointSelection: (_event, _chart, config) => {
+            const index = config.dataPointIndex;
+            if (index < 0) return;
+            const emitente = emitenteBar[index]?.emitente;
+            if (!emitente) return;
+            const params = new URLSearchParams(searchParams.toString());
+            if (params.get("emitente") === emitente) params.delete("emitente");
+            else params.set("emitente", emitente);
+            router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+          },
+        },
+      },
       plotOptions: { bar: { horizontal: true, borderRadius: 3 } },
       dataLabels: { enabled: false },
       xaxis: {
@@ -350,11 +511,11 @@ export default function PainelCombustivelClient() {
       tooltip: {
         y: { formatter: (value) => formatMoney(Number(value)) },
       },
-      colors: ["#2389ea"],
+      colors: [selectedEmitente === "all" ? "#1d4ed8" : "#0f766e"],
       grid: { borderColor: "#d8dee6", strokeDashArray: 3 },
       yaxis: { labels: { style: { fontSize: "11px" } } },
     }),
-    [emitenteBar],
+    [emitenteBar, pathname, router, searchParams, selectedEmitente],
   );
 
   if (loading) {
@@ -373,72 +534,25 @@ export default function PainelCombustivelClient() {
     );
   }
 
-  const filterHeaderClass = "mb-2";
+  if (mensalRows.length === 0) {
+    return (
+      <div className="rounded-xl border border-amber-200 bg-amber-50 p-6 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-300">
+        Nenhum dado encontrado para o painel de combustivel. Verifique se as tabelas `combustivel_mensal`,
+        `combustivel_emitente`, `aux_dim_municipio` e `aux_dim_entidade` estao populadas no Supabase.
+      </div>
+    );
+  }
+
   const chartHeaderClass = "mb-2";
   const kpiHeaderClass = "mb-1";
   const panelTitleClass = "text-sm font-semibold text-gray-700 dark:text-gray-200";
   const cardClass = "rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800";
-  const filterCardClass = "rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-800";
   const kpiCardClass = "rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-800";
 
   return (
-    <div className="space-y-3">
-      <div className="grid grid-cols-1 gap-2 xl:grid-cols-12">
-        <div className={`xl:col-span-3 ${filterCardClass}`}>
-          <div className={filterHeaderClass}>
-            <h3 className={panelTitleClass}>Municipio</h3>
-          </div>
-          <select
-            value={selectedMunicipio}
-            onChange={(e) => setSelectedMunicipio(e.target.value)}
-            className="h-10 w-full rounded-lg border border-gray-300 bg-transparent px-3 py-2 text-sm text-gray-700 shadow-theme-xs focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90 dark:focus:border-brand-800"
-          >
-            <option value="all">Todos</option>
-            {municipios.map((m) => (
-              <option key={m.codigo} value={m.codigo}>
-                {m.nome}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className={`xl:col-span-6 ${filterCardClass}`}>
-          <div className={filterHeaderClass}>
-            <h3 className={panelTitleClass}>Entidade</h3>
-          </div>
-          <select
-            value={resolvedSelectedEntidade}
-            onChange={(e) => setSelectedEntidade(e.target.value)}
-            className="h-10 w-full rounded-lg border border-gray-300 bg-transparent px-3 py-2 text-sm text-gray-700 shadow-theme-xs focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90 dark:focus:border-brand-800"
-          >
-            <option value="all">Todos</option>
-            {entidadeOptions.map((entidade) => (
-              <option key={entidade.codigo} value={entidade.codigo}>
-                {entidade.nome}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className={`xl:col-span-3 ${filterCardClass}`}>
-          <div className={filterHeaderClass}>
-            <h3 className={panelTitleClass}>Tipo Combustivel</h3>
-          </div>
-          <select
-            multiple
-            value={resolvedSelectedTipos}
-            onChange={(e) =>
-              setSelectedTipos(Array.from(e.target.selectedOptions).map((opt) => opt.value))
-            }
-            className="h-10 w-full rounded-lg border border-gray-300 bg-transparent px-3 py-2 text-sm text-gray-700 shadow-theme-xs focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90 dark:focus:border-brand-800"
-          >
-            {availableTipos.map((tipo) => (
-              <option key={tipo} value={tipo}>
-                {tipo}
-              </option>
-            ))}
-          </select>
-        </div>
+    <div className="space-y-2">
+      <div className="lg:hidden">
+        <CombustivelHeaderFilters />
       </div>
 
       <div className="grid grid-cols-1 gap-2 xl:grid-cols-12">
@@ -446,24 +560,28 @@ export default function PainelCombustivelClient() {
           <div className={chartHeaderClass}>
             <h3 className={panelTitleClass}>Evolucao Mensal do Gasto com Combustivel</h3>
           </div>
-          <Chart
-            type="line"
-            options={lineOptions}
-            series={[{ name: "Valor Total", data: monthlySeries.values }]}
-            height={285}
-          />
+          <div className="h-[260px] xl:h-[214px]">
+            <Chart
+              type="line"
+              options={lineOptions}
+              series={[{ name: "Valor Total", data: monthlySeries.values }]}
+              height="100%"
+            />
+          </div>
         </div>
 
         <div className={`xl:col-span-3 ${cardClass}`}>
           <div className={chartHeaderClass}>
             <h3 className={panelTitleClass}>Entidade</h3>
           </div>
-          <Chart
-            type="treemap"
-            options={treemapOptions}
-            series={[{ data: entidadeTreemap }]}
-            height={285}
-          />
+          <div className="h-[260px] xl:h-[214px]">
+            <Chart
+              type="treemap"
+              options={treemapOptions}
+              series={[{ data: entidadeTreemap }]}
+              height="100%"
+            />
+          </div>
         </div>
 
         <div className="xl:col-span-2 space-y-2">
@@ -472,7 +590,7 @@ export default function PainelCombustivelClient() {
               <h3 className={panelTitleClass}>Valor Total</h3>
             </div>
             <div className="text-center">
-              <p className="text-[30px] font-semibold text-[#1e3aaf] dark:text-blue-400">
+              <p className="text-[24px] font-semibold text-[#1e3aaf] dark:text-blue-400">
                 R$ {formatMillions(kpi.totalValor)}
               </p>
             </div>
@@ -483,7 +601,7 @@ export default function PainelCombustivelClient() {
               <h3 className={panelTitleClass}>Litros</h3>
             </div>
             <div className="text-center">
-              <p className="text-[30px] font-semibold text-[#1e3aaf] dark:text-blue-400">
+              <p className="text-[24px] font-semibold text-[#1e3aaf] dark:text-blue-400">
                 {formatMillions(kpi.totalLitros)}
               </p>
             </div>
@@ -494,7 +612,7 @@ export default function PainelCombustivelClient() {
               <h3 className={panelTitleClass}>Preco Medio</h3>
             </div>
             <div className="text-center">
-              <p className="text-[30px] font-semibold text-[#1e3aaf] dark:text-blue-400">
+              <p className="text-[24px] font-semibold text-[#1e3aaf] dark:text-blue-400">
                 {formatMoney(kpi.precoMedio)}
               </p>
             </div>

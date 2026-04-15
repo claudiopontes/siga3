@@ -16,6 +16,7 @@ interface RowMensal {
   ano: number
   mes: number
   entidade: string
+  emitente: string
   tipo_combustivel: string
   litros: number
   valor_total: number
@@ -60,12 +61,30 @@ SELECT
     ANO                          AS ano,
     MES                          AS mes,
     LTRIM(RTRIM(ENTIDADE))       AS entidade,
+    LTRIM(RTRIM(
+        CASE
+            WHEN NOME_FANTASIA_EMITENTE IS NOT NULL
+                 AND LEN(LTRIM(RTRIM(NOME_FANTASIA_EMITENTE))) > 0
+            THEN NOME_FANTASIA_EMITENTE COLLATE DATABASE_DEFAULT
+            ELSE RAZAO_SOCIAL_EMITENTE  COLLATE DATABASE_DEFAULT
+        END
+    ))                           AS emitente,
     TIPO_COMBUSTIVEL             AS tipo_combustivel,
     SUM(QUANTIDADE)              AS litros,
     SUM(VALOR * QUANTIDADE)      AS valor_total,
     COUNT(*)                     AS qtd_notas
 FROM dbo.vw_NF_combustiveis
-GROUP BY ANO, MES, ENTIDADE, TIPO_COMBUSTIVEL
+GROUP BY
+    ANO,
+    MES,
+    ENTIDADE,
+    CASE
+        WHEN NOME_FANTASIA_EMITENTE IS NOT NULL
+             AND LEN(LTRIM(RTRIM(NOME_FANTASIA_EMITENTE))) > 0
+        THEN NOME_FANTASIA_EMITENTE COLLATE DATABASE_DEFAULT
+        ELSE RAZAO_SOCIAL_EMITENTE  COLLATE DATABASE_DEFAULT
+    END,
+    TIPO_COMBUSTIVEL
 ORDER BY ANO, MES
 `
 

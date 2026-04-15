@@ -10,13 +10,25 @@ CREATE TABLE IF NOT EXISTS combustivel_mensal (
     ano              INT           NOT NULL,
     mes              INT           NOT NULL,
     entidade         TEXT          NOT NULL,
+    emitente         TEXT          NOT NULL DEFAULT '',
     tipo_combustivel TEXT          NOT NULL,
     litros           NUMERIC(15,3) NOT NULL DEFAULT 0,
     valor_total      NUMERIC(15,2) NOT NULL DEFAULT 0,
     qtd_notas        INT           NOT NULL DEFAULT 0,
     atualizado_em    TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
-    UNIQUE (ano, mes, entidade, tipo_combustivel)
+    UNIQUE (ano, mes, entidade, emitente, tipo_combustivel)
 );
+
+-- Migração para bases já existentes (sem coluna emitente no mensal)
+ALTER TABLE combustivel_mensal
+ADD COLUMN IF NOT EXISTS emitente TEXT NOT NULL DEFAULT '';
+
+ALTER TABLE combustivel_mensal
+DROP CONSTRAINT IF EXISTS combustivel_mensal_ano_mes_entidade_tipo_combustivel_key;
+
+ALTER TABLE combustivel_mensal
+ADD CONSTRAINT combustivel_mensal_ano_mes_entidade_emitente_tipo_combustivel_key
+UNIQUE (ano, mes, entidade, emitente, tipo_combustivel);
 
 -- 2. Totais por entidade
 CREATE TABLE IF NOT EXISTS combustivel_entidade (
@@ -78,5 +90,6 @@ CREATE TABLE IF NOT EXISTS etl_log (
 -- Índices para performance
 CREATE INDEX IF NOT EXISTS idx_comb_mensal_ano_mes      ON combustivel_mensal (ano, mes);
 CREATE INDEX IF NOT EXISTS idx_comb_mensal_entidade      ON combustivel_mensal (entidade);
+CREATE INDEX IF NOT EXISTS idx_comb_mensal_emitente      ON combustivel_mensal (emitente);
 CREATE INDEX IF NOT EXISTS idx_comb_mensal_tipo          ON combustivel_mensal (tipo_combustivel);
 CREATE INDEX IF NOT EXISTS idx_comb_emitente_valor       ON combustivel_emitente (valor_total DESC);

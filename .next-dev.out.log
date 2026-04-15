@@ -4,12 +4,131 @@
 
 ▲ Next.js 16.2.2 (Turbopack)
 - Local:         http://localhost:3000
-- Network:       http://54.232.189.113:3000
+- Network:       http://192.168.176.1:3000
 - Environments: .env.local
-✓ Ready in 859ms
-Creating turbopack project { dir: 'D:\\projetos\\frontend', testMode: true }
+✓ Ready in 1229ms
+Creating turbopack project {
+  dir: 'C:\\Users\\claudio.pontes.tceac\\OneDrive - TRIBUNAL DE CONTAS DO ESTADO DO ACRE\\varadourodigital\\gabinete-digital',
+  testMode: true
+}
 
-○ Compiling / ...
- GET / 200 in 7.6s (next.js: 7.1s, application-code: 554ms)
- GET /painel-combustivel 200 in 2.2s (next.js: 2.1s, application-code: 62ms)
- GET /painel-combustivel 200 in 207ms (next.js: 4ms, application-code: 203ms)
+ GET / 200 in 1612ms (next.js: 578ms, application-code: 1034ms)
+ GET /painel-combustivel 200 in 2.4s (next.js: 2.3s, application-code: 154ms)
+✓ Compiled in 576ms
+○ Compiling /_error ...
+ GET /painel-combustivel 500 in 4.8s (next.js: 4.1s, application-code: 672ms)
+ GET /painel-combustivel 500 in 91ms (next.js: 48ms, application-code: 43ms)
+ GET /painel-combustivel 500 in 101ms (next.js: 65ms, application-code: 36ms)
+ GET /painel-combustivel 500 in 232ms (next.js: 180ms, application-code: 53ms)
+ GET / 500 in 99ms (next.js: 78ms, application-code: 21ms)
+ GET / 500 in 32ms (next.js: 19ms, application-code: 13ms)
+ GET / 500 in 38ms (next.js: 16ms, application-code: 23ms)
+ GET / 200 in 1912ms (next.js: 785ms, application-code: 1127ms)
+ GET / 200 in 564ms (next.js: 210ms, application-code: 354ms)
+ GET /painel-combustivel 200 in 729ms (next.js: 323ms, application-code: 406ms)
+✓ Compiled in 450ms
+✓ Compiled in 404ms
+✓ Compiled in 355ms
+ GET /painel-combustivel 200 in 576ms (next.js: 275ms, application-code: 300ms)
+ GET / 200 in 54ms (next.js: 6ms, application-code: 48ms)
+✓ Compiled in 342ms
+✓ Compiled in 526ms
+✓ Compiled in 473ms
+ GET /painel-combustivel 200 in 902ms (next.js: 337ms, application-code: 564ms)
+ GET / 200 in 341ms (next.js: 217ms, application-code: 124ms)
+ GET /painel-combustivel 200 in 38ms (next.js: 5ms, application-code: 33ms)
+ GET /gabinete-digital/mapa 200 in 1407ms (next.js: 1304ms, application-code: 103ms)
+ GET /painel-combustivel 200 in 38ms (next.js: 3ms, application-code: 35ms)
+✓ Compiled in 649ms
+✓ Compiled in 599ms
+✓ Compiled in 457ms
+✓ Compiled in 497ms
+✓ Compiled in 446ms
+✓ Compiled in 1319ms
+✓ Compiled in 576ms
+✓ Compiled in 196ms
+✓ Compiled in 290ms
+ GET /painel-combustivel 200 in 219ms (next.js: 190ms, application-code: 29ms)
+ GET /painel-combustivel 200 in 103ms (next.js: 5ms, application-code: 98ms)
+ GET /painel-combustivel 200 in 12ms (next.js: 4ms, application-code: 8ms)
+ GET /painel-combustivel 200 in 46ms (next.js: 4ms, application-code: 41ms)
+ GET /painel-combustivel?tipo=DIESEL+S10 200 in 39ms (next.js: 5ms, application-code: 33ms)
+ GET /painel-combustivel 200 in 22ms (next.js: 8ms, application-code: 14ms)
+ GET /painel-combustivel 200 in 39ms (next.js: 5ms, application-code: 34ms)
+ GET /painel-combustivel?entidade=23013 200 in 65ms (next.js: 8ms, application-code: 57ms)
+ GET /painel-combustivel?entidade=23013 200 in 36ms (next.js: 5ms, application-code: 31ms)
+ GET /painel-combustivel 200 in 12ms (next.js: 4ms, application-code: 8ms)
+ GET /painel-combustivel 200 in 44ms (next.js: 5ms, application-code: 40ms)
+ GET /painel-combustivel?municipio=1200013 200 in 40ms (next.js: 3ms, application-code: 37ms)
+ GET /painel-combustivel 200 in 14ms (next.js: 4ms, application-code: 10ms)
+ GET /painel-combustivel 200 in 30ms (next.js: 3ms, application-code: 27ms)
+ GET /painel-combustivel 200 in 14ms (next.js: 4ms, application-code: 10ms)
+ GET /painel-combustivel 200 in 67ms (next.js: 5ms, application-code: 62ms)
+ GET / 200 in 374ms (next.js: 186ms, application-code: 188ms)
+ GET /painel-combustivel 200 in 31ms (next.js: 4ms, application-code: 27ms)
+ GET /painel-combustivel?municipio=1200013 200 in 35ms (next.js: 3ms, application-code: 31ms)
+ GET /painel-combustivel 200 in 15ms (next.js: 4ms, application-code: 11ms)
+ GET /painel-combustivel 200 in 53ms (next.js: 4ms, application-code: 49ms)
+ GET /painel-combustivel?entidade=23065 200 in 59ms (next.js: 4ms, application-code: 55ms)
+ GET /painel-combustivel 200 in 13ms (next.js: 4ms, application-code: 9ms)
+ GET /painel-combustivel 200 in 55ms (next.js: 3ms, application-code: 51ms)
+ GET /painel-combustivel?entidade=23065&tipo=DIESEL+S10 200 in 43ms (next.js: 4ms, application-code: 39ms)
+ GET /painel-combustivel?entidade=23065 200 in 53ms (next.js: 5ms, application-code: 48ms)
+✓ Compiled in 423ms
+ GET /painel-combustivel?entidade=23065 200 in 1045ms (next.js: 348ms, application-code: 697ms)
+ GET /painel-combustivel?entidade=23065 200 in 87ms (next.js: 12ms, application-code: 75ms)
+ GET /painel-combustivel?entidade=23065 200 in 1066ms (next.js: 494ms, application-code: 572ms)
+✓ Compiled in 319ms
+✓ Compiled in 178ms
+ GET /painel-combustivel?entidade=23065 200 in 1069ms (next.js: 413ms, application-code: 655ms)
+ GET /painel-combustivel 200 in 24ms (next.js: 6ms, application-code: 18ms)
+ GET /painel-combustivel 200 in 61ms (next.js: 7ms, application-code: 54ms)
+ GET /painel-combustivel?municipio=1200013 200 in 39ms (next.js: 3ms, application-code: 36ms)
+ GET /painel-combustivel 200 in 20ms (next.js: 5ms, application-code: 15ms)
+ GET /painel-combustivel 200 in 96ms (next.js: 7ms, application-code: 89ms)
+ GET /painel-combustivel?entidade=ASSEMBLEIA+LEGISLATIVA+DO+ESTADO+DO+ACRE 200 in 33ms (next.js: 5ms, application-code: 29ms)
+ GET /painel-combustivel 200 in 79ms (next.js: 4ms, application-code: 75ms)
+ GET /painel-combustivel 200 in 68ms (next.js: 16ms, application-code: 52ms)
+ GET /painel-combustivel?tipo=DIESEL 200 in 41ms (next.js: 5ms, application-code: 36ms)
+ GET /painel-combustivel 200 in 12ms (next.js: 4ms, application-code: 8ms)
+ GET /painel-combustivel 200 in 67ms (next.js: 6ms, application-code: 61ms)
+ GET /painel-combustivel?tipo=DIESEL+S10 200 in 55ms (next.js: 6ms, application-code: 49ms)
+ GET /painel-combustivel 200 in 16ms (next.js: 5ms, application-code: 11ms)
+ GET /painel-combustivel 200 in 63ms (next.js: 6ms, application-code: 56ms)
+✓ Compiled in 393ms
+✓ Compiled in 230ms
+ GET /painel-combustivel 200 in 190ms (next.js: 164ms, application-code: 25ms)
+ GET /painel-combustivel 200 in 145ms (next.js: 8ms, application-code: 137ms)
+ GET /painel-combustivel 200 in 550ms (next.js: 4ms, application-code: 546ms)
+ GET /painel-combustivel?emitente=AUTO+POSTO+ROSELLAO 200 in 41ms (next.js: 5ms, application-code: 35ms)
+ GET /painel-combustivel 200 in 11ms (next.js: 4ms, application-code: 7ms)
+ GET /painel-combustivel 200 in 35ms (next.js: 4ms, application-code: 30ms)
+✓ Compiled in 224ms
+✓ Compiled in 293ms
+✓ Compiled in 186ms
+ GET / 200 in 409ms (next.js: 238ms, application-code: 171ms)
+ GET /gabinete-digital/mapa 200 in 264ms (next.js: 157ms, application-code: 108ms)
+ GET /painel-combustivel 200 in 301ms (next.js: 160ms, application-code: 140ms)
+ GET / 200 in 40ms (next.js: 5ms, application-code: 35ms)
+ GET /painel-combustivel 200 in 47ms (next.js: 3ms, application-code: 43ms)
+✓ Compiled in 177ms
+ GET /painel-combustivel 200 in 369ms (next.js: 209ms, application-code: 160ms)
+✓ Compiled in 205ms
+ GET / 200 in 452ms (next.js: 114ms, application-code: 338ms)
+ GET /painel-combustivel 200 in 222ms (next.js: 118ms, application-code: 104ms)
+ GET / 200 in 135ms (next.js: 5ms, application-code: 129ms)
+ GET /painel-combustivel 200 in 36ms (next.js: 3ms, application-code: 32ms)
+✓ Compiled in 319ms
+✓ Compiled in 206ms
+ GET /painel-combustivel 200 in 538ms (next.js: 325ms, application-code: 213ms)
+ GET /painel-combustivel 200 in 63ms (next.js: 7ms, application-code: 56ms)
+ GET / 200 in 553ms (next.js: 381ms, application-code: 172ms)
+ GET /painel-combustivel 200 in 81ms (next.js: 5ms, application-code: 76ms)
+ GET / 200 in 515ms (next.js: 5ms, application-code: 510ms)
+ GET /painel-combustivel 200 in 29ms (next.js: 4ms, application-code: 25ms)
+ GET / 200 in 104ms (next.js: 5ms, application-code: 99ms)
+ GET / 200 in 129ms (next.js: 6ms, application-code: 124ms)
+ GET /painel-combustivel 200 in 45ms (next.js: 4ms, application-code: 41ms)
+✓ Compiled in 469ms
+ GET /painel-combustivel 200 in 866ms (next.js: 277ms, application-code: 589ms)
+✓ Compiled in 286ms
