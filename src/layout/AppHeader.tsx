@@ -8,7 +8,7 @@ import { useSidebar } from "@/context/SidebarContext";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import React, { useEffect, useState } from "react";
+import React, { Suspense, useEffect, useState } from "react";
 
 const AppHeader: React.FC = () => {
   const [isApplicationMenuOpen, setApplicationMenuOpen] = useState(false);
@@ -146,7 +146,15 @@ const AppHeader: React.FC = () => {
           </button>
 
           <div className="hidden lg:block lg:flex-1">
-            {isCombustivelPage ? <CombustivelHeaderFilters /> : null}
+            {isCombustivelPage ? (
+              <Suspense
+                fallback={
+                  <div className="h-11 rounded-lg border border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800" />
+                }
+              >
+                <CombustivelHeaderFilters />
+              </Suspense>
+            ) : null}
           </div>
         </div>
 

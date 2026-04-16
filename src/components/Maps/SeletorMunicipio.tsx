@@ -169,7 +169,9 @@ export default function SeletorMunicipio({ onSelect, defaultValue }: Props) {
 
   const onEachFeature = useCallback(
     (feature: AcreFeature, layer: Layer) => {
-      const municipio = municipioByCode[feature?.properties?.codarea];
+      const cod = feature?.properties?.codarea;
+      if (!cod) return;
+      const municipio = municipioByCode[cod];
       if (!municipio) return;
 
       const pathLayer = layer as Path;

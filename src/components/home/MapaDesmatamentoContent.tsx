@@ -101,13 +101,15 @@ export default function MapaDesmatamentoContent({ onSelect, municipioSelecionado
   }, [onSelect]);
 
   const styleFeature = useCallback((feature?: AcreFeature) => {
-    const dados = desmatamentoPorCodigo[feature?.properties?.codarea];
-    const isSelected = municipioSelecionado?.codIBGE === feature?.properties?.codarea;
+    const cod = feature?.properties?.codarea;
+    const dados = cod ? desmatamentoPorCodigo[cod] : undefined;
+    const isSelected = cod ? municipioSelecionado?.codIBGE === cod : false;
     return buildStyle(dados?.pct ?? 5, isSelected);
   }, [municipioSelecionado]);
 
   const onEachFeature = useCallback((feature: AcreFeature, layer: Layer) => {
     const cod = feature?.properties?.codarea;
+    if (!cod) return;
     const dados = desmatamentoPorCodigo[cod];
     if (!dados) return;
 

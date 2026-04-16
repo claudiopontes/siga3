@@ -1,4 +1,5 @@
-﻿"use client";
+/* eslint-disable react-hooks/preserve-manual-memoization */
+"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
@@ -34,6 +35,8 @@ type MunicipioRow = {
   uf_codigo: string | null;
 };
 
+type ChartKey = "line" | "treemap" | "pie" | "pareto" | "heatmap" | "emitenteBar";
+
 function formatMoney(value: number): string {
   return new Intl.NumberFormat("pt-BR", {
     style: "currency",
@@ -62,6 +65,13 @@ function monthKey(year: number, month: number): string {
   return `${year}-${String(month).padStart(2, "0")}`;
 }
 
+function toMonthLabel(value: string | null): string {
+  if (!value) return "--/----";
+  const [year, month] = value.split("-");
+  if (!year || !month) return value;
+  return `${month}/${year}`;
+}
+
 function extractErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
   if (typeof error === "object" && error !== null && "message" in error) {
@@ -84,11 +94,14 @@ function isMissingEmitenteColumnError(error: unknown): boolean {
 }
 
 export default function PainelCombustivelClient() {
+  "use no memo";
+
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [highlightedChart, setHighlightedChart] = useState<ChartKey | null>(null);
 
   const [mensalRows, setMensalRows] = useState<MensalRow[]>([]);
   const [municipios, setMunicipios] = useState<MunicipioRow[]>([]);
@@ -391,6 +404,7 @@ export default function PainelCombustivelClient() {
       return {
         hasComparison: false,
         currentLabel: keys[0] ?? null,
+        previousLabel: null,
         valorDelta: 0,
         litrosDelta: 0,
         precoDelta: 0,
@@ -412,6 +426,7 @@ export default function PainelCombustivelClient() {
     return {
       hasComparison: true,
       currentLabel: currentKey,
+      previousLabel: previousKey,
       valorDelta: calcDelta(current.valor, previous.valor),
       litrosDelta: calcDelta(current.litros, previous.litros),
       precoDelta: calcDelta(currentPreco, previousPreco),
@@ -476,6 +491,147 @@ export default function PainelCombustivelClient() {
   const hasParetoData = emitentePareto.totals.length > 0;
   const hasHeatmapData = tipoHeatmap.series.length > 0;
 
+  const chartMeta: Record<ChartKey, { title: string; containerId: string; hasData: boolean; emptyText: string }> = {
+    line: {
+      title: "Evolução Mensal do Gasto com Combustível",
+      containerId: "chart-panel-line",
+      hasData: hasLineData,
+      emptyText: "Sem dados para o recorte atual.",
+    },
+    treemap: {
+      title: "Entidade",
+      containerId: "chart-panel-treemap",
+      hasData: hasTreemapData,
+      emptyText: "Sem dados para o recorte atual.",
+    },
+    pie: {
+      title: "Tipo de Combustível",
+      containerId: "chart-panel-pie",
+      hasData: hasPieData,
+      emptyText: "Sem dados para o recorte atual.",
+    },
+    pareto: {
+      title: "Pareto de Emitentes (80/20)",
+      containerId: "chart-panel-pareto",
+      hasData: hasParetoData,
+      emptyText: hasMensalEmitente
+        ? "Sem dados para o recorte atual."
+        : "Coluna emitente indisponivel no fato mensal para este ambiente.",
+    },
+    heatmap: {
+      title: "Mapa de Gastos por Tipo e Mês",
+      containerId: "chart-panel-heatmap",
+      hasData: hasHeatmapData,
+      emptyText: "Sem dados para o recorte atual.",
+    },
+    emitenteBar: {
+      title: "Valor Total por Emitente",
+      containerId: "chart-panel-emitente-bar",
+      hasData: hasEmitenteBarData,
+      emptyText: hasMensalEmitente
+        ? "Sem dados para o recorte atual."
+        : "Coluna emitente indisponivel no fato mensal para este ambiente.",
+    },
+  };
+
+  const closeActionsMenu = (event: React.MouseEvent<HTMLButtonElement>) => {
+    const details = event.currentTarget.closest("details");
+    details?.removeAttribute("open");
+  };
+
+  const printChart = (chart: ChartKey) => {
+    const meta = chartMeta[chart];
+    const target = document.getElementById(meta.containerId);
+    if (!target) return;
+
+    const chartCanvas = target.querySelector(".apexcharts-canvas");
+    const content = chartCanvas ? chartCanvas.outerHTML : target.innerHTML;
+    const printWindow = window.open("", "_blank", "width=1200,height=860");
+    if (!printWindow) return;
+
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>${meta.title}</title>
+          <style>
+            body { margin: 0; font-family: Arial, sans-serif; padding: 24px; color: #111827; }
+            h1 { margin: 0 0 16px; font-size: 20px; font-weight: 700; }
+            .chart-wrap { border: 1px solid #d1d5db; border-radius: 12px; padding: 12px; }
+          </style>
+        </head>
+        <body>
+          <h1>${meta.title}</h1>
+          <div class="chart-wrap">${content}</div>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.print();
+    printWindow.close();
+  };
+
+  const renderExpandedChart = (chart: ChartKey) => {
+    if (chart === "line") {
+      return hasLineData ? (
+        <Chart
+          type="line"
+          options={lineOptions}
+          series={[{ name: "Valor Total", data: monthlySeries.values }]}
+          height="100%"
+        />
+      ) : (
+        <div className={emptyChartClass}>{chartMeta.line.emptyText}</div>
+      );
+    }
+    if (chart === "treemap") {
+      return hasTreemapData ? (
+        <Chart type="treemap" options={treemapOptions} series={[{ data: entidadeTreemap }]} height="100%" />
+      ) : (
+        <div className={emptyChartClass}>{chartMeta.treemap.emptyText}</div>
+      );
+    }
+    if (chart === "pie") {
+      return hasPieData ? (
+        <Chart key={`${tipoPieKey}-expanded`} type="pie" options={pieOptions} series={tipoPie.series} height="100%" />
+      ) : (
+        <div className={emptyChartClass}>{chartMeta.pie.emptyText}</div>
+      );
+    }
+    if (chart === "pareto") {
+      return hasParetoData ? (
+        <Chart
+          type="line"
+          options={paretoOptions}
+          series={[
+            { name: "Valor Total", type: "column", data: emitentePareto.totals },
+            { name: "Acumulado", type: "line", data: emitentePareto.cumulativePercent },
+          ]}
+          height="100%"
+        />
+      ) : (
+        <div className={emptyChartClass}>{chartMeta.pareto.emptyText}</div>
+      );
+    }
+    if (chart === "heatmap") {
+      return hasHeatmapData ? (
+        <Chart type="heatmap" options={heatmapOptions} series={tipoHeatmap.series} height="100%" />
+      ) : (
+        <div className={emptyChartClass}>{chartMeta.heatmap.emptyText}</div>
+      );
+    }
+    return hasEmitenteBarData ? (
+      <Chart
+        type="bar"
+        options={barOptions}
+        series={[{ name: "Valor Total", data: emitenteBar.map((row) => row.valor_total) }]}
+        height="100%"
+      />
+    ) : (
+      <div className={emptyChartClass}>{chartMeta.emitenteBar.emptyText}</div>
+    );
+  };
+
   const lineOptions: ApexOptions = useMemo(
     () => ({
       chart: {
@@ -487,8 +643,17 @@ export default function PainelCombustivelClient() {
       stroke: { curve: "smooth", width: 2 },
       dataLabels: { enabled: false },
       grid: { borderColor: "#e5e7eb", strokeDashArray: 4 },
-      xaxis: { categories: monthlySeries.labels, labels: { rotate: -45 } },
+      xaxis: {
+        categories: monthlySeries.labels,
+        labels: {
+          rotate: -35,
+          hideOverlappingLabels: true,
+          trim: true,
+          style: { fontSize: "11px" },
+        },
+      },
       yaxis: {
+        tickAmount: 4,
         labels: {
           formatter: (value) => `R$ ${formatMillions(Number(value))}`,
         },
@@ -569,7 +734,7 @@ export default function PainelCombustivelClient() {
         fontWeight: 400,
         itemMargin: { horizontal: 10, vertical: 4 },
         labels: { colors: "#475569" },
-        markers: { width: 8, height: 8, radius: 8 },
+        markers: { size: 8 },
       },
       colors: [
         "#0f766e",
@@ -647,7 +812,10 @@ export default function PainelCombustivelClient() {
       stroke: { width: [0, 3], curve: "smooth" },
       plotOptions: { bar: { borderRadius: 3, columnWidth: "55%" } },
       dataLabels: { enabled: false },
-      xaxis: { categories: emitentePareto.categories, labels: { rotate: -30 } },
+      xaxis: {
+        categories: emitentePareto.categories,
+        labels: { rotate: -35, hideOverlappingLabels: true, style: { fontSize: "11px" } },
+      },
       yaxis: [
         {
           title: { text: "Valor (R$)" },
@@ -729,11 +897,15 @@ export default function PainelCombustivelClient() {
     );
   }
 
-  const chartHeaderClass = "mb-2";
-  const kpiHeaderClass = "mb-1";
-  const panelTitleClass = "text-sm font-semibold text-gray-700 dark:text-gray-200";
-  const cardClass = "rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800";
-  const kpiCardClass = "rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-800";
+  const chartHeaderClass = "mb-2.5";
+  const kpiHeaderClass = "mb-1.5";
+  const panelTitleClass = "text-sm font-semibold tracking-tight text-gray-700 dark:text-gray-200";
+  const cardClass =
+    "rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800";
+  const kpiCardClass =
+    "rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800";
+  const actionButtonClass =
+    "inline-flex items-center rounded-md border border-gray-200 px-2 py-1 text-xs font-medium text-gray-600 transition hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-700";
   const emptyChartClass =
     "flex h-full items-center justify-center rounded-lg border border-dashed border-gray-300 text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400";
   const trendClass = (delta: number) => {
@@ -746,19 +918,50 @@ export default function PainelCombustivelClient() {
     if (delta < -0.01) return "↓";
     return "→";
   };
+
+  const renderChartActions = (chart: ChartKey) => (
+    <details className="relative">
+      <summary className={`${actionButtonClass} list-none cursor-pointer select-none`}>Ações</summary>
+      <div className="absolute right-0 z-20 mt-1 w-40 rounded-lg border border-gray-200 bg-white p-1 shadow-lg dark:border-gray-700 dark:bg-gray-800">
+        <button
+          type="button"
+          className="w-full rounded-md px-3 py-2 text-left text-xs text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
+          onClick={(event) => {
+            closeActionsMenu(event);
+            setHighlightedChart(chart);
+          }}
+        >
+          Visualizar
+        </button>
+        <button
+          type="button"
+          className="w-full rounded-md px-3 py-2 text-left text-xs text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
+          onClick={(event) => {
+            closeActionsMenu(event);
+            printChart(chart);
+          }}
+        >
+          Imprimir
+        </button>
+      </div>
+    </details>
+  );
+
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
       <div className="lg:hidden">
         <CombustivelHeaderFilters />
       </div>
 
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
         <div className={kpiCardClass}>
           <div className={kpiHeaderClass}>
             <h3 className={panelTitleClass}>Valor Total</h3>
           </div>
           <div className="text-center">
-            <p className="text-[26.5px] font-semibold text-[#1e3aaf] dark:text-blue-400">R$ {formatMillions(kpi.totalValor)}</p>
+            <p className="text-[26px] font-semibold leading-tight text-[#1e3aaf] dark:text-blue-400">
+              R$ {formatMillions(kpi.totalValor)}
+            </p>
             {monthlyVariation.hasComparison ? (
               <p className={`mt-1 text-[17px] font-semibold ${trendClass(monthlyVariation.valorDelta)}`}>
                 {`${trendArrow(monthlyVariation.valorDelta)} ${formatDeltaPercent(monthlyVariation.valorDelta)}`}
@@ -766,6 +969,11 @@ export default function PainelCombustivelClient() {
             ) : (
               <p className="mt-1 text-[17px] text-blue-600 dark:text-blue-300">Sem hist\u00f3rico suficiente.</p>
             )}
+            {monthlyVariation.hasComparison ? (
+              <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+                {`Ref. ${toMonthLabel(monthlyVariation.currentLabel)} vs ${toMonthLabel(monthlyVariation.previousLabel)}`}
+              </p>
+            ) : null}
           </div>
         </div>
 
@@ -774,7 +982,9 @@ export default function PainelCombustivelClient() {
             <h3 className={panelTitleClass}>Litros</h3>
           </div>
           <div className="text-center">
-            <p className="text-[26.5px] font-semibold text-[#1e3aaf] dark:text-blue-400">{formatMillions(kpi.totalLitros)}</p>
+            <p className="text-[26px] font-semibold leading-tight text-[#1e3aaf] dark:text-blue-400">
+              {formatMillions(kpi.totalLitros)}
+            </p>
             {monthlyVariation.hasComparison ? (
               <p className={`mt-1 text-[17px] font-semibold ${trendClass(monthlyVariation.litrosDelta)}`}>
                 {`${trendArrow(monthlyVariation.litrosDelta)} ${formatDeltaPercent(monthlyVariation.litrosDelta)}`}
@@ -782,6 +992,11 @@ export default function PainelCombustivelClient() {
             ) : (
               <p className="mt-1 text-[17px] text-blue-600 dark:text-blue-300">Sem hist\u00f3rico suficiente.</p>
             )}
+            {monthlyVariation.hasComparison ? (
+              <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+                {`Ref. ${toMonthLabel(monthlyVariation.currentLabel)} vs ${toMonthLabel(monthlyVariation.previousLabel)}`}
+              </p>
+            ) : null}
           </div>
         </div>
 
@@ -790,7 +1005,9 @@ export default function PainelCombustivelClient() {
             <h3 className={panelTitleClass}>{`Pre\u00e7o M\u00e9dio`}</h3>
           </div>
           <div className="text-center">
-            <p className="text-[26.5px] font-semibold text-[#1e3aaf] dark:text-blue-400">{formatMoney(kpi.precoMedio)}</p>
+            <p className="text-[26px] font-semibold leading-tight text-[#1e3aaf] dark:text-blue-400">
+              {formatMoney(kpi.precoMedio)}
+            </p>
             {monthlyVariation.hasComparison ? (
               <p className={`mt-1 text-[17px] font-semibold ${trendClass(monthlyVariation.precoDelta)}`}>
                 {`${trendArrow(monthlyVariation.precoDelta)} ${formatDeltaPercent(monthlyVariation.precoDelta)}`}
@@ -798,15 +1015,21 @@ export default function PainelCombustivelClient() {
             ) : (
               <p className="mt-1 text-[17px] text-blue-600 dark:text-blue-300">Sem hist\u00f3rico suficiente.</p>
             )}
+            {monthlyVariation.hasComparison ? (
+              <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+                {`Ref. ${toMonthLabel(monthlyVariation.currentLabel)} vs ${toMonthLabel(monthlyVariation.previousLabel)}`}
+              </p>
+            ) : null}
           </div>
         </div>
       </div>
-      <div className="grid grid-cols-1 gap-2 xl:grid-cols-12">
+      <div className="grid grid-cols-1 gap-3 xl:grid-cols-12">
         <div className={`xl:col-span-8 ${cardClass}`}>
-          <div className={chartHeaderClass}>
+          <div className={`${chartHeaderClass} flex items-start justify-between gap-3`}>
             <h3 className={panelTitleClass}>{`Evolu\u00e7\u00e3o Mensal do Gasto com Combust\u00edvel`}</h3>
+            {renderChartActions("line")}
           </div>
-          <div className="h-[260px] xl:h-[250px]">
+          <div id="chart-panel-line" className="h-[260px] xl:h-[250px]">
             {hasLineData ? (
               <Chart
                 type="line"
@@ -821,10 +1044,11 @@ export default function PainelCombustivelClient() {
         </div>
 
         <div className={`xl:col-span-4 ${cardClass}`}>
-          <div className={chartHeaderClass}>
+          <div className={`${chartHeaderClass} flex items-start justify-between gap-3`}>
             <h3 className={panelTitleClass}>Entidade</h3>
+            {renderChartActions("treemap")}
           </div>
-          <div className="h-[260px] xl:h-[250px]">
+          <div id="chart-panel-treemap" className="h-[260px] xl:h-[250px]">
             {hasTreemapData ? (
               <Chart
                 type="treemap"
@@ -839,12 +1063,13 @@ export default function PainelCombustivelClient() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-2 xl:grid-cols-12 xl:items-start">
+      <div className="grid grid-cols-1 gap-3 xl:grid-cols-12 xl:items-start">
         <div className={`xl:col-span-5 ${cardClass}`}>
-          <div className={chartHeaderClass}>
+          <div className={`${chartHeaderClass} flex items-start justify-between gap-3`}>
             <h3 className={panelTitleClass}>{`Tipo de Combust\u00edvel`}</h3>
+            {renderChartActions("pie")}
           </div>
-          <div className="h-[320px]">
+          <div id="chart-panel-pie" className="h-[320px]">
             {hasPieData ? (
               <Chart key={tipoPieKey} type="pie" options={pieOptions} series={tipoPie.series} height="100%" />
             ) : (
@@ -854,10 +1079,11 @@ export default function PainelCombustivelClient() {
         </div>
 
         <div className={`xl:col-span-7 ${cardClass}`}>
-          <div className={chartHeaderClass}>
+          <div className={`${chartHeaderClass} flex items-start justify-between gap-3`}>
             <h3 className={panelTitleClass}>Pareto de Emitentes (80/20)</h3>
+            {renderChartActions("pareto")}
           </div>
-          <div className="h-[260px]">
+          <div id="chart-panel-pareto" className="h-[260px]">
             {hasParetoData ? (
               <Chart
                 type="line"
@@ -879,15 +1105,18 @@ export default function PainelCombustivelClient() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-2 xl:grid-cols-12">
+      <div className="grid grid-cols-1 gap-3 xl:grid-cols-12">
         <div className={`xl:col-span-8 ${cardClass}`}>
-          <div className={chartHeaderClass}>
-            <h3 className={panelTitleClass}>{`Mapa de Gastos por Tipo e M\u00eas`}</h3>
-            <p className="text-xs text-gray-500 dark:text-gray-400">
-              Intensidade da cor indica maior ou menor gasto por tipo no m\u00eas.
-            </p>
+          <div className={`${chartHeaderClass} flex items-start justify-between gap-3`}>
+            <div>
+              <h3 className={panelTitleClass}>{`Mapa de Gastos por Tipo e M\u00eas`}</h3>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Intensidade da cor indica maior ou menor gasto por tipo no m\u00eas.
+              </p>
+            </div>
+            {renderChartActions("heatmap")}
           </div>
-          <div className="h-[340px]">
+          <div id="chart-panel-heatmap" className="h-[340px]">
             {hasHeatmapData ? (
               <Chart type="heatmap" options={heatmapOptions} series={tipoHeatmap.series} height="100%" />
             ) : (
@@ -897,10 +1126,11 @@ export default function PainelCombustivelClient() {
         </div>
 
         <div className={`xl:col-span-4 ${cardClass}`}>
-          <div className={chartHeaderClass}>
+          <div className={`${chartHeaderClass} flex items-start justify-between gap-3`}>
             <h3 className={panelTitleClass}>Valor Total por Emitente</h3>
+            {renderChartActions("emitenteBar")}
           </div>
-          <div className="h-[340px]">
+          <div id="chart-panel-emitente-bar" className="h-[340px]">
             {hasEmitenteBarData ? (
               <Chart
                 type="bar"
@@ -918,7 +1148,47 @@ export default function PainelCombustivelClient() {
           </div>
         </div>
       </div>
+
+      {highlightedChart ? (
+        <div className="fixed inset-0 z-[120000] flex items-center justify-center p-3 sm:p-5">
+          <button
+            type="button"
+            aria-label="Fechar visualização ampliada"
+            className="absolute inset-0 bg-gray-900/70 backdrop-blur-[1px]"
+            onClick={() => setHighlightedChart(null)}
+          />
+          <div className="relative z-10 flex h-[95vh] w-[98vw] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white p-4 shadow-2xl dark:border-gray-700 dark:bg-gray-900 sm:p-5">
+            <div className="mb-3 flex items-center justify-between gap-3 border-b border-gray-200 pb-3 dark:border-gray-700">
+              <h3 className="text-base font-semibold text-gray-800 dark:text-gray-100">
+                {chartMeta[highlightedChart].title}
+              </h3>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => printChart(highlightedChart)}
+                  className="rounded-md border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
+                >
+                  Imprimir
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setHighlightedChart(null)}
+                  className="rounded-md bg-brand-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-600"
+                >
+                  Fechar
+                </button>
+              </div>
+            </div>
+            <div className="min-h-0 flex-1">
+              <div className="h-full rounded-lg border border-gray-200 p-2 dark:border-gray-700 sm:p-3">
+                <div className="h-full">{renderExpandedChart(highlightedChart)}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
+
 

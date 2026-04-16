@@ -141,14 +141,17 @@ export default function MapaAcreContent({ onSelect }: Props = {}) {
 
   // Estilo inicial de cada feature
   const styleFeature = useCallback((feature?: AcreFeature) => {
-    const municipio = municipioByCode[feature?.properties?.codarea];
+    const cod = feature?.properties?.codarea;
+    const municipio = cod ? municipioByCode[cod] : undefined;
     return buildStyle(municipio?.ideb ?? 3.0, false);
   }, []);
 
   // Registra handlers em cada polígono
   const onEachFeature = useCallback(
     (feature: AcreFeature, layer: Layer) => {
-      const municipio = municipioByCode[feature?.properties?.codarea];
+      const cod = feature?.properties?.codarea;
+      if (!cod) return;
+      const municipio = municipioByCode[cod];
       if (!municipio) return;
 
       const pathLayer = layer as Path;
