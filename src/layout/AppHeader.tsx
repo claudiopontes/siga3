@@ -3,17 +3,56 @@
 import CombustivelHeaderFilters from "@/components/combustivel/CombustivelHeaderFilters";
 import { ThemeToggleButton } from "@/components/common/ThemeToggleButton";
 import NotificationDropdown from "@/components/header/NotificationDropdown";
+import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import { useSidebar } from "@/context/SidebarContext";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 
 const AppHeader: React.FC = () => {
   const [isApplicationMenuOpen, setApplicationMenuOpen] = useState(false);
+  const [latestMonthLabel, setLatestMonthLabel] = useState<string | null>(null);
   const pathname = usePathname();
   const { isMobileOpen, toggleSidebar, toggleMobileSidebar } = useSidebar();
   const isCombustivelPage = pathname === "/painel-combustivel";
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadLatestMonth() {
+      if (!isCombustivelPage || !isSupabaseConfigured || !supabase) {
+        setLatestMonthLabel(null);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("combustivel_mensal")
+        .select("ano, mes")
+        .order("ano", { ascending: false })
+        .order("mes", { ascending: false })
+        .limit(1);
+
+      if (!active) return;
+      if (error || !data || data.length === 0) {
+        setLatestMonthLabel(null);
+        return;
+      }
+
+      const ano = data[0]?.ano;
+      const mes = data[0]?.mes;
+      if (typeof ano === "number" && typeof mes === "number") {
+        setLatestMonthLabel(`${String(mes).padStart(2, "0")}/${ano}`);
+      } else {
+        setLatestMonthLabel(null);
+      }
+    }
+
+    loadLatestMonth();
+    return () => {
+      active = false;
+    };
+  }, [isCombustivelPage]);
 
   const handleToggle = () => {
     if (window.innerWidth >= 1024) {
@@ -117,6 +156,11 @@ const AppHeader: React.FC = () => {
           } w-full items-center justify-between gap-4 px-5 py-4 shadow-theme-md lg:flex lg:justify-end lg:px-0 lg:shadow-none`}
         >
           <div className="flex items-center gap-2 2xsm:gap-3">
+            {isCombustivelPage && latestMonthLabel ? (
+              <span className="shrink-0 whitespace-nowrap rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-medium text-blue-700 dark:border-blue-900 dark:bg-blue-900/20 dark:text-blue-300">
+                Referência: {latestMonthLabel}
+              </span>
+            ) : null}
             <ThemeToggleButton />
             <NotificationDropdown />
           </div>

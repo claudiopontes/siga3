@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import PainelCombustivelClient from "@/components/combustivel/PainelCombustivelClient";
 
 export const metadata: Metadata = {
-  title: "Painel de Combustivel | Varadouro Digital",
-  description: "Painel analitico de gastos com combustivel (NFE)",
+  title: "Painel de Combustível | Varadouro Digital",
+  description: "Painel analítico de gastos com combustível (NFE)",
 };
 
 export default function PainelCombustivelPage() {

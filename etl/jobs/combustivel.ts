@@ -9,6 +9,13 @@ import { getSupabase } from '../connectors/supabase'
 
 const supabase = getSupabase()
 const MODULO = 'combustivel'
+const SQL_EMITENTE_EXPR = `
+COALESCE(
+    NULLIF(LTRIM(RTRIM(NOME_FANTASIA_EMITENTE)) COLLATE DATABASE_DEFAULT, ''),
+    NULLIF(LTRIM(RTRIM(RAZAO_SOCIAL_EMITENTE)) COLLATE DATABASE_DEFAULT, ''),
+    'EMITENTE NAO INFORMADO' COLLATE DATABASE_DEFAULT
+)
+`
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -61,11 +68,7 @@ SELECT
     ANO                          AS ano,
     MES                          AS mes,
     LTRIM(RTRIM(ENTIDADE))       AS entidade,
-    COALESCE(
-        NULLIF(LTRIM(RTRIM(NOME_FANTASIA_EMITENTE)), ''),
-        NULLIF(LTRIM(RTRIM(RAZAO_SOCIAL_EMITENTE)), ''),
-        'EMITENTE NAO INFORMADO'
-    ) COLLATE DATABASE_DEFAULT   AS emitente,
+    ${SQL_EMITENTE_EXPR}         AS emitente,
     TIPO_COMBUSTIVEL             AS tipo_combustivel,
     SUM(QUANTIDADE)              AS litros,
     SUM(VALOR * QUANTIDADE)      AS valor_total,
@@ -75,11 +78,7 @@ GROUP BY
     ANO,
     MES,
     ENTIDADE,
-    COALESCE(
-        NULLIF(LTRIM(RTRIM(NOME_FANTASIA_EMITENTE)), ''),
-        NULLIF(LTRIM(RTRIM(RAZAO_SOCIAL_EMITENTE)), ''),
-        'EMITENTE NAO INFORMADO'
-    ) COLLATE DATABASE_DEFAULT,
+    ${SQL_EMITENTE_EXPR},
     TIPO_COMBUSTIVEL
 ORDER BY ANO, MES
 `
@@ -108,21 +107,13 @@ ORDER BY valor_total DESC
 
 const SQL_EMITENTE = `
 SELECT
-    COALESCE(
-        NULLIF(LTRIM(RTRIM(NOME_FANTASIA_EMITENTE)), ''),
-        NULLIF(LTRIM(RTRIM(RAZAO_SOCIAL_EMITENTE)), ''),
-        'EMITENTE NAO INFORMADO'
-    ) COLLATE DATABASE_DEFAULT AS emitente,
+    ${SQL_EMITENTE_EXPR} AS emitente,
     SUM(QUANTIDADE)         AS litros,
     SUM(VALOR * QUANTIDADE) AS valor_total,
     COUNT(*)                AS qtd_notas
 FROM dbo.vw_NF_combustiveis
 GROUP BY
-    COALESCE(
-        NULLIF(LTRIM(RTRIM(NOME_FANTASIA_EMITENTE)), ''),
-        NULLIF(LTRIM(RTRIM(RAZAO_SOCIAL_EMITENTE)), ''),
-        'EMITENTE NAO INFORMADO'
-    ) COLLATE DATABASE_DEFAULT
+    ${SQL_EMITENTE_EXPR}
 ORDER BY valor_total DESC
 `
 

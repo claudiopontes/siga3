@@ -19,6 +19,8 @@ type TipoRow = {
   entidade: string;
   tipo_combustivel: string;
   emitente: string;
+  ano?: number;
+  mes?: number;
 };
 
 type Option = {
@@ -115,7 +117,7 @@ function DialogShell({
     <div className="fixed inset-0 z-[120000] flex items-center justify-center p-4">
       <button
         type="button"
-        aria-label="Fechar dialogo"
+        aria-label="Fechar diálogo"
         className="absolute inset-0 bg-gray-900/40"
         onClick={onClose}
       />
@@ -319,6 +321,7 @@ export default function CombustivelHeaderFilters() {
   const [entidades, setEntidades] = useState<string[]>([]);
   const [tipos, setTipos] = useState<string[]>([]);
   const [emitentes, setEmitentes] = useState<string[]>([]);
+  const [, setLatestMonthLabel] = useState<string | null>(null);
 
   const [municipioDialogOpen, setMunicipioDialogOpen] = useState(false);
   const [entidadeDialogOpen, setEntidadeDialogOpen] = useState(false);
@@ -333,19 +336,26 @@ export default function CombustivelHeaderFilters() {
   useEffect(() => {
     let active = true;
 
-    async function fetchMensalMeta(): Promise<{ tipos: string[]; entidades: string[]; emitentes: string[] }> {
-      if (!supabase) return { tipos: [], entidades: [], emitentes: [] };
+    async function fetchMensalMeta(): Promise<{
+      tipos: string[];
+      entidades: string[];
+      emitentes: string[];
+      latestMonthLabel: string | null;
+    }> {
+      if (!supabase) return { tipos: [], entidades: [], emitentes: [], latestMonthLabel: null };
 
       const pageSize = 1000;
       let offset = 0;
       const tipoSet = new Set<string>();
       const entidadeSet = new Set<string>();
       const emitenteSet = new Set<string>();
+      let latestYear = 0;
+      let latestMonth = 0;
 
       while (true) {
         const { data, error } = await supabase
           .from("combustivel_mensal")
-          .select("entidade, tipo_combustivel, emitente")
+          .select("entidade, tipo_combustivel, emitente, ano, mes")
           .order("entidade", { ascending: true })
           .range(offset, offset + pageSize - 1);
 
@@ -355,6 +365,12 @@ export default function CombustivelHeaderFilters() {
           if (row.tipo_combustivel) tipoSet.add(row.tipo_combustivel);
           if (row.entidade) entidadeSet.add(row.entidade);
           if (row.emitente) emitenteSet.add(row.emitente);
+          if (typeof row.ano === "number" && typeof row.mes === "number") {
+            if (row.ano > latestYear || (row.ano === latestYear && row.mes > latestMonth)) {
+              latestYear = row.ano;
+              latestMonth = row.mes;
+            }
+          }
         });
 
         if (batch.length < pageSize || offset >= 9000) break;
@@ -365,29 +381,43 @@ export default function CombustivelHeaderFilters() {
         tipos: [...tipoSet].sort((a, b) => a.localeCompare(b, "pt-BR")),
         entidades: [...entidadeSet].sort((a, b) => a.localeCompare(b, "pt-BR")),
         emitentes: [...emitenteSet].sort((a, b) => a.localeCompare(b, "pt-BR")),
+        latestMonthLabel: latestYear > 0 ? `${String(latestMonth).padStart(2, "0")}/${latestYear}` : null,
       };
     }
 
-    async function fetchMensalMetaLegacy(): Promise<{ tipos: string[]; entidades: string[]; emitentes: string[] }> {
-      if (!supabase) return { tipos: [], entidades: [], emitentes: [] };
+    async function fetchMensalMetaLegacy(): Promise<{
+      tipos: string[];
+      entidades: string[];
+      emitentes: string[];
+      latestMonthLabel: string | null;
+    }> {
+      if (!supabase) return { tipos: [], entidades: [], emitentes: [], latestMonthLabel: null };
 
       const pageSize = 1000;
       let offset = 0;
       const tipoSet = new Set<string>();
       const entidadeSet = new Set<string>();
+      let latestYear = 0;
+      let latestMonth = 0;
 
       while (true) {
         const { data, error } = await supabase
           .from("combustivel_mensal")
-          .select("entidade, tipo_combustivel")
+          .select("entidade, tipo_combustivel, ano, mes")
           .order("entidade", { ascending: true })
           .range(offset, offset + pageSize - 1);
 
         if (error) throw error;
-        const batch = (data ?? []) as Array<{ entidade: string; tipo_combustivel: string }>;
+        const batch = (data ?? []) as Array<{ entidade: string; tipo_combustivel: string; ano?: number; mes?: number }>;
         batch.forEach((row) => {
           if (row.tipo_combustivel) tipoSet.add(row.tipo_combustivel);
           if (row.entidade) entidadeSet.add(row.entidade);
+          if (typeof row.ano === "number" && typeof row.mes === "number") {
+            if (row.ano > latestYear || (row.ano === latestYear && row.mes > latestMonth)) {
+              latestYear = row.ano;
+              latestMonth = row.mes;
+            }
+          }
         });
 
         if (batch.length < pageSize || offset >= 9000) break;
@@ -410,6 +440,7 @@ export default function CombustivelHeaderFilters() {
         tipos: [...tipoSet].sort((a, b) => a.localeCompare(b, "pt-BR")),
         entidades: [...entidadeSet].sort((a, b) => a.localeCompare(b, "pt-BR")),
         emitentes,
+        latestMonthLabel: latestYear > 0 ? `${String(latestMonth).padStart(2, "0")}/${latestYear}` : null,
       };
     }
 
@@ -420,7 +451,7 @@ export default function CombustivelHeaderFilters() {
       if (!isSupabaseConfigured || !supabase) {
         if (!active) return;
         setLoading(false);
-        setError("Supabase nao configurado");
+        setError("Supabase não configurado");
         return;
       }
 
@@ -455,6 +486,7 @@ export default function CombustivelHeaderFilters() {
         setEntidades(mensalMeta.entidades);
         setTipos(mensalMeta.tipos);
         setEmitentes(mensalMeta.emitentes);
+        setLatestMonthLabel(mensalMeta.latestMonthLabel);
         setLoading(false);
       } catch (error) {
         if (!active) return;
@@ -503,6 +535,16 @@ export default function CombustivelHeaderFilters() {
   const selectedEntidadeTitle = buildTitle(entidadeOptions, selectedEntidade, "Todos");
   const selectedTipoTitle = buildMultiTitle(tipoOptions, selectedTipos);
   const selectedEmitenteTitle = buildTitle(emitenteOptions, selectedEmitente, "Todos");
+  const hasActiveFilters =
+    selectedMunicipio !== "all" ||
+    selectedEntidade !== "all" ||
+    selectedTipos.length > 0 ||
+    selectedEmitente !== "all";
+  const activeFilterCount =
+    (selectedMunicipio !== "all" ? 1 : 0) +
+    (selectedEntidade !== "all" ? 1 : 0) +
+    selectedTipos.length +
+    (selectedEmitente !== "all" ? 1 : 0);
 
   return (
     <>
@@ -513,7 +555,7 @@ export default function CombustivelHeaderFilters() {
           disabled={loading || Boolean(error)}
           className="h-11 min-w-[180px] shrink-0 rounded-lg border border-gray-200 bg-transparent px-3 text-left text-sm text-gray-800 shadow-theme-xs disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-700 dark:text-white/90 lg:min-w-0 lg:flex-1 lg:shrink"
         >
-          <span className="mr-2 text-xs text-gray-500 dark:text-gray-400">Municipio:</span>
+          <span className="mr-2 text-xs text-gray-500 dark:text-gray-400">Município:</span>
           <span className="inline-block max-w-[72%] truncate align-bottom font-medium">{selectedMunicipioTitle}</span>
         </button>
 
@@ -549,6 +591,24 @@ export default function CombustivelHeaderFilters() {
           </span>
         </button>
 
+        {hasActiveFilters ? (
+          <button
+            type="button"
+            onClick={() => {
+              replaceParams((params) => {
+                params.delete("municipio");
+                params.delete("entidade");
+                params.delete("tipo");
+                params.delete("emitente");
+                params.delete("periodo");
+              });
+            }}
+            className="h-11 shrink-0 rounded-lg border border-red-200 bg-red-50 px-3 text-sm font-medium text-red-700 hover:bg-red-100 dark:border-red-800/70 dark:bg-red-900/20 dark:text-red-300 dark:hover:bg-red-900/35"
+          >
+            Limpar filtros ({activeFilterCount})
+          </button>
+        ) : null}
+
         {loading ? (
           <span className="shrink-0 whitespace-nowrap text-xs text-gray-500 dark:text-gray-400">
             Carregando filtros...
@@ -561,8 +621,79 @@ export default function CombustivelHeaderFilters() {
         ) : null}
       </div>
 
+      {hasActiveFilters ? (
+        <div className="flex flex-wrap items-center gap-2 pt-1">
+          {selectedMunicipio !== "all" ? (
+            <button
+              type="button"
+              onClick={() => {
+                replaceParams((params) => {
+                  params.delete("municipio");
+                  params.delete("entidade");
+                  params.delete("periodo");
+                });
+              }}
+              className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-xs text-gray-700 hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+            >
+              <span>Município: {selectedMunicipioTitle}</span>
+              <span className="font-semibold">x</span>
+            </button>
+          ) : null}
+
+          {selectedEntidade !== "all" ? (
+            <button
+              type="button"
+              onClick={() => {
+                replaceParams((params) => {
+                  params.delete("entidade");
+                  params.delete("periodo");
+                });
+              }}
+              className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-xs text-gray-700 hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+            >
+              <span>Entidade: {selectedEntidadeTitle}</span>
+              <span className="font-semibold">x</span>
+            </button>
+          ) : null}
+
+          {selectedTipos.map((tipo) => (
+            <button
+              key={tipo}
+              type="button"
+              onClick={() => {
+                replaceParams((params) => {
+                  const nextTipos = selectedTipos.filter((item) => item !== tipo);
+                  params.delete("tipo");
+                  nextTipos.forEach((item) => params.append("tipo", item));
+                  params.delete("periodo");
+                });
+              }}
+              className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-xs text-gray-700 hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+            >
+              <span>Tipo: {tipo}</span>
+              <span className="font-semibold">x</span>
+            </button>
+          ))}
+
+          {selectedEmitente !== "all" ? (
+            <button
+              type="button"
+              onClick={() => {
+                replaceParams((params) => {
+                  params.delete("emitente");
+                });
+              }}
+              className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-xs text-gray-700 hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+            >
+              <span>Emitente: {selectedEmitenteTitle}</span>
+              <span className="font-semibold">x</span>
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
       <SingleFilterDialog
-        title="Selecionar Municipio"
+        title="Selecionar Município"
         isOpen={municipioDialogOpen}
         options={municipioOptions}
         selectedValue={selectedMunicipio}
@@ -595,7 +726,7 @@ export default function CombustivelHeaderFilters() {
       />
 
       <MultiFilterDialog
-        title="Selecionar Tipos de Combustivel"
+        title="Selecionar Tipos de Combustível"
         isOpen={tipoDialogOpen}
         options={tipoOptions}
         selectedValues={selectedTipos}
