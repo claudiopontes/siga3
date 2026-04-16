@@ -28,6 +28,22 @@ export async function query<T>(queryStr: string): Promise<T[]> {
   return result.recordset as T[]
 }
 
+export async function queryInDatabase<T>(database: string, queryStr: string): Promise<T[]> {
+  const tmpConfig: sql.config = {
+    ...config,
+    database,
+  }
+
+  const tmpPool = new sql.ConnectionPool(tmpConfig)
+  await tmpPool.connect()
+  try {
+    const result = await tmpPool.request().query(queryStr)
+    return result.recordset as T[]
+  } finally {
+    await tmpPool.close()
+  }
+}
+
 export async function closePool(): Promise<void> {
   if (pool) {
     await pool.close()
