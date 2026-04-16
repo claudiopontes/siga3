@@ -53,23 +53,38 @@
   - Painel de combustivel com filtros via query string (municipio, entidade, tipo, emitente).
   - Carregamento de dados no painel com protecao para Supabase nao configurado.
   - ETL com job de combustivel, job de dimensoes por CSV e scheduler diario.
+  - Validacao P0 executada em ambiente real (ETL -> Supabase -> leitura frontend):
+    - `npm run combustivel` (etl): sucesso em 2026-04-16T13:02:17Z, 3749 registros (log id 17).
+    - `npm run dimensoes` (etl): primeira tentativa falhou por CSV ausente (log id 18), depois sucesso em 2026-04-16T13:04:34Z, 5858 registros (log id 19).
+    - Conferencia Supabase apos carga:
+      - `combustivel_mensal=3507`, `combustivel_entidade=81`, `combustivel_tipo=8`, `combustivel_emitente=153`, `combustivel_kpis=1`.
+      - `aux_dim_uf=27`, `aux_dim_municipio=5571`, `aux_dim_ente=24`, `aux_dim_entidade=236`.
+      - `max(atualizado_em)` de `combustivel_*`: `2026-04-16T13:02:27.115+00:00`.
+      - `max(atualizado_em)` de `aux_dim_*`: `2026-04-16T13:04:34.031+00:00`.
+    - Leitura com chave anonima (simulando frontend): consultas em `combustivel_mensal` e `aux_dim_municipio` retornando dados sem erro de RLS/config.
+  - Automacao de dimensoes e scheduler noturno (P0 atual) concluida:
+    - `etl/jobs/dimensoes-csv.ts` agora faz auto-bootstrap dos CSVs quando arquivos estiverem ausentes, usando `aux_dim_*` do Supabase.
+    - Nova variavel de controle: `DIM_AUTO_BOOTSTRAP_FROM_SUPABASE` (default `true`).
+    - `etl/schedule.ts` evoluido para pipeline noturno unico: dimensoes -> combustivel (1x/dia), com `RUN_DIMENSOES_NIGHTLY` (default `true`).
+    - Validacao de resiliencia concluida em 2026-04-16:
+      - Simulado CSV ausente (`dim_uf.csv`) e o job `npm run dimensoes` regenerou automaticamente os arquivos e concluiu com sucesso (5858 registros).
+      - `npm run combustivel` executou em seguida com sucesso (3749 registros).
+      - `npm run agendar` iniciou scheduler com cron noturno unico sem erro.
 - O que esta em andamento:
-  - Organizacao de handoff e backlog para continuidade sem perda de contexto.
+  - Refinar governanca da fonte oficial dos CSVs (quem atualiza, quando e checklist operacional).
 - O que esta bloqueado:
-  - Sem bloqueio tecnico confirmado no codigo.
-  - Dependencia externa: credenciais e ambiente de dados (Supabase/SQL Server) para validacao completa em producao.
+  - Sem bloqueio para ETL de combustivel.
+  - Sem bloqueio tecnico para ETL de dimensoes apos auto-bootstrap.
 
 ## 6) Proxima Tarefa Prioritaria
 - Tarefa:
-  - Validar fluxo ponta a ponta de dados (ETL -> Supabase -> painel) em ambiente real e registrar baseline de operacao.
+  - Definir backlog funcional do modulo `gabinete-digital/mapa` (escopo V1) e implementar primeiro incremento.
 - Criterio de pronto:
-  - ETL executa sem erro.
-  - Tabelas `combustivel_*` e `aux_dim_*` atualizadas no Supabase.
-  - Painel abre sem mensagem de configuracao ausente e filtros retornam dados consistentes.
-  - Registro de evidencias (query/tela/log) anexado no handoff.
+  - Objetivo do mapa, filtros e interacoes V1 documentados.
+  - Primeira entrega funcional implementada no modulo de mapa.
 - Riscos/atencao:
+  - CSVs de dimensoes continuam com baixa frequencia de atualizacao; manter processo de revisao periodica para evitar drift.
   - Divergencia de schema (ex.: coluna `emitente` ausente em algum ambiente).
-  - Permissoes/RLS no Supabase impactando leitura no frontend.
   - Qualidade dos CSVs de dimensoes (header e encoding) impactando relacionamento por codigo.
 
 ## 7) Pendencias de Produto e Tecnica
