@@ -73,6 +73,18 @@ function extractErrorMessage(error: unknown): string {
   return String(error);
 }
 
+function isMissingEmitenteColumnError(error: unknown): boolean {
+  const message = extractErrorMessage(error).toLowerCase();
+  return (
+    message.includes("emitente") &&
+    (message.includes("column") ||
+      message.includes("coluna") ||
+      message.includes("schema cache") ||
+      message.includes("does not exist") ||
+      message.includes("nao existe"))
+  );
+}
+
 export default function PainelCombustivelClient() {
   const router = useRouter();
   const pathname = usePathname();
@@ -199,8 +211,7 @@ export default function PainelCombustivelClient() {
             try {
               return await fetchAllMensalRows(client);
             } catch (error) {
-              const message = extractErrorMessage(error).toLowerCase();
-              if (message.includes("emitente") || message.includes("column") || message.includes("coluna")) {
+              if (isMissingEmitenteColumnError(error)) {
                 return fetchAllMensalRowsLegacy(client);
               }
               throw error;
@@ -275,6 +286,10 @@ export default function PainelCombustivelClient() {
     () => selectedTipos.filter((tipo) => availableTipos.includes(tipo)),
     [availableTipos, selectedTipos],
   );
+  const resolvedSelectedEmitente = useMemo(() => {
+    if (selectedEmitente === "all") return "all";
+    return normalizeName(selectedEmitente);
+  }, [selectedEmitente]);
 
   const filteredMensalRows = useMemo(() => {
     let rows = mensalRows;
@@ -292,8 +307,8 @@ export default function PainelCombustivelClient() {
       rows = rows.filter((row) => selectedMunicipioEntityNames.has(normalizeName(row.entidade)));
     }
 
-    if (hasMensalEmitente && selectedEmitente !== "all") {
-      rows = rows.filter((row) => row.emitente === selectedEmitente);
+    if (hasMensalEmitente && resolvedSelectedEmitente !== "all") {
+      rows = rows.filter((row) => normalizeName(row.emitente) === resolvedSelectedEmitente);
     }
 
     return rows;
@@ -301,7 +316,7 @@ export default function PainelCombustivelClient() {
     mensalRows,
     resolvedSelectedEntidade,
     hasMensalEmitente,
-    selectedEmitente,
+    resolvedSelectedEmitente,
     selectedMunicipioEntityNames,
     resolvedSelectedTipos,
   ]);
@@ -632,6 +647,11 @@ export default function PainelCombustivelClient() {
           <div className={chartHeaderClass}>
             <h3 className={panelTitleClass}>Valor Total por Emitente</h3>
           </div>
+          {!hasMensalEmitente && selectedEmitente !== "all" && (
+            <div className="mb-1 text-right text-xs text-red-700 dark:text-red-400">
+              Filtro por emitente indisponivel no fato mensal. Execute a migracao da coluna emitente e rode o ETL.
+            </div>
+          )}
           {(selectedMunicipio !== "all" ||
             resolvedSelectedEntidade !== "all" ||
             resolvedSelectedTipos.length > 0) && (

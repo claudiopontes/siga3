@@ -54,6 +54,18 @@ function extractErrorMessage(error: unknown): string {
   return String(error);
 }
 
+function isMissingEmitenteColumnError(error: unknown): boolean {
+  const message = extractErrorMessage(error).toLowerCase();
+  return (
+    message.includes("emitente") &&
+    (message.includes("column") ||
+      message.includes("coluna") ||
+      message.includes("schema cache") ||
+      message.includes("does not exist") ||
+      message.includes("nao existe"))
+  );
+}
+
 function normalizeText(value: string): string {
   return value
     .normalize("NFD")
@@ -423,8 +435,7 @@ export default function CombustivelHeaderFilters() {
             try {
               return await fetchMensalMeta();
             } catch (error) {
-              const message = extractErrorMessage(error).toLowerCase();
-              if (message.includes("emitente") || message.includes("column") || message.includes("coluna")) {
+              if (isMissingEmitenteColumnError(error)) {
                 return fetchMensalMetaLegacy();
               }
               throw error;
