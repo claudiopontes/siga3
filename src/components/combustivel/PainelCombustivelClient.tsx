@@ -1038,32 +1038,41 @@ export default function PainelCombustivelClient() {
           </div>
         </div>
 
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-2.5">
           {/* Botão Empenhos SIPAC */}
           <Link
             href="/painel-combustivel-empenhos"
-            className="flex items-center justify-center gap-1.5 rounded-xl border border-orange-200 bg-orange-50 px-3 py-2.5 text-sm font-semibold text-orange-700 transition hover:bg-orange-100 dark:border-orange-800 dark:bg-orange-900/20 dark:text-orange-300 dark:hover:bg-orange-900/40"
+            className="group relative flex items-center justify-center gap-2 overflow-hidden rounded-xl border border-orange-300/80 bg-gradient-to-r from-orange-500 to-amber-500 px-4 py-3 text-sm font-extrabold uppercase tracking-[0.02em] text-white shadow-md shadow-orange-300/40 transition hover:-translate-y-0.5 hover:from-orange-600 hover:to-amber-600 hover:shadow-lg hover:shadow-orange-300/50 dark:border-orange-700 dark:from-orange-700 dark:to-amber-700 dark:text-orange-50 dark:shadow-none dark:hover:from-orange-600 dark:hover:to-amber-600"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_20%,rgba(255,255,255,0.28),transparent_42%)] opacity-90 transition group-hover:opacity-100" />
+            <svg className="relative" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
               <polyline points="14 2 14 8 20 8" />
               <line x1="16" y1="13" x2="8" y2="13" />
               <line x1="16" y1="17" x2="8" y2="17" />
               <polyline points="10 9 9 9 8 9" />
             </svg>
-            Empenhos SIPAC
+            <span className="relative">Empenhos SIPAC</span>
           </Link>
 
           {/* Box Fonte + Atualização */}
-          <div className="flex flex-1 flex-col justify-center gap-2 rounded-xl border border-orange-200 bg-orange-50 p-3 shadow-sm dark:border-orange-800/60 dark:bg-orange-900/20">
-            <div>
-              <p className="text-[10px] font-medium uppercase tracking-wide text-orange-400 dark:text-orange-500">Fonte dos Dados</p>
-              <p className="text-xs font-bold text-gray-700 dark:text-gray-200">Notas Fiscais Emitidas</p>
+          <div className="relative flex flex-1 flex-col gap-3 rounded-2xl border border-sky-200/80 bg-gradient-to-b from-sky-50/90 to-cyan-50/70 p-4 shadow-sm shadow-sky-100/60 dark:border-sky-800/60 dark:from-sky-900/20 dark:to-cyan-900/10 dark:shadow-none">
+            <div className="flex flex-col gap-1">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-sky-600/90 dark:text-sky-400">
+                Fonte dos Dados
+              </p>
+              <p className="text-sm font-bold leading-tight text-gray-800 dark:text-gray-100">
+                Notas Fiscais Emitidas
+              </p>
             </div>
-            <div className="border-t border-orange-200 dark:border-orange-800/60" />
-            <div>
-              <p className="text-[10px] font-medium uppercase tracking-wide text-orange-400 dark:text-orange-500">Última Atualização</p>
-              <p className="text-xs font-bold text-gray-700 dark:text-gray-200">{lastUpdateLabel ?? "—"}</p>
+            <div className="h-px w-full bg-gradient-to-r from-sky-200 via-sky-200/70 to-transparent dark:from-sky-700/70 dark:via-sky-700/40" />
+            <div className="flex flex-col gap-1">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-sky-600/90 dark:text-sky-400">
+                Última Atualização
+              </p>
+              <p className="text-sm font-bold leading-tight text-gray-800 dark:text-gray-100">
+                {lastUpdateLabel ?? "—"}
+              </p>
             </div>
           </div>
         </div>

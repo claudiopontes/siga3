@@ -439,7 +439,8 @@ export default function PainelEmpenhoClient() {
   }
 
   return (
-    <div className="flex flex-col gap-4 p-4 sm:p-6">
+    <div className="overflow-x-auto pb-2">
+      <div className="flex min-w-[1100px] flex-col gap-4 p-4 sm:p-6">
       {/* Filtros inline (mobile) */}
       <div className="flex flex-wrap items-center gap-2 lg:hidden">
         <FilterPill
@@ -587,6 +588,7 @@ export default function PainelEmpenhoClient() {
           <Empty />
         )}
       </ChartCard>
+      </div>
     </div>
   );
 }
