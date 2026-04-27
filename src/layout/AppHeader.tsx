@@ -4,63 +4,19 @@ import CombustivelHeaderFilters from "@/components/combustivel/CombustivelHeader
 import EmpenhoHeaderFilters from "@/components/combustivel/EmpenhoHeaderFilters";
 import { ThemeToggleButton } from "@/components/common/ThemeToggleButton";
 import NotificationDropdown from "@/components/header/NotificationDropdown";
-import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import { useSidebar } from "@/context/SidebarContext";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import React, { Suspense, useEffect, useState } from "react";
+import React, { Suspense, useState } from "react";
 
 const AppHeader: React.FC = () => {
   const [isApplicationMenuOpen, setApplicationMenuOpen] = useState(false);
-  const [lastUpdateLabel, setLastUpdateLabel] = useState<string | null>(null);
   const pathname = usePathname();
   const { isMobileOpen, toggleSidebar, toggleMobileSidebar } = useSidebar();
 
   const isCombustivelPage = pathname === "/painel-combustivel";
   const isEmpenhoPage = pathname === "/painel-combustivel-empenhos";
-  const isAnyFuelPage = isCombustivelPage || isEmpenhoPage;
-
-  useEffect(() => {
-    let active = true;
-    setLastUpdateLabel(null);
-
-    async function loadLastUpdate() {
-      if (!isAnyFuelPage || !isSupabaseConfigured || !supabase) return;
-
-      const { data, error } = isCombustivelPage
-        ? await supabase
-            .from("combustivel_mensal")
-            .select("atualizado_em")
-            .order("atualizado_em", { ascending: false })
-            .limit(1)
-        : await supabase
-            .from("tb_despesa_combustivel_polanco")
-            .select("dt_carga_etl")
-            .order("dt_carga_etl", { ascending: false })
-            .limit(1);
-
-      if (!active) return;
-      if (error || !data || data.length === 0) return;
-
-      const raw = isCombustivelPage
-        ? (data[0] as { atualizado_em?: string })?.atualizado_em
-        : (data[0] as { dt_carga_etl?: string })?.dt_carga_etl;
-
-      if (!raw) return;
-
-      setLastUpdateLabel(
-        new Date(raw).toLocaleDateString("pt-BR", {
-          day: "2-digit",
-          month: "2-digit",
-          year: "numeric",
-        }),
-      );
-    }
-
-    loadLastUpdate();
-    return () => { active = false; };
-  }, [isCombustivelPage, isEmpenhoPage, isAnyFuelPage]);
 
   const handleToggle = () => {
     if (window.innerWidth >= 1024) toggleSidebar();
@@ -68,11 +24,11 @@ const AppHeader: React.FC = () => {
   };
 
   return (
-    <header className="sticky top-0 flex w-full border-gray-200 bg-white z-99999 dark:border-gray-800 dark:bg-gray-900 lg:border-b">
-      <div className="flex grow flex-col items-center justify-between lg:flex-row lg:px-6">
+    <header className="sticky top-0 z-99999 flex w-full border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900 lg:border-b">
+      <div className="flex min-w-0 grow flex-col items-center justify-between lg:flex-row lg:px-6">
 
         {/* Linha superior: toggle + logo mobile + filtros desktop */}
-        <div className="flex w-full items-center justify-between gap-2 border-b border-gray-200 px-3 py-3 dark:border-gray-800 sm:gap-4 lg:justify-normal lg:border-b-0 lg:px-0 lg:py-4">
+        <div className="flex w-full min-w-0 items-center justify-between gap-2 border-b border-gray-200 px-3 py-3 dark:border-gray-800 sm:gap-4 lg:flex-1 lg:justify-normal lg:border-b-0 lg:px-0 lg:py-4">
           <button
             className="z-99999 h-10 w-10 items-center justify-center rounded-lg border-gray-200 text-gray-500 dark:border-gray-800 dark:text-gray-400 lg:flex lg:h-11 lg:w-11 lg:border"
             onClick={handleToggle}
@@ -103,7 +59,7 @@ const AppHeader: React.FC = () => {
             </svg>
           </button>
 
-          <div className="hidden lg:block lg:flex-1">
+          <div className="hidden min-w-0 lg:block lg:flex-1">
             {isCombustivelPage && (
               <Suspense fallback={<div className="h-11 rounded-lg border border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800" />}>
                 <CombustivelHeaderFilters />
@@ -119,53 +75,9 @@ const AppHeader: React.FC = () => {
 
         {/* Linha direita: fonte de dados + botão troca painel + última atualização + ações */}
         <div
-          className={`${isApplicationMenuOpen ? "flex" : "hidden"} w-full items-center justify-between gap-4 overflow-x-auto px-5 py-4 shadow-theme-md lg:flex lg:justify-end lg:overflow-visible lg:px-0 lg:shadow-none`}
+          className={`${isApplicationMenuOpen ? "flex" : "hidden"} w-full min-w-0 items-center justify-between gap-4 overflow-x-auto px-5 py-4 shadow-theme-md lg:flex lg:w-auto lg:max-w-full lg:justify-end lg:overflow-visible lg:px-0 lg:shadow-none`}
         >
           <div className="flex min-w-max items-center gap-2 2xsm:gap-3 lg:min-w-0">
-
-
-            {/* Painel Empenhos: fonte + botão notas fiscais */}
-            {isEmpenhoPage && (
-              <>
-                <span className="hidden shrink-0 flex-col items-start xl:flex">
-                  <span className="text-[10px] font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
-                    Fonte dos Dados
-                  </span>
-                  <span className="text-sm font-bold text-gray-800 dark:text-gray-100">
-                    Empenhos SIPAC
-                  </span>
-                </span>
-                <Link
-                  href="/painel-combustivel"
-                  className="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-medium text-blue-700 transition hover:bg-blue-100 dark:border-blue-800 dark:bg-blue-900/20 dark:text-blue-300 dark:hover:bg-blue-900/40"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <polyline points="9 17 4 12 9 7" />
-                    <path d="M20 18v-2a4 4 0 0 0-4-4H4" />
-                  </svg>
-                  Notas Fiscais
-                </Link>
-              </>
-            )}
-
-            {/* Badge última atualização (apenas painel empenhos) */}
-            {isEmpenhoPage && lastUpdateLabel && (
-              <span className="hidden shrink-0 items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 dark:border-blue-900 dark:bg-blue-900/20 sm:flex">
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-blue-400 dark:text-blue-500">
-                  <circle cx="12" cy="12" r="10" />
-                  <polyline points="12 6 12 12 16 14" />
-                </svg>
-                <span className="flex flex-col items-start">
-                  <span className="text-[10px] font-medium uppercase tracking-wide text-blue-400 dark:text-blue-500">
-                    Última atualização
-                  </span>
-                  <span className="text-xs font-bold text-blue-700 dark:text-blue-300">
-                    {lastUpdateLabel}
-                  </span>
-                </span>
-              </span>
-            )}
-
             <ThemeToggleButton />
             <NotificationDropdown />
           </div>

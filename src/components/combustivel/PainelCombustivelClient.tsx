@@ -1038,14 +1038,14 @@ export default function PainelCombustivelClient() {
           </div>
         </div>
 
-        <div className="flex flex-col gap-2.5">
+        <div className="ml-auto flex w-full max-w-[82%] flex-col gap-2 sm:max-w-[86%]">
           {/* Botão Empenhos SIPAC */}
           <Link
             href="/painel-combustivel-empenhos"
-            className="group relative flex items-center justify-center gap-2 overflow-hidden rounded-xl border border-orange-300/80 bg-gradient-to-r from-orange-500 to-amber-500 px-4 py-3 text-sm font-extrabold uppercase tracking-[0.02em] text-white shadow-md shadow-orange-300/40 transition hover:-translate-y-0.5 hover:from-orange-600 hover:to-amber-600 hover:shadow-lg hover:shadow-orange-300/50 dark:border-orange-700 dark:from-orange-700 dark:to-amber-700 dark:text-orange-50 dark:shadow-none dark:hover:from-orange-600 dark:hover:to-amber-600"
+            className="group relative flex items-center justify-center gap-1.5 overflow-hidden rounded-xl border border-orange-300/80 bg-gradient-to-r from-orange-500 to-amber-500 px-3 py-2.5 text-xs font-extrabold uppercase tracking-[0.01em] text-white shadow-md shadow-orange-300/40 transition hover:-translate-y-0.5 hover:from-orange-600 hover:to-amber-600 hover:shadow-lg hover:shadow-orange-300/50 dark:border-orange-700 dark:from-orange-700 dark:to-amber-700 dark:text-orange-50 dark:shadow-none dark:hover:from-orange-600 dark:hover:to-amber-600"
           >
             <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_20%,rgba(255,255,255,0.28),transparent_42%)] opacity-90 transition group-hover:opacity-100" />
-            <svg className="relative" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
+            <svg className="relative" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round">
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
               <polyline points="14 2 14 8 20 8" />
               <line x1="16" y1="13" x2="8" y2="13" />
@@ -1056,21 +1056,21 @@ export default function PainelCombustivelClient() {
           </Link>
 
           {/* Box Fonte + Atualização */}
-          <div className="relative flex flex-1 flex-col gap-3 rounded-2xl border border-sky-200/80 bg-gradient-to-b from-sky-50/90 to-cyan-50/70 p-4 shadow-sm shadow-sky-100/60 dark:border-sky-800/60 dark:from-sky-900/20 dark:to-cyan-900/10 dark:shadow-none">
+          <div className="relative flex flex-1 flex-col gap-2 rounded-xl border border-sky-200/80 bg-gradient-to-b from-sky-50/90 to-cyan-50/70 p-3 shadow-sm shadow-sky-100/60 dark:border-sky-800/60 dark:from-sky-900/20 dark:to-cyan-900/10 dark:shadow-none">
             <div className="flex flex-col gap-1">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-sky-600/90 dark:text-sky-400">
+              <p className="text-[9px] font-semibold uppercase tracking-[0.1em] text-sky-600/90 dark:text-sky-400">
                 Fonte dos Dados
               </p>
-              <p className="text-sm font-bold leading-tight text-gray-800 dark:text-gray-100">
+              <p className="text-[13px] font-bold leading-tight text-gray-800 dark:text-gray-100">
                 Notas Fiscais Emitidas
               </p>
             </div>
             <div className="h-px w-full bg-gradient-to-r from-sky-200 via-sky-200/70 to-transparent dark:from-sky-700/70 dark:via-sky-700/40" />
             <div className="flex flex-col gap-1">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-sky-600/90 dark:text-sky-400">
+              <p className="text-[9px] font-semibold uppercase tracking-[0.1em] text-sky-600/90 dark:text-sky-400">
                 Última Atualização
               </p>
-              <p className="text-sm font-bold leading-tight text-gray-800 dark:text-gray-100">
+              <p className="text-[13px] font-bold leading-tight text-gray-800 dark:text-gray-100">
                 {lastUpdateLabel ?? "—"}
               </p>
             </div>
@@ -1244,5 +1244,3 @@ export default function PainelCombustivelClient() {
     </div>
   );
 }
-
-

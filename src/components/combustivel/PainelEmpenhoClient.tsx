@@ -4,6 +4,7 @@
 import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import type { ApexOptions } from "apexcharts";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { normalizeName } from "@/components/combustivel/filter-utils";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
@@ -75,6 +76,7 @@ export default function PainelEmpenhoClient() {
   const [error, setError] = useState<string | null>(null);
   const [highlightedChart, setHighlightedChart] = useState<ChartKey | null>(null);
   const [rows, setRows] = useState<EmpenhoRow[]>([]);
+  const [lastUpdateLabel, setLastUpdateLabel] = useState<string | null>(null);
 
   const selectedEntidade = searchParams.get("entidade") ?? "all";
   const selectedTipos = searchParams.getAll("tipo").filter((t) => t.length > 0);
@@ -98,6 +100,11 @@ export default function PainelEmpenhoClient() {
         const pageSize = 1000;
         let offset = 0;
         const out: EmpenhoRow[] = [];
+        const updatePromise = supabase
+          .from("tb_despesa_combustivel_polanco")
+          .select("dt_carga_etl")
+          .order("dt_carga_etl", { ascending: false })
+          .limit(1);
 
         while (true) {
           const { data, error } = await supabase
@@ -118,6 +125,19 @@ export default function PainelEmpenhoClient() {
 
         if (!active) return;
         setRows(out);
+        try {
+          const { data: updateData } = await updatePromise;
+          const raw = (updateData?.[0] as { dt_carga_etl?: string } | undefined)?.dt_carga_etl;
+          if (raw) {
+            setLastUpdateLabel(
+              new Date(raw).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" }),
+            );
+          } else {
+            setLastUpdateLabel(null);
+          }
+        } catch {
+          setLastUpdateLabel(null);
+        }
         setLoading(false);
       } catch (err) {
         if (!active) return;
@@ -130,7 +150,7 @@ export default function PainelEmpenhoClient() {
     return () => { active = false; };
   }, []);
 
-  // ── Opções de filtro ──────────────────────────────────────────
+  // Opções de filtro
   const availableTipos = useMemo(
     () => [...new Set(rows.map((r) => r.tipo_combustivel))].sort((a, b) => a.localeCompare(b, "pt-BR")),
     [rows],
@@ -148,7 +168,7 @@ export default function PainelEmpenhoClient() {
     [rows],
   );
 
-  // ── Linhas filtradas ──────────────────────────────────────────
+  // Linhas filtradas
   const filteredRows = useMemo(() => {
     let r = rows;
     if (selectedEntidade !== "all") {
@@ -169,7 +189,7 @@ export default function PainelEmpenhoClient() {
     return r;
   }, [rows, selectedEntidade, selectedTipos, selectedCredor, selectedForma]);
 
-  // ── KPIs ──────────────────────────────────────────────────────
+  // KPIs
   const totalEmpenhado = useMemo(
     () => filteredRows.reduce((s, r) => s + (r.valor_empenho ?? 0), 0),
     [filteredRows],
@@ -181,7 +201,7 @@ export default function PainelEmpenhoClient() {
   const pctExecutado = totalEmpenhado > 0 ? (totalLiquidado / totalEmpenhado) * 100 : 0;
   const qtdEmpenhos = filteredRows.length;
 
-  // ── KPI variação MoM ─────────────────────────────────────────
+  // KPI variação MoM
   const kpiVariation = useMemo(() => {
     const byMonth = new Map<string, { emp: number; liq: number; qtd: number }>();
     for (const r of filteredRows) {
@@ -204,7 +224,7 @@ export default function PainelEmpenhoClient() {
     return { deltaEmp, deltaLiq, deltaQtd };
   }, [filteredRows]);
 
-  // ── Série mensal (linha) ──────────────────────────────────────
+  // Série mensal (linha)
   const monthlySeries = useMemo(() => {
     const byMonth = new Map<string, { emp: number; liq: number }>();
     for (const r of filteredRows) {
@@ -222,7 +242,7 @@ export default function PainelEmpenhoClient() {
     };
   }, [filteredRows]);
 
-  // ── Treemap entidades ─────────────────────────────────────────
+  // Treemap entidades
   const entidadeTreemap = useMemo(() => {
     const map = new Map<string, number>();
     for (const r of filteredRows) {
@@ -234,7 +254,7 @@ export default function PainelEmpenhoClient() {
       .map(([x, y]) => ({ x, y: +y.toFixed(2) }));
   }, [filteredRows]);
 
-  // ── Pizza tipo combustível ────────────────────────────────────
+  // Pizza tipo combustível
   const tipoPie = useMemo(() => {
     const map = new Map<string, number>();
     for (const r of filteredRows) {
@@ -243,7 +263,7 @@ export default function PainelEmpenhoClient() {
     return [...map.entries()].sort((a, b) => b[1] - a[1]);
   }, [filteredRows]);
 
-  // ── Donut forma fornecimento ──────────────────────────────────
+  // Donut forma fornecimento
   const formaDonut = useMemo(() => {
     const map = new Map<string, number>();
     for (const r of filteredRows) {
@@ -252,7 +272,7 @@ export default function PainelEmpenhoClient() {
     return [...map.entries()].sort((a, b) => b[1] - a[1]);
   }, [filteredRows]);
 
-  // ── TOP credores (barras) ─────────────────────────────────────
+  // TOP credores (barras)
   const credorBar = useMemo(() => {
     const map = new Map<string, number>();
     for (const r of filteredRows) {
@@ -266,7 +286,7 @@ export default function PainelEmpenhoClient() {
       .map(([name, value]) => ({ name, value: +value.toFixed(2) }));
   }, [filteredRows]);
 
-  // ── Pareto credores ───────────────────────────────────────────
+  // Pareto credores
   const credorPareto = useMemo(() => {
     const sorted = [...credorBar].sort((a, b) => b.value - a.value).slice(0, 15);
     const total = sorted.reduce((s, r) => s + r.value, 0);
@@ -277,7 +297,7 @@ export default function PainelEmpenhoClient() {
     });
   }, [credorBar]);
 
-  // ── Helpers de filtro via URL ─────────────────────────────────
+  // Helpers de filtro via URL
   function setFilter(key: string, value: string | string[]) {
     const params = new URLSearchParams(searchParams.toString());
     if (Array.isArray(value)) {
@@ -300,13 +320,13 @@ export default function PainelEmpenhoClient() {
     selectedCredor !== "all" ||
     selectedForma !== "all";
 
-  // ── Highlight helper ──────────────────────────────────────────
+  // Highlight helper
   function highlightClass(key: ChartKey) {
     if (!highlightedChart) return "";
     return highlightedChart === key ? "ring-2 ring-orange-400" : "opacity-40";
   }
 
-  // ── ApexCharts: Linha ─────────────────────────────────────────
+  // ApexCharts: Linha
   const lineOptions: ApexOptions = {
     chart: { type: "line", toolbar: { show: false }, zoom: { enabled: false }, background: "transparent" },
     colors: ["#f97316", "#3b82f6"],
@@ -328,7 +348,7 @@ export default function PainelEmpenhoClient() {
     { name: "Liquidado", data: monthlySeries.liquidado },
   ];
 
-  // ── ApexCharts: Treemap ───────────────────────────────────────
+  // ApexCharts: Treemap
   const treemapOptions: ApexOptions = {
     chart: {
       type: "treemap",
@@ -350,7 +370,7 @@ export default function PainelEmpenhoClient() {
   };
   const treemapSeries = [{ data: entidadeTreemap }];
 
-  // ── ApexCharts: Pizza tipo ────────────────────────────────────
+  // ApexCharts: Pizza tipo
   const pieOptions: ApexOptions = {
     chart: { type: "pie", toolbar: { show: false }, background: "transparent" },
     labels: tipoPie.map(([label]) => label),
@@ -361,7 +381,7 @@ export default function PainelEmpenhoClient() {
   };
   const pieSeries = tipoPie.map(([, v]) => v);
 
-  // ── ApexCharts: Donut forma fornecimento ──────────────────────
+  // ApexCharts: Donut forma fornecimento
   const donutOptions: ApexOptions = {
     chart: { type: "donut", toolbar: { show: false }, background: "transparent" },
     labels: formaDonut.map(([label]) => label),
@@ -373,7 +393,7 @@ export default function PainelEmpenhoClient() {
   };
   const donutSeries = formaDonut.map(([, v]) => v);
 
-  // ── ApexCharts: Barras credores ───────────────────────────────
+  // ApexCharts: Barras credores
   const credorBarOptions: ApexOptions = {
     chart: { type: "bar", toolbar: { show: false }, background: "transparent" },
     plotOptions: { bar: { horizontal: true, borderRadius: 4 } },
@@ -388,7 +408,7 @@ export default function PainelEmpenhoClient() {
     { name: "Empenhado", data: credorBar.map((r) => ({ x: r.name, y: r.value })) },
   ];
 
-  // ── ApexCharts: Pareto ────────────────────────────────────────
+  // ApexCharts: Pareto
   const paretoOptions: ApexOptions = {
     chart: { type: "bar", toolbar: { show: false }, background: "transparent" },
     plotOptions: { bar: { borderRadius: 4 } },
@@ -421,7 +441,7 @@ export default function PainelEmpenhoClient() {
     { name: "Acumulado %", type: "line", data: credorPareto.map((r) => r.acumulado) },
   ];
 
-  // ── Render ────────────────────────────────────────────────────
+  // Render
   if (loading) {
     return (
       <div className="flex items-center justify-center p-16 text-gray-400">
@@ -439,7 +459,7 @@ export default function PainelEmpenhoClient() {
   }
 
   return (
-    <div className="w-full max-w-full min-w-0 space-y-3">
+    <div className="w-full max-w-full min-w-0 overflow-x-hidden pb-2 space-y-3">
       {/* Filtros inline (mobile) */}
       <div className="min-w-0 lg:hidden">
         <div className="overflow-x-auto pb-1">
@@ -480,32 +500,70 @@ export default function PainelEmpenhoClient() {
         </div>
       </div>
 
-      {/* KPIs */}
-      <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <KpiCard
-          title="Valor Empenhado"
-          value={formatMoney(totalEmpenhado)}
-          delta={kpiVariation?.deltaEmp ?? null}
-          color="orange"
-        />
-        <KpiCard
-          title="Valor Liquidado"
-          value={formatMoney(totalLiquidado)}
-          delta={kpiVariation?.deltaLiq ?? null}
-          color="blue"
-        />
-        <KpiCard
-          title="Execução Orçamentária"
-          value={`${pctExecutado.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`}
-          delta={null}
-          color="green"
-        />
-        <KpiCard
-          title="Qtd. de Empenhos"
-          value={qtdEmpenhos.toLocaleString("pt-BR")}
-          delta={kpiVariation?.deltaQtd ?? null}
-          color="purple"
-        />
+      {/* Linha superior: KPIs + metadados/acoes */}
+      <div className="flex w-full min-w-0 flex-col gap-3 xl:flex-row xl:items-stretch xl:justify-between">
+        <div className="grid min-w-0 flex-1 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <KpiCard
+            title="Valor Empenhado"
+            value={formatMoney(totalEmpenhado)}
+            delta={kpiVariation?.deltaEmp ?? null}
+            color="orange"
+          />
+          <KpiCard
+            title="Valor Liquidado"
+            value={formatMoney(totalLiquidado)}
+            delta={kpiVariation?.deltaLiq ?? null}
+            color="blue"
+          />
+          <KpiCard
+            title="Execução Orçamentária"
+            value={`${pctExecutado.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%`}
+            delta={null}
+            color="green"
+          />
+          <KpiCard
+            title="Qtd. de Empenhos"
+            value={qtdEmpenhos.toLocaleString("pt-BR")}
+            delta={kpiVariation?.deltaQtd ?? null}
+            color="purple"
+          />
+        </div>
+
+        <div className="xl:w-[140px]">
+          <div className="flex w-full flex-col gap-1">
+            <Link
+              href="/painel-combustivel"
+              className="group relative flex w-full items-center justify-center gap-1 overflow-hidden rounded-xl border border-orange-300 bg-gradient-to-r from-orange-500 to-amber-500 px-2 py-1.5 text-[10px] font-extrabold uppercase tracking-[0.01em] text-white shadow-md shadow-orange-300/40 transition hover:from-orange-600 hover:to-amber-600 hover:shadow-lg hover:shadow-orange-300/50 dark:border-orange-700 dark:from-orange-700 dark:to-amber-700 dark:shadow-none"
+            >
+              <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(255,255,255,0.3),transparent_40%)] opacity-90 transition group-hover:opacity-100" />
+              <svg className="relative" xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M10 7 5 12l5 5" />
+                <path d="M5 12h10a4 4 0 1 1 0 8h-1" />
+              </svg>
+              <span className="relative">Notas Fiscais</span>
+            </Link>
+
+            <div className="w-full rounded-xl border border-sky-200 bg-[#d9e1e7] px-2 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.35)] dark:border-sky-800/60 dark:bg-slate-900/30">
+              <div>
+                <p className="text-[7px] font-semibold uppercase tracking-[0.1em] text-sky-600 dark:text-sky-400">
+                  FONTE DOS DADOS
+                </p>
+                <p className="mt-0.5 text-[13px] font-bold leading-tight text-slate-900 dark:text-slate-100">
+                  Empenhos SIPAC
+                </p>
+              </div>
+              <div className="my-1 h-px w-full bg-sky-200 dark:bg-sky-800/60" />
+              <div>
+                <p className="text-[7px] font-semibold uppercase tracking-[0.1em] text-sky-600 dark:text-sky-400">
+                  ÚLTIMA ATUALIZAÇÃO
+                </p>
+                <p className="mt-0.5 text-[13px] font-bold leading-tight text-slate-900 dark:text-slate-100">
+                  {lastUpdateLabel ?? "—"}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Linha: evolução mensal */}
@@ -516,8 +574,8 @@ export default function PainelEmpenhoClient() {
         onHighlight={setHighlightedChart}
         className={highlightClass("line")}
       >
-        <div className="overflow-x-auto">
-          <div className="min-w-[640px]">
+        <div className="-mx-1 overflow-x-auto px-1">
+          <div className="min-w-[900px]">
             <Chart options={lineOptions} series={lineSeries} type="line" height={280} width="100%" />
           </div>
         </div>
@@ -619,7 +677,7 @@ export default function PainelEmpenhoClient() {
   );
 }
 
-// ── Sub-componentes ───────────────────────────────────────────────
+// Sub-componentes
 
 function KpiCard({
   title,

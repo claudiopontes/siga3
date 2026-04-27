@@ -21,10 +21,11 @@ export default function AdminLayout({
     : isExpanded || isHovered
     ? "lg:ml-[290px]"
     : "lg:ml-[90px]";
-  const contentPaddingClass =
-    pathname === "/painel-combustivel" || pathname === "/painel-combustivel-empenhos"
-      ? "px-4 pb-4 pt-1 md:px-6 md:pb-6 md:pt-2"
-      : "p-4 md:p-6";
+  const isPainelCombustivel =
+    pathname === "/painel-combustivel" || pathname === "/painel-combustivel-empenhos";
+  const contentPaddingClass = isPainelCombustivel
+    ? "px-4 pb-4 pt-1 md:px-6 md:pb-6 md:pt-2"
+    : "p-4 md:p-6";
 
   return (
     <div className="min-h-screen xl:flex">
@@ -33,12 +34,12 @@ export default function AdminLayout({
       <Backdrop />
       {/* Main Content Area */}
       <div
-        className={`flex-1 transition-all  duration-300 ease-in-out ${mainContentMargin}`}
+        className={`min-w-0 flex-1 transition-all duration-300 ease-in-out ${mainContentMargin}`}
       >
         {/* Header */}
         <AppHeader />
         {/* Page Content */}
-        <div className={`${contentPaddingClass} mx-auto max-w-(--breakpoint-2xl)`}>{children}</div>
+        <div className={`${contentPaddingClass} mx-auto min-w-0 max-w-(--breakpoint-2xl)`}>{children}</div>
       </div>
     </div>
   );
