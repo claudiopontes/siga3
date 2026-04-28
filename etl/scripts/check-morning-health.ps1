@@ -26,18 +26,20 @@ if (-not (Test-Path $logDir)) {
 }
 Write-Host ""
 
-Write-Host "== Check 3/4: Contagem no Supabase (tb_despesa_combustivel_polanco) ==" -ForegroundColor Cyan
+Write-Host "== Check 3/4: Contagens no Supabase ==" -ForegroundColor Cyan
 $nodeCheckCount = @'
 require("dotenv").config();
 const { createClient } = require("@supabase/supabase-js");
 const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 (async () => {
-  const { count, error } = await sb.from("tb_despesa_combustivel_polanco").select("*", { count: "exact", head: true });
-  if (error) {
-    console.log("ERRO:", error.message);
-    process.exit(1);
+  for (const table of ["tb_despesa_combustivel_polanco", "receita_publica_categoria_mensal"]) {
+    const { count, error } = await sb.from(table).select("*", { count: "exact", head: true });
+    if (error) {
+      console.log(`${table} = ERRO: ${error.message}`);
+      continue;
+    }
+    console.log(`${table} = ${count ?? 0}`);
   }
-  console.log("tb_despesa_combustivel_polanco =", count ?? 0);
 })();
 '@
 $nodeCheckCount | node -
@@ -52,7 +54,7 @@ const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_R
   const { data, error } = await sb
     .from("etl_log")
     .select("modulo,status,registros,executado_em")
-    .in("modulo", ["apc_polanco_sync_supabase","dimensoes_csv","combustivel"])
+    .in("modulo", ["apc_polanco_sync_supabase","dimensoes_csv","receita_publica","combustivel"])
     .order("executado_em", { ascending: false })
     .limit(15);
   if (error) {

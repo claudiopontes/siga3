@@ -53,6 +53,16 @@ if errorlevel 1 (
 )
 
 echo. >> "%LOG_FILE%"
+echo [%date% %time%] STEP Receita Publica - INICIO >> "%LOG_FILE%"
+call "%NPM_CMD%" run receita-publica >> "%LOG_FILE%" 2>&1
+if errorlevel 1 (
+  set "HAS_ERROR=1"
+  echo [%date% %time%] STEP Receita Publica - ERRO >> "%LOG_FILE%"
+) else (
+  echo [%date% %time%] STEP Receita Publica - OK >> "%LOG_FILE%"
+)
+
+echo. >> "%LOG_FILE%"
 echo [%date% %time%] STEP Combustivel NFe - INICIO >> "%LOG_FILE%"
 call "%NPM_CMD%" run combustivel >> "%LOG_FILE%" 2>&1
 if errorlevel 1 (

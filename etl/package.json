@@ -8,6 +8,7 @@
     "apc-polanco-sync-supabase": "ts-node jobs/apc-polanco-sync-supabase.ts",
     "combustivel": "ts-node jobs/combustivel.ts",
     "dimensoes": "ts-node jobs/dimensoes-csv.ts",
+    "receita-publica": "ts-node jobs/receita-publica.ts",
     "agendar": "ts-node schedule.ts"
   },
   "dependencies": {
