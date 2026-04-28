@@ -14,6 +14,13 @@ CREATE TABLE IF NOT EXISTS public.receita_publica_categoria_mensal (
   id_natureza_receita_orcamentaria BIGINT,
   id_catreceita BIGINT,
   codigo TEXT NOT NULL,
+  natureza_codigo TEXT,
+  natureza_nome TEXT,
+  natureza_descricao TEXT,
+  natureza_nivel INTEGER,
+  natureza_tipo TEXT,
+  natureza_ano_inicio INTEGER,
+  natureza_ano_fim INTEGER,
   numero_fonte_recurso BIGINT,
   fonte_classificacao TEXT,
   fonte_nome TEXT,
@@ -26,9 +33,12 @@ CREATE TABLE IF NOT EXISTS public.receita_publica_categoria_mensal (
   atualizado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE (
     id_remessa,
+    id_entidade_cjur,
     id_entidade,
     ano,
     mes,
+    id_natureza_receita_orcamentaria,
+    id_catreceita,
     codigo,
     numero_fonte_recurso,
     codigo_conta_contabil,
@@ -44,6 +54,9 @@ CREATE INDEX IF NOT EXISTS idx_receita_publica_entidade_competencia
 
 CREATE INDEX IF NOT EXISTS idx_receita_publica_codigo_competencia
   ON public.receita_publica_categoria_mensal (codigo, ano, mes);
+
+CREATE INDEX IF NOT EXISTS idx_receita_publica_natureza_nome
+  ON public.receita_publica_categoria_mensal (natureza_nome);
 
 CREATE INDEX IF NOT EXISTS idx_receita_publica_fonte_competencia
   ON public.receita_publica_categoria_mensal (numero_fonte_recurso, ano, mes);
@@ -82,15 +95,30 @@ SELECT
 FROM public.receita_publica_categoria_mensal
 GROUP BY ano, mes;
 
-CREATE OR REPLACE VIEW public.vw_receita_publica_categoria AS
+DROP VIEW IF EXISTS public.vw_receita_publica_categoria;
+
+CREATE VIEW public.vw_receita_publica_categoria AS
 SELECT
   ano,
   mes,
   codigo,
+  COALESCE(natureza_codigo, codigo) AS natureza_codigo,
+  COALESCE(natureza_nome, codigo) AS natureza_nome,
+  MAX(natureza_descricao) AS natureza_descricao,
+  natureza_nivel,
+  natureza_tipo,
   tipo_receita,
   SUM(previsao_inicial) AS previsao_inicial,
   SUM(previsao_atualizada) AS previsao_atualizada,
   SUM(receita_realizada) AS receita_realizada,
   MAX(atualizado_em) AS atualizado_em
 FROM public.receita_publica_categoria_mensal
-GROUP BY ano, mes, codigo, tipo_receita;
+GROUP BY
+  ano,
+  mes,
+  codigo,
+  COALESCE(natureza_codigo, codigo),
+  COALESCE(natureza_nome, codigo),
+  natureza_nivel,
+  natureza_tipo,
+  tipo_receita;

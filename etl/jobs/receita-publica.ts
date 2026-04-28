@@ -24,6 +24,13 @@ type ReceitaRow = {
   id_natureza_receita_orcamentaria: number | null;
   id_catreceita: number | null;
   codigo: string;
+  natureza_codigo: string | null;
+  natureza_nome: string | null;
+  natureza_descricao: string | null;
+  natureza_nivel: number | null;
+  natureza_tipo: string | null;
+  natureza_ano_inicio: number | null;
+  natureza_ano_fim: number | null;
   numero_fonte_recurso: number | null;
   fonte_classificacao: string | null;
   fonte_nome: string | null;
@@ -154,41 +161,48 @@ async function carregarDados(periodos: Periodo[]): Promise<ReceitaRow[]> {
   const agora = new Date().toISOString();
   const sql = `
 SELECT
-  ID_REMESSA AS id_remessa,
-  ID_ENTIDADE_CJUR AS id_entidade_cjur,
-  ID_ENTIDADE AS id_entidade,
-  ANO AS ano,
-  MES AS mes,
-  ID_NATUREZA_RECEITA_ORCAMENTARIA AS id_natureza_receita_orcamentaria,
-  ID_CATRECEITA AS id_catreceita,
-  CODIGO AS codigo,
-  NUMERO_FONTE_RECURSO AS numero_fonte_recurso,
-  FONTE_CLASSIFICACAO AS fonte_classificacao,
-  FONTE_NOME AS fonte_nome,
-  CODIGO_CONTA_CONTABIL AS codigo_conta_contabil,
-  TIPO_RECEITA AS tipo_receita,
-  SUM(PREVISAO_INICIAL) AS previsao_inicial,
-  SUM(PREVISAO_ATUALIZADA) AS previsao_atualizada,
-  SUM(RECEITA_REALIZADA) AS receita_realizada,
+  r.ID_REMESSA AS id_remessa,
+  r.ID_ENTIDADE_CJUR AS id_entidade_cjur,
+  r.ID_ENTIDADE AS id_entidade,
+  r.ANO AS ano,
+  r.MES AS mes,
+  r.ID_NATUREZA_RECEITA_ORCAMENTARIA AS id_natureza_receita_orcamentaria,
+  r.ID_CATRECEITA AS id_catreceita,
+  r.CODIGO AS codigo,
+  MAX(nro.CODIGO) AS natureza_codigo,
+  MAX(CAST(nro.NOME AS VARCHAR(500))) AS natureza_nome,
+  MAX(CAST(nro.DESCRICAO AS VARCHAR(MAX))) AS natureza_descricao,
+  MAX(nro.NIVEL) AS natureza_nivel,
+  MAX(nro.TIPO) AS natureza_tipo,
+  MAX(nro.ANO_INICIO) AS natureza_ano_inicio,
+  MAX(nro.ANO_FIM) AS natureza_ano_fim,
+  r.NUMERO_FONTE_RECURSO AS numero_fonte_recurso,
+  MAX(r.FONTE_CLASSIFICACAO) AS fonte_classificacao,
+  MAX(r.FONTE_NOME) AS fonte_nome,
+  r.CODIGO_CONTA_CONTABIL AS codigo_conta_contabil,
+  r.TIPO_RECEITA AS tipo_receita,
+  SUM(r.PREVISAO_INICIAL) AS previsao_inicial,
+  SUM(r.PREVISAO_ATUALIZADA) AS previsao_atualizada,
+  SUM(r.RECEITA_REALIZADA) AS receita_realizada,
   COUNT_BIG(1) AS registros_origem,
   '${agora}' AS atualizado_em
-FROM ${SOURCE_VIEW}
-WHERE ${periodoWhere(periodos)}
+FROM ${SOURCE_VIEW} r
+LEFT JOIN referencias.NATUREZA_RECEITA_ORCAMENTARIA nro
+  ON nro.ID_NATUREZA = r.ID_NATUREZA_RECEITA_ORCAMENTARIA
+WHERE ${periodos.map((p) => `(r.ANO = ${p.ano} AND r.MES = ${p.mes})`).join(" OR ")}
 GROUP BY
-  ID_REMESSA,
-  ID_ENTIDADE_CJUR,
-  ID_ENTIDADE,
-  ANO,
-  MES,
-  ID_NATUREZA_RECEITA_ORCAMENTARIA,
-  ID_CATRECEITA,
-  CODIGO,
-  NUMERO_FONTE_RECURSO,
-  FONTE_CLASSIFICACAO,
-  FONTE_NOME,
-  CODIGO_CONTA_CONTABIL,
-  TIPO_RECEITA
-ORDER BY ANO, MES, ID_ENTIDADE, CODIGO;
+  r.ID_REMESSA,
+  r.ID_ENTIDADE_CJUR,
+  r.ID_ENTIDADE,
+  r.ANO,
+  r.MES,
+  r.ID_NATUREZA_RECEITA_ORCAMENTARIA,
+  r.ID_CATRECEITA,
+  r.CODIGO,
+  r.NUMERO_FONTE_RECURSO,
+  r.CODIGO_CONTA_CONTABIL,
+  r.TIPO_RECEITA
+ORDER BY r.ANO, r.MES, r.ID_ENTIDADE, r.CODIGO;
 `;
 
   return queryInDatabase<ReceitaRow>(SQL_DATABASE, sql);
