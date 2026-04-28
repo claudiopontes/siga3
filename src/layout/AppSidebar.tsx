@@ -26,6 +26,7 @@ const navItems: NavItem[] = [
     name: "Painéis",
     subItems: [
       { name: "Combustível", path: "/painel-combustivel" },
+      { name: "Receita Pública", path: "/painel-receita-publica", pro: false },
       { name: "IDEB Acre", path: "/gabinete-digital/mapa" },
       { name: "Seletor de Município", path: "/gabinete-digital/seletor-municipio" },
     ],
@@ -253,17 +254,15 @@ const AppSidebar: React.FC = () => {
                 className="dark:hidden"
                 src="/images/logo/logo.svg"
                 alt="Logo"
-                width={150}
+                width={154}
                 height={40}
-                style={{ width: "150px", height: "auto" }}
               />
               <Image
                 className="hidden dark:block"
                 src="/images/logo/logo-dark.svg"
                 alt="Logo"
-                width={150}
+                width={154}
                 height={40}
-                style={{ width: "150px", height: "auto" }}
               />
             </>
           ) : (

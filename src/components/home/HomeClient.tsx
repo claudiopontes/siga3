@@ -18,9 +18,8 @@ export default function HomeClient() {
             src="/images/logo/varadouro-digital.png"
             alt="Varadouro Digital"
             width={256}
-            height={128}
+            height={192}
             className="object-contain"
-            style={{ width: "256px", height: "auto" }}
             priority
             unoptimized
           />
