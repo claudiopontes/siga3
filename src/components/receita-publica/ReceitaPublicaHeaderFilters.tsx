@@ -54,6 +54,10 @@ function entidadeFallbackLabel(row: ReceitaFiltroRow): string {
   return "Sem entidade";
 }
 
+function isTestName(value: string): boolean {
+  return value.toLocaleLowerCase("pt-BR").includes("teste");
+}
+
 export default function ReceitaPublicaHeaderFilters() {
   const router = useRouter();
   const pathname = usePathname();
@@ -133,6 +137,7 @@ export default function ReceitaPublicaHeaderFilters() {
           .filter(([, label]) => {
             const normalized = label.trim().toLocaleLowerCase("pt-BR");
             if (!normalized) return false;
+            if (isTestName(normalized)) return false;
             if (seenNames.has(normalized)) return false;
             seenNames.add(normalized);
             return true;
@@ -140,7 +145,7 @@ export default function ReceitaPublicaHeaderFilters() {
           .map(([value, label]) => ({ value, label }));
 
         const munOptions = dimEnteData
-          .filter((e) => e.id_ente != null && e.nome)
+          .filter((e) => e.id_ente != null && e.nome && !isTestName(String(e.nome)))
           .map((e) => ({ value: String(e.id_ente), label: String(e.nome) }));
 
         if (!active) return;

@@ -106,6 +106,7 @@ SELECT
   COD_MUNICIPIO AS cod_municipio,
   '${now}' AS atualizado_em
 FROM dbo.ENTE
+WHERE UPPER(NOME) NOT LIKE '%TESTE%'
 ORDER BY ID_ENTE;
 `;
   return queryInDatabase<EnteRow>(SQL_DATABASE, sql);
@@ -141,6 +142,7 @@ SELECT
   DETALHE_PODER AS detalhe_poder,
   '${now}' AS atualizado_em
 FROM dbo.ENTIDADE
+WHERE UPPER(NOME) NOT LIKE '%TESTE%'
 ORDER BY ID_ENTIDADE;
 `;
   return queryInDatabase<EntidadeRow>(SQL_DATABASE, sql);
@@ -177,4 +179,3 @@ export async function executarCargaDimensoesEnteEntidadeSqlServer(): Promise<voi
 if (require.main === module) {
   executarCargaDimensoesEnteEntidadeSqlServer().catch(() => process.exit(1));
 }
-

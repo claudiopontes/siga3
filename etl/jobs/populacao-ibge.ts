@@ -82,27 +82,46 @@ async function gravarLog(status: "sucesso" | "erro", registros: number, duracao:
  * Chama a API IBGE SIDRA e retorna linhas (cod_ibge, ano, populacao).
  * aggregado  : código da tabela SIDRA (ex: "4714" ou "9514")
  * variavel   : código da variável    (ex: "93")
- * periodos   : string de períodos    (ex: "all" ou "2022")
+ * periodos   : string de períodos    (ex: "2010|2011|2021" ou "2022")
+ * codigos    : lista de códigos IBGE de municípios (7 dígitos)
  * fonte      : texto descritivo para o campo fonte
+ */
+
+/**
+ * Passo 1 — Busca os códigos IBGE (7 dígitos) dos municípios da UF
+ * usando a API de localidades, que é mais estável que o SIDRA.
+ */
+async function buscarCodigosMunicipios(): Promise<number[]> {
+  const url = `https://servicodados.ibge.gov.br/api/v1/localidades/estados/${IBGE_UF}/municipios`;
+  const resp = await fetch(url, { headers: { Accept: "application/json" } });
+  if (!resp.ok) throw new Error(`IBGE localidades retornou HTTP ${resp.status}: ${url}`);
+  const data = (await resp.json()) as Array<{ id: number; nome: string }>; // eslint-disable-line @typescript-eslint/no-explicit-any
+  return data.map((m) => m.id);
+}
+
+/**
+ * Passo 2 — Consulta o SIDRA com os códigos explícitos dos municípios.
+ * Evita o filtro "in N3 XX" que causa HTTP 500 em alguns ambientes.
  */
 async function buscarSIDRA(
   agregado: string,
   variavel: string,
   periodos: string,
+  codigos: number[],
   fonte: string,
 ): Promise<PopRow[]> {
+  const codsStr = codigos.join(",");
   const url =
     `https://servicodados.ibge.gov.br/api/v3/agregados/${agregado}` +
     `/periodos/${periodos}/variaveis/${variavel}` +
-    `?localidades=N6[in+N6+${IBGE_UF}]`;
+    `?localidades=N6[${codsStr}]`;
 
   const resp = await fetch(url, { headers: { Accept: "application/json" } });
   if (!resp.ok) {
     throw new Error(`IBGE SIDRA ${agregado} retornou HTTP ${resp.status}: ${url}`);
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const data: any[] = await resp.json();
+  const data = (await resp.json()) as any[]; // eslint-disable-line @typescript-eslint/no-explicit-any
   const rows: PopRow[] = [];
   const now = new Date().toISOString();
 
@@ -206,23 +225,31 @@ export async function executarETLPopulacaoIBGE(): Promise<void> {
   console.log(`  -> UF IBGE: ${IBGE_UF} | Batch: ${SUPABASE_BATCH}`);
 
   try {
-    // 1. Busca estimativas anuais 2001–2021 (tabela 4714)
+    // 1. Descobre os códigos IBGE dos municípios da UF via API de localidades
+    console.log(`  -> Buscando municípios da UF ${IBGE_UF} (API localidades)...`);
+    const codigos = await buscarCodigosMunicipios();
+    console.log(`     ${codigos.length} municípios encontrados`);
+
+    // Períodos explícitos para tabela 4714 (evita timeout com "all")
+    const anosEstimativas = Array.from({ length: 21 }, (_, i) => 2001 + i).join("|"); // 2001–2021
+
+    // 2. Busca estimativas anuais 2001–2021 (tabela 4714, variável 93)
     console.log("  -> Buscando estimativas 2001–2021 (SIDRA 4714)...");
-    const estimativas = await buscarSIDRA("4714", "93", "all", "IBGE Estimativas 4714");
+    const estimativas = await buscarSIDRA("4714", "93", anosEstimativas, codigos, "IBGE Estimativas 4714");
     console.log(`     ${estimativas.length} registros`);
 
-    // 2. Busca Censo 2022 (tabela 9514)
+    // 3. Busca Censo 2022 (tabela 9514, variável 93)
     console.log("  -> Buscando Censo 2022 (SIDRA 9514)...");
     let censo2022: PopRow[] = [];
     try {
-      censo2022 = await buscarSIDRA("9514", "93", "2022", "IBGE Censo 2022");
+      censo2022 = await buscarSIDRA("9514", "93", "2022", codigos, "IBGE Censo 2022");
       console.log(`     ${censo2022.length} registros`);
     } catch (err) {
       // Censo pode ainda não estar disponível — apenas avisa
       console.warn(`     Aviso: Censo 2022 indisponivel (${err instanceof Error ? err.message : err})`);
     }
 
-    // 3. Consolida e deduplica (Censo tem prioridade sobre estimativa no mesmo ano)
+    // 4. Consolida e deduplica (Censo tem prioridade sobre estimativa no mesmo ano)
     const todosMapa = new Map<string, PopRow>();
     for (const row of [...estimativas, ...censo2022]) {
       todosMapa.set(`${row.cod_ibge}|${row.ano}`, row); // último vence (censo sobrescreve estimativa)
@@ -230,11 +257,11 @@ export async function executarETLPopulacaoIBGE(): Promise<void> {
     const todos = [...todosMapa.values()];
     console.log(`  -> Total consolidado: ${todos.length} registros (${new Set(todos.map(r => r.ano)).size} anos)`);
 
-    // 4. Upsert em aux_populacao_ibge
+    // 5. Upsert em aux_populacao_ibge
     console.log("  -> Upserting aux_populacao_ibge...");
     await upsertPopulacao(todos);
 
-    // 5. Atualiza dim_ente.populacao com fallback ao ano mais recente
+    // 6. Atualiza dim_ente.populacao com fallback ao ano mais recente
     console.log("  -> Atualizando dim_ente.populacao com fallback...");
     const atualizados = await atualizarDimEnte(todos);
     console.log(`     ${atualizados} ente(s) atualizado(s)`);
