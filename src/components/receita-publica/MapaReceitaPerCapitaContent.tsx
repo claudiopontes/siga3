@@ -1,10 +1,11 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { GeoJSON, MapContainer, TileLayer, useMap } from "react-leaflet";
 import type { Feature, GeoJsonObject, Geometry } from "geojson";
 import "leaflet/dist/leaflet.css";
 import type { ReceitaPerCapitaItem } from "./MapaReceitaPerCapita";
+import { Eye, MoreVertical, Printer } from "lucide-react";
 
 type AcreFeature = Feature<Geometry, { codarea?: string }>;
 
@@ -31,6 +32,15 @@ function colorByValue(v: number, cuts: number[]): string {
   if (v >= cuts[1]) return "#22c55e";
   if (v >= cuts[0]) return "#86efac";
   return "#dcfce7";
+}
+
+function ActionSummary() {
+  return (
+    <summary className="inline-flex list-none cursor-pointer select-none items-center gap-1.5 rounded-lg border border-teal-200 bg-teal-50 px-2.5 py-1.5 text-xs font-semibold text-teal-700 shadow-sm transition hover:border-teal-300 hover:bg-teal-100 hover:text-teal-800 dark:border-teal-900/70 dark:bg-teal-950/30 dark:text-teal-300 dark:hover:bg-teal-900/40">
+      <MoreVertical className="h-3.5 w-3.5" />
+      Ações
+    </summary>
+  );
 }
 
 export default function MapaReceitaPerCapitaContent({ dados }: { dados: Record<string, ReceitaPerCapitaItem> }) {
@@ -81,10 +91,10 @@ export default function MapaReceitaPerCapitaContent({ dados }: { dados: Record<s
           <p className="mt-0.5 text-xs text-gray-400 dark:text-gray-500">Receita realizada no período dividida pela população IBGE</p>
         </div>
         <details className="relative">
-          <summary className="inline-flex list-none cursor-pointer select-none items-center rounded-md border border-gray-200 px-2 py-1 text-xs font-medium text-gray-600 transition hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-700">Ações</summary>
+          <ActionSummary />
           <div className="absolute right-0 z-20 mt-1 w-40 rounded-lg border border-gray-200 bg-white p-1 shadow-lg dark:border-gray-700 dark:bg-gray-800">
-            <button type="button" className="w-full rounded-md px-3 py-2 text-left text-xs text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700" onClick={(event) => { closeActionsMenu(event); onFullscreen(); }}>Visualizar</button>
-            <button type="button" className="w-full rounded-md px-3 py-2 text-left text-xs text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700" onClick={(event) => { closeActionsMenu(event); onPrint(); }}>Imprimir</button>
+            <button type="button" className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-xs text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700" onClick={(event) => { closeActionsMenu(event); onFullscreen(); }}><Eye className="h-3.5 w-3.5" />Visualizar</button>
+            <button type="button" className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-xs text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700" onClick={(event) => { closeActionsMenu(event); onPrint(); }}><Printer className="h-3.5 w-3.5" />Imprimir</button>
           </div>
         </details>
       </div>
@@ -135,3 +145,4 @@ export default function MapaReceitaPerCapitaContent({ dados }: { dados: Record<s
     </div>
   );
 }
+

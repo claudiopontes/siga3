@@ -226,6 +226,13 @@ async function inserirEmLotes(rows: ReceitaRow[], batchSize: number): Promise<vo
   }
 }
 
+async function atualizarMaterializedView(): Promise<void> {
+  const { error } = await supabase.rpc("fn_refresh_mv_receita_publica_entidade_mensal");
+  if (error) {
+    throw new Error(`Erro ao atualizar materialized view da receita pública: ${error.message}`);
+  }
+}
+
 export async function executarETLReceitaPublica(): Promise<void> {
   const inicio = Date.now();
   console.log(`[${new Date().toISOString()}] Iniciando ETL: ${MODULO}`);
@@ -256,6 +263,9 @@ export async function executarETLReceitaPublica(): Promise<void> {
 
     console.log("  -> Inserindo dados no Supabase...");
     await inserirEmLotes(rows, SUPABASE_INSERT_BATCH);
+
+    console.log("  -> Atualizando materialized view otimizada...");
+    await atualizarMaterializedView();
 
     const duracao = Date.now() - inicio;
     console.log(`  OK - ETL concluido em ${duracao}ms (${rows.length} registros)`);

@@ -122,8 +122,8 @@ export default function ReceitaPublicaHeaderFilters() {
           if (!nome) return;
           if (idEnt  && !nomeMap.has(idEnt))  nomeMap.set(idEnt, nome);
           if (idCjur && !nomeMap.has(idCjur)) nomeMap.set(idCjur, nome);
-          if (idEnt  && !dimOptionsMap.has(idEnt)) dimOptionsMap.set(idEnt, nome);
-          if (idEnt  && idEnte) enteMap.set(idEnt, idEnte);
+          if (idEnt && !dimOptionsMap.has(idEnt)) dimOptionsMap.set(idEnt, nome);
+          if (idEnt && idEnte) enteMap.set(idEnt, idEnte);
         });
         combustivelEntidadeData.forEach((r) => {
           const idEnt = toStringValue(r.id_entidade).trim();
@@ -245,6 +245,14 @@ export default function ReceitaPublicaHeaderFilters() {
       router.replace(`${pathname}?${next.toString()}`, { scroll: false });
     }
   }, [selectedMunicipio, selectedEntidade, entidadeEnteMap, searchParams, pathname, router]);
+
+  useEffect(() => {
+    if (selectedEntidade === "all") return;
+    if (availableEntidades.some((opt) => opt.value === selectedEntidade)) return;
+    const next = new URLSearchParams(searchParams.toString());
+    next.delete("entidade");
+    router.replace(`${pathname}?${next.toString()}`, { scroll: false });
+  }, [selectedEntidade, availableEntidades, searchParams, pathname, router]);
 
   const setFilter = (key: string, value: string) => {
     const next = new URLSearchParams(searchParams.toString());
