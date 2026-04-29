@@ -438,10 +438,29 @@ export default function PainelReceitaPublicaClient() {
     const fallbackReceita = new Map<string, NodoReceita>();
     const fallbackDeducao = new Map<string, NodoReceita>();
 
+    // Nomes oficiais das categorias econômicas da receita pública (MCASP)
+    const NOMES_CATEGORIA: Record<string, string> = {
+      "1": "Receitas Correntes",
+      "2": "Receitas de Capital",
+      "7": "Receitas Correntes Intraorçamentárias",
+      "8": "Receitas de Capital Intraorçamentárias",
+      "9": "Deduções da Receita",
+    };
+
+    // Para grupos com 2 dígitos (origens), tenta buscar da dimensão antes de usar fallback
+    function nomeFallback(digito: string, ehDeducao: boolean): string {
+      if (ehDeducao) return "Deduções da Receita";
+      // Busca na dimensão por nivel=1 com esse prefixo
+      const daDimensao = naturezaRows.find(
+        (r) => r.nivel === 1 && normalizeReceitaCode(r.rubrica || r.codigo).startsWith(digito),
+      )?.nome;
+      return daDimensao ?? NOMES_CATEGORIA[digito] ?? `Grupo ${digito}`;
+    }
+
     function obterFallback(map: Map<string, NodoReceita>, digito: string, ehDeducao: boolean): NodoReceita {
       if (!map.has(digito)) {
         map.set(digito, {
-          nome: ehDeducao ? "Deduções da Receita" : `Grupo ${digito}`,
+          nome: nomeFallback(digito, ehDeducao),
           isDeducao: ehDeducao,
           valorTotal: 0, nivel: 1,
           rubricaPrefix: digito,
@@ -451,22 +470,86 @@ export default function PainelReceitaPublicaClient() {
       return map.get(digito)!;
     }
 
+    // Cria nodo sintético em mapas[n-1] para o prefixo dado, buscando nome na dimensão.
+    function criarNodoSintetico(
+      mapas: Map<string, NodoReceita>[],
+      prefix: string,
+      nivel: number,
+      ehDeducao: boolean,
+    ): NodoReceita {
+      const mapa = mapas[nivel - 1]!;
+      if (mapa.has(prefix)) return mapa.get(prefix)!;
+      const nomeDaDimensao =
+        naturezaRows.find(
+          (r) => r.nivel === nivel && normalizeReceitaCode(r.rubrica || r.codigo).slice(0, nivel) === prefix,
+        )?.nome ??
+        naturezaRows.find(
+          (r) => normalizeReceitaCode(r.rubrica || r.codigo).slice(0, nivel) === prefix,
+        )?.nome ??
+        nomeFallback(prefix, ehDeducao);
+      const nodo: NodoReceita = { nome: nomeDaDimensao, isDeducao: ehDeducao, valorTotal: 0, nivel, rubricaPrefix: prefix, filhos: [] };
+      mapa.set(prefix, nodo);
+      return nodo;
+    }
+
     // Acumula cada linha bruta na árvore correta pelo tipo_receita.
-    // Se não encontrar match em nenhum nível da dimensão, cria nodo fallback pelo 1º dígito.
+    // Se não encontrar match na dimensão, cria nodos sintéticos em todos os níveis do código.
     rows.forEach((row) => {
       const codigo = normalizeReceitaCode(row.codigo);
       const valor  = arrecadadaRow(row);
       const isTipoDeducao = String(row.tipo_receita ?? "").toLocaleUpperCase("pt-BR").includes("DEDU");
       const mapas = isTipoDeducao ? mapasDeducao : mapasReceita;
 
+      // Tenta match direto na dimensão (do nível mais detalhado para o mais alto)
       for (let n = nivelDetalhe; n >= 1; n--) {
         const nodo = mapas[n - 1]?.get(codigo.slice(0, n));
         if (nodo) { nodo.valorTotal += valor; return; }
       }
-      // Sem match na dimensão: acumula no fallback pelo 1º dígito
-      const digito = codigo.slice(0, 1) || "?";
-      obterFallback(isTipoDeducao ? fallbackDeducao : fallbackReceita, digito, isTipoDeducao).valorTotal += valor;
+
+      // Sem match: cria nodos sintéticos para cada nível até nivelDetalhe
+      const profCodigo = Math.min(codigo.length, nivelDetalhe);
+      if (profCodigo === 0) return;
+      for (let n = 1; n <= profCodigo; n++) {
+        criarNodoSintetico(mapas, codigo.slice(0, n), n, isTipoDeducao);
+      }
+      // Acumula no nodo mais profundo criado
+      mapas[profCodigo - 1]!.get(codigo.slice(0, profCodigo))!.valorTotal += valor;
     });
+
+    // Preenche nodos pais ausentes na dimensão (ex: nivel=1 não tem "2", "7", "8")
+    // percorrendo de cima para baixo e criando os nodos intermediários que faltam.
+    // O nome é buscado na própria dimensão; se não encontrado usa o prefixo como label.
+    function preencherPaisAusentes(mapas: Map<string, NodoReceita>[], ehDeducao: boolean) {
+      for (let n = 2; n <= nivelDetalhe; n++) {
+        const mapaFilhos = mapas[n - 1]!;
+        const mapaPais   = mapas[n - 2]!;
+        mapaFilhos.forEach((filho) => {
+          const paiPrefix = filho.rubricaPrefix.slice(0, n - 1);
+          if (mapaPais.has(paiPrefix)) return;
+          // Busca o nome na dimensão: primeiro no nivel exato, depois em qualquer nivel
+          const nomePai =
+            naturezaRows.find(
+              (r) => r.nivel === n - 1 &&
+                normalizeReceitaCode(r.rubrica || r.codigo).slice(0, n - 1) === paiPrefix,
+            )?.nome ??
+            naturezaRows.find(
+              (r) => normalizeReceitaCode(r.rubrica || r.codigo).slice(0, n - 1) === paiPrefix,
+            )?.nome ??
+            nomeFallback(paiPrefix, ehDeducao);
+          mapaPais.set(paiPrefix, {
+            nome: nomePai,
+            isDeducao: ehDeducao,
+            valorTotal: 0,
+            nivel: n - 1,
+            rubricaPrefix: paiPrefix,
+            filhos: [],
+          });
+        });
+      }
+    }
+
+    preencherPaisAusentes(mapasReceita, false);
+    preencherPaisAusentes(mapasDeducao, true);
 
     // Roll-up: conecta cada nodo ao seu pai (nível N → nível N-1)
     function rollUp(mapas: Map<string, NodoReceita>[]) {
@@ -487,9 +570,26 @@ export default function PainelReceitaPublicaClient() {
     rollUp(mapasReceita);
     rollUp(mapasDeducao);
 
+    function deduplicarFilhos(nodos: NodoReceita[]): NodoReceita[] {
+      const seen = new Map<string, NodoReceita>();
+      nodos.forEach((n) => {
+        const existente = seen.get(n.rubricaPrefix);
+        if (existente) {
+          existente.valorTotal += n.valorTotal;
+          existente.filhos.push(...n.filhos);
+        } else {
+          seen.set(n.rubricaPrefix, n);
+        }
+      });
+      return [...seen.values()];
+    }
+
     const ordenar = (nodos: NodoReceita[]) => {
       nodos.sort((a, b) => a.rubricaPrefix.localeCompare(b.rubricaPrefix));
-      nodos.forEach((n) => ordenar(n.filhos));
+      nodos.forEach((n) => {
+        n.filhos = deduplicarFilhos(n.filhos);
+        ordenar(n.filhos);
+      });
     };
 
     // Mescla raízes da dimensão com fallbacks: se o 1º dígito já existe na dimensão,
@@ -512,14 +612,29 @@ export default function PainelReceitaPublicaClient() {
       return raizes;
     }
 
-    const raizesReceita = mesclarFallbacks(
+    // Deduplicação: garante que rubricaPrefix é único em cada lista de raízes
+    function deduplicar(nodos: NodoReceita[]): NodoReceita[] {
+      const seen = new Map<string, NodoReceita>();
+      nodos.forEach((n) => {
+        const existente = seen.get(n.rubricaPrefix);
+        if (existente) {
+          existente.valorTotal += n.valorTotal;
+          existente.filhos.push(...n.filhos);
+        } else {
+          seen.set(n.rubricaPrefix, n);
+        }
+      });
+      return [...seen.values()];
+    }
+
+    const raizesReceita = deduplicar(mesclarFallbacks(
       [...(mapasReceita[0]?.values() ?? [])].filter((n) => n.valorTotal !== 0),
       fallbackReceita,
-    );
-    const raizesDeducao = mesclarFallbacks(
+    ));
+    const raizesDeducao = deduplicar(mesclarFallbacks(
       [...(mapasDeducao[0]?.values() ?? [])].filter((n) => n.valorTotal !== 0),
       fallbackDeducao,
-    );
+    ));
 
     ordenar(raizesReceita);
     ordenar(raizesDeducao);
@@ -1113,7 +1228,7 @@ function LinhasNodoReceita({
           : "border-t border-slate-100 dark:border-slate-700/50";
 
         return (
-          <React.Fragment key={`${profundidade}-${nodo.rubricaPrefix}`}>
+          <React.Fragment key={`${nodo.isDeducao ? "D" : "R"}-${nodo.nivel}-${nodo.rubricaPrefix}`}>
             <tr className={`${bordaTopo} ${bgLinha}`}>
               <td
                 className={`py-1.5 pl-3 pr-2 font-mono text-xs ${nodo.isDeducao ? "text-red-400 dark:text-red-500" : "text-slate-400 dark:text-slate-500"} ${isRaiz || temFilhos ? "font-semibold" : ""} whitespace-nowrap`}
