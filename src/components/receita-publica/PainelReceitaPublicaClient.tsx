@@ -201,7 +201,7 @@ export default function PainelReceitaPublicaClient() {
       } else {
         // Fallback: descobre os 2 anos mais recentes
         const { data: anosData } = await client
-          .from("receita_publica_categoria_mensal")
+          .from("vw_receita_publica_kpis")
           .select("ano")
           .order("ano", { ascending: false })
           .limit(5000);
@@ -237,10 +237,18 @@ export default function PainelReceitaPublicaClient() {
       const pageSize = 1000;
       let offset = 0;
       const allRows: ReceitaRow[] = [];
+      const seenPageSignatures = new Set<string>();
+      const maxPages = 500;
+      let page = 0;
 
       while (true) {
+        page += 1;
+        if (page > maxPages) {
+          throw new Error("Limite de paginação atingido ao carregar receitas públicas.");
+        }
+
         let query = client
-          .from("receita_publica_categoria_mensal")
+          .from("vw_receita_publica_entidade_mensal")
           .select("id_entidade,ano,mes,codigo,tipo_receita,previsao_inicial,previsao_atualizada,receita_realizada")
           .gte("ano", anoInicio)
           .lte("ano", anoFim)
@@ -258,6 +266,15 @@ export default function PainelReceitaPublicaClient() {
         const { data, error: qErr } = await query;
         if (qErr) throw qErr;
         const batch = (data ?? []) as ReceitaRow[];
+        if (batch.length === 0) break;
+
+        // Proteção contra paginação repetida (alguns ambientes podem repetir sempre os mesmos 1000 registros).
+        const first = batch[0]!;
+        const last = batch[batch.length - 1]!;
+        const signature = `${first.id_entidade}-${first.ano}-${first.mes}-${first.codigo}|${last.id_entidade}-${last.ano}-${last.mes}-${last.codigo}|${batch.length}`;
+        if (seenPageSignatures.has(signature)) break;
+        seenPageSignatures.add(signature);
+
         allRows.push(...batch);
         if (batch.length < pageSize) break;
         offset += pageSize;

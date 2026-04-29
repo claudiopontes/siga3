@@ -95,6 +95,26 @@ SELECT
 FROM public.receita_publica_categoria_mensal
 GROUP BY ano, mes;
 
+-- View otimizada para consultas do painel com filtro por entidade/município.
+-- Remove granularidade desnecessária (id_remessa, conta contábil etc.) para reduzir volume.
+DROP VIEW IF EXISTS public.vw_receita_publica_entidade_mensal;
+
+CREATE VIEW public.vw_receita_publica_entidade_mensal AS
+SELECT
+  id_entidade,
+  ano,
+  mes,
+  codigo,
+  tipo_receita,
+  SUM(previsao_inicial) AS previsao_inicial,
+  SUM(previsao_atualizada) AS previsao_atualizada,
+  SUM(receita_realizada) AS receita_realizada,
+  MAX(atualizado_em) AS atualizado_em
+FROM public.receita_publica_categoria_mensal
+GROUP BY id_entidade, ano, mes, codigo, tipo_receita;
+
+GRANT SELECT ON public.vw_receita_publica_entidade_mensal TO anon, authenticated;
+
 DROP VIEW IF EXISTS public.vw_receita_publica_categoria;
 
 CREATE VIEW public.vw_receita_publica_categoria AS
