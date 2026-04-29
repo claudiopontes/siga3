@@ -1,16 +1,25 @@
 ﻿"use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import MapaReceitaPerCapita, { type ReceitaPerCapitaItem } from "@/components/receita-publica/MapaReceitaPerCapita";
 import dynamic from "next/dynamic";
 import type { ApexOptions } from "apexcharts";
-import { Eye, MoreVertical, Printer } from "lucide-react";
+import { Eye, SlidersHorizontal, Printer } from "lucide-react";
 
 const Chart = dynamic(() => import("react-apexcharts"), { ssr: false });
 
 // â”€â”€â”€ Tipos â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+type NodoReceita = {
+  nome: string;
+  isDeducao: boolean;
+  valorTotal: number;
+  nivel: number;
+  rubricaPrefix: string;
+  filhos: NodoReceita[];
+};
 
 type ReceitaRow = {
   id_entidade: number;
@@ -32,7 +41,7 @@ type DimEnteRow = {
 type DimEntidadeRow = { id_entidade: number; id_entidade_cjur: number | null; id_ente: number };
 type AuxMunicipioRow = { codigo: string; nome: string; uf_codigo?: string | null };
 type NaturezaRow = { codigo: string; nivel: number; nome: string; rubrica?: string | null };
-type NaturezaNivel = 1 | 2 | 3 | 4 | 5;
+type NaturezaNivel = number;
 type RankingVariacao = {
   ref: string | null;
   high: Array<[string, number, number]>;
@@ -43,13 +52,21 @@ type RankingVariacao = {
 
 // â”€â”€â”€ Constantes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-const naturezaNivelOptions: Array<{ value: NaturezaNivel; label: string }> = [
-  { value: 1, label: "Nível 1 - Categoria Econômica" },
-  { value: 2, label: "Nível 2 - Origem" },
-  { value: 3, label: "Nível 3 - Espécie" },
-  { value: 4, label: "Nível 4 - Desdobramento 1" },
-  { value: 5, label: "Nível 5 - Desdobramento 2" },
-];
+// Nomes fixos para os primeiros níveis conhecidos; acima disso gera label genérico
+const NIVEL_LABELS: Record<number, string> = {
+  1: "Categoria Econômica",
+  2: "Origem",
+  3: "Espécie",
+  4: "Rubrica",
+  5: "Alínea",
+  6: "Subalínea",
+};
+function naturezaNivelLabel(nivel: number): string {
+  return NIVEL_LABELS[nivel] ?? `Nível ${nivel}`;
+}
+function buildNaturezaNivelOptions(niveis: number[]): Array<{ value: number; label: string }> {
+  return niveis.map((n) => ({ value: n, label: `Nível ${n} - ${naturezaNivelLabel(n)}` }));
+}
 
 // â”€â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -187,8 +204,15 @@ export default function PainelReceitaPublicaClient() {
   const [mapaPerCapita, setMapaPerCapita] = useState<Record<string, ReceitaPerCapitaItem>>({});
   const [naturezaRows, setNaturezaRows] = useState<NaturezaRow[]>([]);
   const [naturezaNivelView, setNaturezaNivelView] = useState<NaturezaNivel>(2);
-  const naturezaNivelLabel =
-    naturezaNivelOptions.find((option) => option.value === naturezaNivelView)?.label.replace(/^Nível \d - /, "") ?? "Origem";
+
+  // Opções de nível calculadas dinamicamente a partir dos dados carregados
+  const naturezaNivelOptions = useMemo(() => {
+    const niveis = [...new Set(naturezaRows.map((r) => r.nivel))].filter(Boolean).sort((a, b) => a - b);
+    return niveis.length > 0 ? buildNaturezaNivelOptions(niveis) : buildNaturezaNivelOptions([1, 2, 3, 4, 5]);
+  }, [naturezaRows]);
+
+  const naturezaNivelLabelAtual =
+    naturezaNivelLabel(naturezaNivelView);
   const anosDisponiveis = useMemo(() => {
     const anoInicio = Number(paramAnoInicio);
     const anoFim = Number(paramAnoFim);
@@ -225,7 +249,7 @@ export default function PainelReceitaPublicaClient() {
         client.from("dim_ente").select("id_ente,cod_ibgce,cod_municipio,populacao,nome").range(0, 9999),
         client.from("dim_entidade").select("id_entidade,id_entidade_cjur,id_ente").range(0, 9999),
         client.from("aux_dim_municipio").select("codigo,nome,uf_codigo").eq("uf_codigo", "12").range(0, 9999),
-        client.from("aux_dim_natureza_receita_orcamentaria").select("codigo,nivel,nome,rubrica").in("nivel", [1, 2, 3, 4, 5]).range(0, 9999),
+        client.from("aux_dim_natureza_receita_orcamentaria").select("codigo,nivel,nome,rubrica").range(0, 9999),
       ]);
       if (entesRes.error) throw entesRes.error;
       if (entidadesRes.error) throw entidadesRes.error;
@@ -372,6 +396,139 @@ export default function PainelReceitaPublicaClient() {
     () => composicaoArrecadada.reduce((acc, [, valor]) => acc + valor, 0),
     [composicaoArrecadada],
   );
+
+  // Tabela "Receita Orçamentária Arrecadada"
+  // Duas árvores paralelas: receitas e deduções.
+  // Deduções são detectadas por tipo_receita="DEDU" e roteadas para a árvore de dedução,
+  // nunca contaminando a árvore de receitas (mesmo que compartilhem prefixos de código).
+  const composicaoNaturezaTabela = useMemo(() => {
+    const nivelDetalhe = naturezaNivelView;
+
+    function construirMapas(filtroDeducao: boolean): Map<string, NodoReceita>[] {
+      return Array.from({ length: nivelDetalhe }, (_, i) => {
+        const n = i + 1;
+        const mapa = new Map<string, NodoReceita>();
+        naturezaRows
+          .filter((r) => r.nivel === n)
+          .filter((r) => {
+            const ehDeducao = r.nome.toLocaleLowerCase("pt-BR").includes("dedu");
+            return filtroDeducao ? ehDeducao : !ehDeducao;
+          })
+          .forEach((r) => {
+            const prefix = normalizeReceitaCode(r.rubrica || r.codigo).slice(0, n);
+            if (!prefix || mapa.has(prefix)) return;
+            mapa.set(prefix, {
+              nome: r.nome,
+              isDeducao: filtroDeducao,
+              valorTotal: 0,
+              nivel: n,
+              rubricaPrefix: prefix,
+              filhos: [],
+            });
+          });
+        return mapa;
+      });
+    }
+
+    const mapasReceita  = construirMapas(false);
+    const mapasDeducao  = construirMapas(true);
+
+    // Fallbacks por 1º dígito: garantem que nenhum valor se perca mesmo que a dimensão
+    // não tenha entrada para aquele grupo (ex: "2" = Capital, "7"/"8" = Intraorçamentárias)
+    const fallbackReceita = new Map<string, NodoReceita>();
+    const fallbackDeducao = new Map<string, NodoReceita>();
+
+    function obterFallback(map: Map<string, NodoReceita>, digito: string, ehDeducao: boolean): NodoReceita {
+      if (!map.has(digito)) {
+        map.set(digito, {
+          nome: ehDeducao ? "Deduções da Receita" : `Grupo ${digito}`,
+          isDeducao: ehDeducao,
+          valorTotal: 0, nivel: 1,
+          rubricaPrefix: digito,
+          filhos: [],
+        });
+      }
+      return map.get(digito)!;
+    }
+
+    // Acumula cada linha bruta na árvore correta pelo tipo_receita.
+    // Se não encontrar match em nenhum nível da dimensão, cria nodo fallback pelo 1º dígito.
+    rows.forEach((row) => {
+      const codigo = normalizeReceitaCode(row.codigo);
+      const valor  = arrecadadaRow(row);
+      const isTipoDeducao = String(row.tipo_receita ?? "").toLocaleUpperCase("pt-BR").includes("DEDU");
+      const mapas = isTipoDeducao ? mapasDeducao : mapasReceita;
+
+      for (let n = nivelDetalhe; n >= 1; n--) {
+        const nodo = mapas[n - 1]?.get(codigo.slice(0, n));
+        if (nodo) { nodo.valorTotal += valor; return; }
+      }
+      // Sem match na dimensão: acumula no fallback pelo 1º dígito
+      const digito = codigo.slice(0, 1) || "?";
+      obterFallback(isTipoDeducao ? fallbackDeducao : fallbackReceita, digito, isTipoDeducao).valorTotal += valor;
+    });
+
+    // Roll-up: conecta cada nodo ao seu pai (nível N → nível N-1)
+    function rollUp(mapas: Map<string, NodoReceita>[]) {
+      for (let n = nivelDetalhe; n >= 2; n--) {
+        const mapaFilhos = mapas[n - 1]!;
+        const mapaPais   = mapas[n - 2]!;
+        mapaFilhos.forEach((filho) => {
+          if (filho.valorTotal === 0) return;
+          const pai = mapaPais.get(filho.rubricaPrefix.slice(0, n - 1));
+          if (pai) {
+            pai.filhos.push(filho);
+            pai.valorTotal += filho.valorTotal;
+          }
+        });
+      }
+    }
+
+    rollUp(mapasReceita);
+    rollUp(mapasDeducao);
+
+    const ordenar = (nodos: NodoReceita[]) => {
+      nodos.sort((a, b) => a.rubricaPrefix.localeCompare(b.rubricaPrefix));
+      nodos.forEach((n) => ordenar(n.filhos));
+    };
+
+    // Mescla raízes da dimensão com fallbacks: se o 1º dígito já existe na dimensão,
+    // soma o fallback nele; senão adiciona o fallback como nodo raiz independente.
+    function mesclarFallbacks(
+      raizes: NodoReceita[],
+      fallbacks: Map<string, NodoReceita>,
+    ): NodoReceita[] {
+      const porDigito = new Map(raizes.map((r) => [r.rubricaPrefix, r]));
+      fallbacks.forEach((fb, digito) => {
+        if (fb.valorTotal === 0) return;
+        const existente = porDigito.get(digito);
+        if (existente) {
+          existente.valorTotal += fb.valorTotal;
+        } else {
+          raizes.push(fb);
+          porDigito.set(digito, fb);
+        }
+      });
+      return raizes;
+    }
+
+    const raizesReceita = mesclarFallbacks(
+      [...(mapasReceita[0]?.values() ?? [])].filter((n) => n.valorTotal !== 0),
+      fallbackReceita,
+    );
+    const raizesDeducao = mesclarFallbacks(
+      [...(mapasDeducao[0]?.values() ?? [])].filter((n) => n.valorTotal !== 0),
+      fallbackDeducao,
+    );
+
+    ordenar(raizesReceita);
+    ordenar(raizesDeducao);
+
+    const raizes = [...raizesReceita, ...raizesDeducao];
+    const totalLiquido = raizes.reduce((acc, n) => acc + n.valorTotal, 0);
+
+    return { raizes, totalLiquido };
+  }, [rows, naturezaRows, naturezaNivelView]);
 
   const composicaoBarOptions = useMemo<ApexOptions>(() => ({
     chart: { type: "bar", toolbar: { show: false }, fontFamily: "inherit" },
@@ -697,7 +854,7 @@ export default function PainelReceitaPublicaClient() {
         <select
           className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm font-medium text-slate-700 shadow-sm outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
           value={naturezaNivelView}
-          onChange={(event) => setNaturezaNivelView(Number(event.target.value) as NaturezaNivel)}
+          onChange={(event) => setNaturezaNivelView(Number(event.target.value))}
         >
           {naturezaNivelOptions.map((option) => (
             <option key={option.value} value={option.value}>{option.label}</option>
@@ -711,7 +868,7 @@ export default function PainelReceitaPublicaClient() {
           <div className="mb-2 flex items-start justify-between gap-3">
             <div>
               <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-                Composição da Receita Arrecadada por {naturezaNivelLabel} {paramAnoFim || ""}
+                Composição da Receita Arrecadada por {naturezaNivelLabelAtual} {paramAnoFim || ""}
               </h3>
               <p className="text-xs text-slate-400 dark:text-slate-500">
                 Distribuição da arrecadação no período selecionado
@@ -758,8 +915,8 @@ export default function PainelReceitaPublicaClient() {
       <div ref={naturezaRef} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800">
         <div className="mb-3 flex items-center justify-between gap-3">
           <div>
-            <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Composição por Natureza da Receita</h3>
-            <p className="text-xs text-slate-400 dark:text-slate-500">Agrupamento oficial por {naturezaNivelLabel}</p>
+            <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Receita Orçamentária Arrecadada</h3>
+            <p className="text-xs text-slate-400 dark:text-slate-500">Agrupamento por {naturezaNivelLabelAtual}</p>
           </div>
           <div className="flex items-center gap-2">
             <details className="relative">
@@ -792,52 +949,38 @@ export default function PainelReceitaPublicaClient() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-          <div className="rounded-xl border border-slate-200 p-2 dark:border-slate-700">
-            {composicaoBarSeries[0].data.length > 0 ? (
-              <Chart options={composicaoBarOptions} series={composicaoBarSeries} type="bar" height={360} />
-            ) : (
-              <div className="flex h-[360px] items-center justify-center text-sm text-slate-500">Sem dados para o nível selecionado.</div>
-            )}
-          </div>
-
-          <div className="max-h-[380px] overflow-auto rounded-xl border border-slate-200 dark:border-slate-700">
-            <table className="w-full text-sm">
-              <thead className="sticky top-0 bg-slate-100 text-slate-600 dark:bg-slate-900 dark:text-slate-300">
-                <tr>
-                  <th className="px-3 py-2 text-left">Natureza</th>
-                  <th className="px-3 py-2 text-right">Valor</th>
-                  <th className="px-3 py-2 text-right">Participação</th>
-                </tr>
-              </thead>
-              <tbody>
-                {composicaoArrecadada.map(([nome, valor]) => {
-                  const pct = composicaoTotal > 0 ? (valor / composicaoTotal) * 100 : 0;
-                  return (
-                    <tr key={`${naturezaNivelView}-${nome}`} className="border-t border-slate-200 dark:border-slate-700">
-                      <td className="px-3 py-2 text-slate-700 dark:text-slate-200">{nome}</td>
-                      <td className="px-3 py-2 text-right font-medium text-slate-700 dark:text-slate-200">{fmtMoeda(valor)}</td>
-                      <td className="px-3 py-2 text-right text-slate-600 dark:text-slate-300">{pct.toFixed(1)}%</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-              <tfoot className="sticky bottom-0 border-t border-slate-200 bg-slate-100 text-slate-800 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
-                <tr>
-                  <td className="px-3 py-2 font-semibold">Total</td>
-                  <td className="px-3 py-2 text-right font-semibold">{fmtMoeda(composicaoTotal)}</td>
-                  <td className="px-3 py-2 text-right font-semibold">{composicaoTotal > 0 ? "100,0%" : "0,0%"}</td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
+        <div className="max-h-[480px] overflow-auto rounded-xl border border-slate-200 dark:border-slate-700">
+          <table className="w-full text-sm">
+            <thead className="sticky top-0 bg-slate-100 text-slate-600 dark:bg-slate-900 dark:text-slate-300">
+              <tr>
+                <th className="px-3 py-2 text-left">Código</th>
+                <th className="px-3 py-2 text-left">Natureza</th>
+                <th className="px-3 py-2 text-right">Valor</th>
+                <th className="px-3 py-2 text-right">Part. %</th>
+              </tr>
+            </thead>
+            <tbody>
+              <LinhasNodoReceita
+                nodos={composicaoNaturezaTabela.raizes}
+                base={composicaoNaturezaTabela.totalLiquido}
+                profundidade={0}
+              />
+            </tbody>
+            <tfoot className="sticky bottom-0 border-t-2 border-slate-300 bg-slate-100 text-slate-800 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100">
+              <tr>
+                <td className="px-3 py-2 font-semibold" colSpan={2}>Total Líquido</td>
+                <td className="px-3 py-2 text-right font-semibold">{fmtMoeda(composicaoNaturezaTabela.totalLiquido)}</td>
+                <td className="px-3 py-2 text-right font-semibold">100,0%</td>
+              </tr>
+            </tfoot>
+          </table>
         </div>
       </div>
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <div ref={serieMensalRef} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800">
           <div className="mb-2 flex items-start justify-between gap-3">
             <div>
-              <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Série mensal empilhada por {naturezaNivelLabel}</h3>
+              <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Série mensal empilhada por {naturezaNivelLabelAtual}</h3>
               <p className="text-xs text-slate-400 dark:text-slate-500">Principais categorias por arrecadação no período filtrado</p>
             </div>
             <details className="relative">
@@ -857,7 +1000,7 @@ export default function PainelReceitaPublicaClient() {
 
         <div ref={variacaoRef} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800">
           <div className="mb-2 flex items-center justify-between gap-2">
-            <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Variação acumulada por {naturezaNivelLabel}</h3>
+            <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Variação acumulada por {naturezaNivelLabelAtual}</h3>
             <div className="flex items-center gap-2">
               <select
                 className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200"
@@ -939,10 +1082,75 @@ const corValor: Record<CorKpi, string> = {
   red:   "text-red-600 dark:text-red-400",
 };
 
+// Recuo em px por nível de profundidade na hierarquia
+const RECUO_POR_NIVEL = 16;
+
+function LinhasNodoReceita({
+  nodos, base, profundidade,
+}: {
+  nodos: NodoReceita[];
+  base: number;
+  profundidade: number;
+}) {
+  return (
+    <>
+      {nodos.map((nodo) => {
+        const isRaiz   = profundidade === 0;
+        const pct      = base !== 0 ? (Math.abs(nodo.valorTotal) / Math.abs(base)) * 100 : 0;
+        const recuoPx  = profundidade * RECUO_POR_NIVEL + 12;
+        const temFilhos = nodo.filhos.length > 0;
+
+        const corTexto = nodo.isDeducao
+          ? (isRaiz ? "text-red-700 dark:text-red-400" : "text-red-600 dark:text-red-400")
+          : (isRaiz ? "text-slate-800 dark:text-slate-100" : profundidade === 1 ? "text-slate-700 dark:text-slate-200" : "text-slate-500 dark:text-slate-400");
+
+        const bgLinha = nodo.isDeducao
+          ? (isRaiz ? "bg-red-50 dark:bg-red-950/20" : "bg-red-50/30 dark:bg-red-950/10")
+          : (isRaiz ? "bg-slate-50 dark:bg-slate-800/60" : "");
+
+        const bordaTopo = isRaiz
+          ? "border-t border-slate-300 dark:border-slate-600"
+          : "border-t border-slate-100 dark:border-slate-700/50";
+
+        return (
+          <React.Fragment key={`${profundidade}-${nodo.rubricaPrefix}`}>
+            <tr className={`${bordaTopo} ${bgLinha}`}>
+              <td
+                className={`py-1.5 pl-3 pr-2 font-mono text-xs ${nodo.isDeducao ? "text-red-400 dark:text-red-500" : "text-slate-400 dark:text-slate-500"} ${isRaiz || temFilhos ? "font-semibold" : ""} whitespace-nowrap`}
+              >
+                {nodo.rubricaPrefix}
+              </td>
+              <td
+                className={`py-1.5 pr-3 ${corTexto} ${isRaiz || temFilhos ? "font-semibold" : ""}`}
+                style={{ paddingLeft: `${recuoPx}px` }}
+              >
+                {nodo.isDeducao && isRaiz ? `(−) ${nodo.nome}` : nodo.nome}
+              </td>
+              <td className={`py-1.5 pr-3 text-right ${corTexto} ${isRaiz || temFilhos ? "font-semibold" : ""}`}>
+                {fmtMoeda(nodo.valorTotal)}
+              </td>
+              <td className={`py-1.5 pr-3 text-right ${isRaiz ? corTexto : "text-slate-400 dark:text-slate-500"} ${isRaiz ? "font-semibold" : ""}`}>
+                {pct.toFixed(1)}%
+              </td>
+            </tr>
+            {temFilhos && (
+              <LinhasNodoReceita
+                nodos={nodo.filhos}
+                base={base}
+                profundidade={profundidade + 1}
+              />
+            )}
+          </React.Fragment>
+        );
+      })}
+    </>
+  );
+}
+
 function ActionSummary() {
   return (
     <summary className="inline-flex list-none cursor-pointer select-none items-center gap-1.5 rounded-lg border border-teal-200 bg-teal-50 px-2.5 py-1.5 text-xs font-semibold text-teal-700 shadow-sm transition hover:border-teal-300 hover:bg-teal-100 hover:text-teal-800 dark:border-teal-900/70 dark:bg-teal-950/30 dark:text-teal-300 dark:hover:bg-teal-900/40">
-      <MoreVertical className="h-3.5 w-3.5" />
+      <SlidersHorizontal className="h-3.5 w-3.5" />
       Ações
     </summary>
   );

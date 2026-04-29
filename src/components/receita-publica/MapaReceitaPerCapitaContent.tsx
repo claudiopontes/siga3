@@ -5,7 +5,7 @@ import { GeoJSON, MapContainer, TileLayer, useMap } from "react-leaflet";
 import type { Feature, GeoJsonObject, Geometry } from "geojson";
 import "leaflet/dist/leaflet.css";
 import type { ReceitaPerCapitaItem } from "./MapaReceitaPerCapita";
-import { Eye, MoreVertical, Printer } from "lucide-react";
+import { Eye, SlidersHorizontal, Printer } from "lucide-react";
 
 type AcreFeature = Feature<Geometry, { codarea?: string }>;
 
@@ -37,7 +37,7 @@ function colorByValue(v: number, cuts: number[]): string {
 function ActionSummary() {
   return (
     <summary className="inline-flex list-none cursor-pointer select-none items-center gap-1.5 rounded-lg border border-teal-200 bg-teal-50 px-2.5 py-1.5 text-xs font-semibold text-teal-700 shadow-sm transition hover:border-teal-300 hover:bg-teal-100 hover:text-teal-800 dark:border-teal-900/70 dark:bg-teal-950/30 dark:text-teal-300 dark:hover:bg-teal-900/40">
-      <MoreVertical className="h-3.5 w-3.5" />
+      <SlidersHorizontal className="h-3.5 w-3.5" />
       Ações
     </summary>
   );

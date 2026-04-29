@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>Preview — Ícones para botão Ações</title>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, sans-serif; background: #f1f5f9; padding: 32px; }
+    h1 { font-size: 18px; font-weight: 700; color: #1e293b; margin-bottom: 8px; }
+    p.sub { font-size: 13px; color: #64748b; margin-bottom: 28px; }
+
+    .grid { display: flex; flex-wrap: wrap; gap: 16px; }
+
+    .card {
+      background: #fff;
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      padding: 20px 24px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      width: 160px;
+      box-shadow: 0 1px 3px rgba(0,0,0,.06);
+    }
+    .card.atual { border-color: #94a3b8; background: #f8fafc; }
+    .card.atual .label { color: #94a3b8; font-size: 10px; text-transform: uppercase; letter-spacing: .05em; }
+
+    .btn-preview {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border: 1px solid #99f6e4;
+      background: #f0fdfa;
+      color: #0f766e;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 6px 10px;
+      border-radius: 8px;
+      cursor: default;
+      box-shadow: 0 1px 2px rgba(0,0,0,.05);
+    }
+    .btn-preview svg { width: 14px; height: 14px; stroke: #0f766e; }
+
+    .icon-name {
+      font-size: 11px;
+      font-weight: 600;
+      color: #334155;
+      text-align: center;
+    }
+    .icon-desc {
+      font-size: 10px;
+      color: #94a3b8;
+      text-align: center;
+      line-height: 1.4;
+    }
+
+    .tag-rec {
+      font-size: 9px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      color: #7c3aed;
+      background: #ede9fe;
+      border-radius: 4px;
+      padding: 2px 6px;
+    }
+  </style>
+</head>
+<body>
+
+<h1>Ícones para o botão "Ações" — Painel Receita Pública</h1>
+<p class="sub">Visualize cada opção exatamente como apareceria no botão. O atual está destacado em cinza.</p>
+
+<div class="grid">
+
+  <!-- ATUAL -->
+  <div class="card atual">
+    <span class="label">atual</span>
+    <div class="btn-preview">
+      <i data-lucide="more-vertical"></i> Ações
+    </div>
+    <div class="icon-name">MoreVertical</div>
+    <div class="icon-desc">3 pontos verticais</div>
+  </div>
+
+  <!-- 1 -->
+  <div class="card">
+    <div class="btn-preview">
+      <i data-lucide="more-horizontal"></i> Ações
+    </div>
+    <div class="icon-name">MoreHorizontal</div>
+    <div class="icon-desc">3 pontos horizontais — padrão de dashboards</div>
+  </div>
+
+  <!-- 2 -->
+  <div class="card">
+    <div class="btn-preview">
+      <i data-lucide="sliders-horizontal"></i> Ações
+    </div>
+    <div class="icon-name">SlidersHorizontal</div>
+    <div class="icon-desc">Controles — indica opções do painel</div>
+    <span class="tag-rec">⭐ recomendado</span>
+  </div>
+
+  <!-- 3 -->
+  <div class="card">
+    <div class="btn-preview">
+      <i data-lucide="sliders"></i> Ações
+    </div>
+    <div class="icon-name">Sliders</div>
+    <div class="icon-desc">Controles verticais</div>
+  </div>
+
+  <!-- 4 -->
+  <div class="card">
+    <div class="btn-preview">
+      <i data-lucide="settings-2"></i> Ações
+    </div>
+    <div class="icon-name">Settings2</div>
+    <div class="icon-desc">Engrenagem compacta</div>
+  </div>
+
+  <!-- 5 -->
+  <div class="card">
+    <div class="btn-preview">
+      <i data-lucide="chevron-down"></i> Ações
+    </div>
+    <div class="icon-name">ChevronDown</div>
+    <div class="icon-desc">Seta para baixo — indica menu dropdown</div>
+    <span class="tag-rec">⭐ recomendado</span>
+  </div>
+
+  <!-- 6 -->
+  <div class="card">
+    <div class="btn-preview">
+      <i data-lucide="zap"></i> Ações
+    </div>
+    <div class="icon-name">Zap</div>
+    <div class="icon-desc">Raio — remete a ação rápida</div>
+  </div>
+
+  <!-- 7 -->
+  <div class="card">
+    <div class="btn-preview">
+      <i data-lucide="play"></i> Ações
+    </div>
+    <div class="icon-name">Play</div>
+    <div class="icon-desc">Play — "executar ação"</div>
+  </div>
+
+  <!-- 8 -->
+  <div class="card">
+    <div class="btn-preview">
+      <i data-lucide="menu"></i> Ações
+    </div>
+    <div class="icon-name">Menu</div>
+    <div class="icon-desc">Hambúrguer — "mais opções"</div>
+  </div>
+
+  <!-- 9 -->
+  <div class="card">
+    <div class="btn-preview">
+      <i data-lucide="list"></i> Ações
+    </div>
+    <div class="icon-name">List</div>
+    <div class="icon-desc">Lista — indica itens de menu</div>
+  </div>
+
+  <!-- 10 -->
+  <div class="card">
+    <div class="btn-preview">
+      <i data-lucide="layout-list"></i> Ações
+    </div>
+    <div class="icon-name">LayoutList</div>
+    <div class="icon-desc">Lista com blocos</div>
+  </div>
+
+  <!-- 11 -->
+  <div class="card">
+    <div class="btn-preview">
+      <i data-lucide="mouse-pointer-2"></i> Ações
+    </div>
+    <div class="icon-name">MousePointer2</div>
+    <div class="icon-desc">Cursor — remete a "clique para agir"</div>
+  </div>
+
+</div>
+
+<script>
+  lucide.createIcons();
+</script>
+</body>
+</html>
