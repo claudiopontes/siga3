@@ -78,7 +78,7 @@ export default function MapaReceitaPerCapitaContent({ dados }: { dados: Record<s
       <div className="px-5 pt-4 pb-3 flex items-start justify-between gap-3">
         <div>
           <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200">Mapa de Receita per capita - Acre</h3>
-          <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Receita realizada no periodo dividida pela populacao IBGE</p>
+          <p className="mt-0.5 text-xs text-gray-400 dark:text-gray-500">Receita realizada no período dividida pela população IBGE</p>
         </div>
         <details className="relative">
           <summary className="inline-flex list-none cursor-pointer select-none items-center rounded-md border border-gray-200 px-2 py-1 text-xs font-medium text-gray-600 transition hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-700">Ações</summary>
@@ -108,7 +108,7 @@ export default function MapaReceitaPerCapitaContent({ dados }: { dados: Record<s
                 const d = dados[cod];
                 if (!d) return;
                 layer.bindTooltip(
-                  `<strong>${d.nome}</strong><br/>Per capita: <strong>${new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(d.perCapita)}</strong><br/>Receita: ${new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(d.receitaTotal)}<br/>Populacao: ${d.populacao.toLocaleString("pt-BR")}`,
+                  `<strong>${d.nome}</strong><br/>Per capita: <strong>${new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(d.perCapita)}</strong><br/>Receita: ${new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(d.receitaTotal)}<br/>População: ${d.populacao.toLocaleString("pt-BR")}`,
                   { sticky: true, opacity: 0.95 },
                 );
               }}
@@ -135,4 +135,3 @@ export default function MapaReceitaPerCapitaContent({ dados }: { dados: Record<s
     </div>
   );
 }
-

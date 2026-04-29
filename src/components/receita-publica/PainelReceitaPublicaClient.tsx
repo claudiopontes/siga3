@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
@@ -9,7 +9,7 @@ import type { ApexOptions } from "apexcharts";
 
 const Chart = dynamic(() => import("react-apexcharts"), { ssr: false });
 
-// ─── Tipos ───────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Tipos â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 type ReceitaRow = {
   id_entidade: number;
@@ -33,10 +33,10 @@ type AuxMunicipioRow = { codigo: string; nome: string; uf_codigo?: string | null
 type NaturezaRow = { codigo: string; nivel: number; nome: string };
 
 
-// ─── Constantes ──────────────────────────────────────────────────────────────
+// â”€â”€â”€ Constantes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// â”€â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function toNum(v: number | string | null | undefined): number {
   if (typeof v === "number") return Number.isFinite(v) ? v : 0;
@@ -127,7 +127,7 @@ function normalizeReceitaCode(value: string | null | undefined): string {
 
 
 
-// ─── Componente principal ─────────────────────────────────────────────────────
+// â”€â”€â”€ Componente principal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export default function PainelReceitaPublicaClient() {
   "use no memo";
@@ -144,6 +144,21 @@ export default function PainelReceitaPublicaClient() {
   const [mapaPerCapita, setMapaPerCapita] = useState<Record<string, ReceitaPerCapitaItem>>({});
   const [naturezaRows, setNaturezaRows] = useState<NaturezaRow[]>([]);
   const [naturezaNivelView, setNaturezaNivelView] = useState<2 | 3>(2);
+  const naturezaNivelLabel = naturezaNivelView === 2 ? "Origem" : "Espécie";
+  const anosDisponiveis = useMemo(
+    () => [...new Set(rows.map((r) => Number(r.ano)).filter(Boolean))].sort((a, b) => a - b),
+    [rows],
+  );
+  const [anoComparacaoAtual, setAnoComparacaoAtual] = useState<number | null>(null);
+  const [anoComparacaoAnterior, setAnoComparacaoAnterior] = useState<number | null>(null);
+  const anoAtualPadrao = anosDisponiveis.length > 0 ? anosDisponiveis[anosDisponiveis.length - 1]! : null;
+  const anoAnteriorPadrao = anosDisponiveis.length > 1 ? anosDisponiveis[anosDisponiveis.length - 2]! : null;
+  const anoAtualSelecionado =
+    anoComparacaoAtual && anosDisponiveis.includes(anoComparacaoAtual) ? anoComparacaoAtual : anoAtualPadrao;
+  const anoAnteriorSelecionado =
+    anoComparacaoAnterior && anosDisponiveis.includes(anoComparacaoAnterior) && anoComparacaoAnterior !== anoAtualSelecionado
+      ? anoComparacaoAnterior
+      : anoAnteriorPadrao;
   const composicaoRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -291,7 +306,7 @@ export default function PainelReceitaPublicaClient() {
     return () => { active = false; };
   }, [paramAnoInicio, paramAnoFim, paramMunicipio, paramEntidade]);
 
-  // ── KPIs ────────────────────────────────────────────────────────────────────
+  // â”€â”€ KPIs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const kpi = useMemo(() => {
     let orcada = 0, arrecadada = 0;
     const entidades = new Set<number>();
@@ -328,7 +343,7 @@ export default function PainelReceitaPublicaClient() {
       const categoria =
         matched?.nome ??
         naturezaByPrefix.get(fallbackPrefix) ??
-        (fallbackPrefix ? `Natureza ${groupLevel}.${fallbackPrefix}` : composicaoCategoria(row));
+        composicaoCategoria(row);
       acc.set(categoria, (acc.get(categoria) ?? 0) + arrecadadaRow(row));
     });
     return [...acc.entries()]
@@ -370,6 +385,131 @@ export default function PainelReceitaPublicaClient() {
     [composicaoTop],
   );
 
+  
+  const serieMensalEmpilhada = useMemo(() => {
+    const groupLevel = naturezaNivelView;
+    const naturezaNivel = naturezaRows
+      .filter((n) => n.nivel === groupLevel)
+      .map((n) => ({ code: normalizeReceitaCode(n.codigo), nome: n.nome }))
+      .filter((n) => n.code.length > 0)
+      .sort((a, b) => b.code.length - a.code.length);
+    const naturezaByPrefix = new Map<string, string>();
+    naturezaNivel.forEach((n) => {
+      const p = n.code.slice(0, groupLevel);
+      if (p && !naturezaByPrefix.has(p)) naturezaByPrefix.set(p, n.nome);
+    });
+
+    const monthSet = new Set<string>();
+    const groupMap = new Map<string, Map<string, number>>();
+    rows.forEach((row) => {
+      const month = `${row.ano}-${String(row.mes).padStart(2, "0")}`;
+      monthSet.add(month);
+      const codigo = normalizeReceitaCode(row.codigo);
+      const matched = naturezaNivel.find((n) => codigo.startsWith(n.code));
+      const prefix = groupLevel === 2 ? codigo.slice(0, 2) : codigo.slice(0, 3);
+      const categoria = matched?.nome ?? naturezaByPrefix.get(prefix) ?? composicaoCategoria(row);
+      if (!groupMap.has(categoria)) groupMap.set(categoria, new Map<string, number>());
+      const byMonth = groupMap.get(categoria)!;
+      byMonth.set(month, (byMonth.get(month) ?? 0) + arrecadadaRow(row));
+    });
+
+    const months = [...monthSet].sort((a, b) => a.localeCompare(b));
+    const labels = months.map((m) => {
+      const [ano, mes] = m.split("-");
+      return `${mes}/${ano}`;
+    });
+
+    const topCats = [...groupMap.entries()]
+      .map(([cat, byMonth]) => ({ cat, total: [...byMonth.values()].reduce((acc, v) => acc + v, 0) }))
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 8);
+
+    const series = topCats.map(({ cat }) => {
+      const byMonth = groupMap.get(cat)!;
+      return { name: cat, data: months.map((m) => Number((byMonth.get(m) ?? 0).toFixed(2))) };
+    });
+    return { labels, series };
+  }, [rows, naturezaRows, naturezaNivelView]);
+
+  const serieEmpilhadaOptions = useMemo<ApexOptions>(() => ({
+    chart: { type: "bar", stacked: true, toolbar: { show: true }, fontFamily: "inherit" },
+    plotOptions: { bar: { borderRadius: 3, columnWidth: "62%" } },
+    dataLabels: { enabled: false },
+    xaxis: { categories: serieMensalEmpilhada.labels, labels: { rotate: -30 } },
+    yaxis: { labels: { formatter: (v: number) => fmtCompacto(Number(v)) } },
+    tooltip: { y: { formatter: (v: number) => fmtMoeda(Number(v)) } },
+    legend: { position: "bottom", fontSize: "11px" },
+    grid: { borderColor: "#e2e8f0", strokeDashArray: 3 },
+  }), [serieMensalEmpilhada.labels]);
+
+  const rankingYoY = useMemo(() => {
+    const groupLevel = naturezaNivelView;
+    const naturezaNivel = naturezaRows
+      .filter((n) => n.nivel === groupLevel)
+      .map((n) => ({ code: normalizeReceitaCode(n.codigo), nome: n.nome }))
+      .filter((n) => n.code.length > 0)
+      .sort((a, b) => b.code.length - a.code.length);
+    const naturezaByPrefix = new Map<string, string>();
+    naturezaNivel.forEach((n) => {
+      const p = n.code.slice(0, groupLevel);
+      if (p && !naturezaByPrefix.has(p)) naturezaByPrefix.set(p, n.nome);
+    });
+    const yearMonthMap = new Map<number, Map<number, Map<string, number>>>();
+    rows.forEach((row) => {
+      const codigo = normalizeReceitaCode(row.codigo);
+      const matched = naturezaNivel.find((n) => codigo.startsWith(n.code));
+      const prefix = groupLevel === 2 ? codigo.slice(0, 2) : codigo.slice(0, 3);
+      const categoria = matched?.nome ?? naturezaByPrefix.get(prefix) ?? composicaoCategoria(row);
+      if (!yearMonthMap.has(row.ano)) yearMonthMap.set(row.ano, new Map<number, Map<string, number>>());
+      const byMonth = yearMonthMap.get(row.ano)!;
+      if (!byMonth.has(row.mes)) byMonth.set(row.mes, new Map<string, number>());
+      const byCat = byMonth.get(row.mes)!;
+      byCat.set(categoria, (byCat.get(categoria) ?? 0) + arrecadadaRow(row));
+    });
+    const years = [...yearMonthMap.keys()].sort((a, b) => a - b);
+    if (years.length < 2) return { ref: null as null | string, high: [] as Array<[string, number, number]>, low: [] as Array<[string, number, number]> };
+
+    const atual = anoAtualSelecionado && years.includes(anoAtualSelecionado) ? anoAtualSelecionado : years[years.length - 1]!;
+    const anterior = anoAnteriorSelecionado && years.includes(anoAnteriorSelecionado) && anoAnteriorSelecionado !== atual
+      ? anoAnteriorSelecionado
+      : (years.filter((y) => y !== atual).at(-1) ?? years[years.length - 2]!);
+
+    const mesesAtual = [...(yearMonthMap.get(atual)?.keys() ?? [])].sort((a, b) => a - b);
+    const mesesAnterior = new Set([...(yearMonthMap.get(anterior)?.keys() ?? [])]);
+    const ultimoMesComum = [...mesesAtual].reverse().find((m) => mesesAnterior.has(m)) ?? mesesAtual[mesesAtual.length - 1];
+    if (!ultimoMesComum) {
+      return { ref: null as null | string, high: [] as Array<[string, number, number]>, low: [] as Array<[string, number, number]> };
+    }
+
+    const agregaAteMes = (ano: number, mesLimite: number): Map<string, number> => {
+      const out = new Map<string, number>();
+      const byMonth = yearMonthMap.get(ano);
+      if (!byMonth) return out;
+      [...byMonth.entries()]
+        .filter(([mes]) => mes <= mesLimite)
+        .forEach(([, byCat]) => {
+          byCat.forEach((valor, cat) => out.set(cat, (out.get(cat) ?? 0) + valor));
+        });
+      return out;
+    };
+
+    const mapaAtual = agregaAteMes(atual, ultimoMesComum);
+    const mapaAnterior = agregaAteMes(anterior, ultimoMesComum);
+    const cats = new Set<string>([...mapaAtual.keys(), ...mapaAnterior.keys()]);
+    const variacoes: Array<[string, number, number]> = [];
+    cats.forEach((cat) => {
+      const vAtual = mapaAtual.get(cat) ?? 0;
+      const vAnterior = mapaAnterior.get(cat) ?? 0;
+      const pct = vAnterior > 0 ? ((vAtual - vAnterior) / vAnterior) * 100 : (vAtual > 0 ? 100 : 0);
+      variacoes.push([cat, vAtual - vAnterior, pct]);
+    });
+    const mesRef = String(ultimoMesComum).padStart(2, "0");
+    return {
+      ref: `jan-${mesRef}: ${anterior} x ${atual}`,
+      high: [...variacoes].sort((a, b) => b[1] - a[1]).slice(0, 8),
+      low: [...variacoes].sort((a, b) => a[1] - b[1]).slice(0, 8),
+    };
+  }, [rows, naturezaRows, naturezaNivelView, anoAtualSelecionado, anoAnteriorSelecionado]);
   const chartSeries = useMemo(
     () => composicaoArrecadada.map(([, valor]) => Number(valor.toFixed(2))),
     [composicaoArrecadada],
@@ -439,14 +579,14 @@ export default function PainelReceitaPublicaClient() {
     await el.requestFullscreen();
   };
 
-  // ── Render ───────────────────────────────────────────────────────────────────
+  // â”€â”€ Render â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   if (loading) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
         <div className="flex flex-col items-center gap-3 text-slate-500">
           <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-200 border-t-blue-600" />
-          <span className="text-sm">Carregando receitas públicas…</span>
+          <span className="text-sm">Carregando receitas públicas...</span>
         </div>
       </div>
     );
@@ -471,7 +611,7 @@ export default function PainelReceitaPublicaClient() {
   return (
     <div className="min-h-screen space-y-5 bg-slate-50 p-4 pb-10 dark:bg-slate-900 sm:p-6">
 
-      {/* ── Cards KPI ─────────────────────────────────────────────────────── */}
+      {/* â”€â”€ Cards KPI â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <div className="grid grid-cols-2 gap-4 xl:grid-cols-5">
         <KpiCard
           titulo="Receita Prevista Atualizada"
@@ -556,7 +696,7 @@ export default function PainelReceitaPublicaClient() {
         <div className="mb-3 flex items-center justify-between gap-3">
           <div>
             <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Composição por Natureza da Receita</h3>
-            <p className="text-xs text-slate-400 dark:text-slate-500">Agrupamento oficial por nível 2 ou 3</p>
+            <p className="text-xs text-slate-400 dark:text-slate-500">Agrupamento oficial por Origem ou Espécie</p>
           </div>
           <div className="flex items-center gap-2">
             <div className="inline-flex rounded-lg border border-gray-200 p-0.5 dark:border-gray-700">
@@ -565,14 +705,14 @@ export default function PainelReceitaPublicaClient() {
                 onClick={() => setNaturezaNivelView(2)}
                 className={`rounded-md px-2.5 py-1 text-xs font-medium ${naturezaNivelView === 2 ? "bg-teal-600 text-white" : "text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700"}`}
               >
-                Nível 2
+                Origem
               </button>
               <button
                 type="button"
                 onClick={() => setNaturezaNivelView(3)}
                 className={`rounded-md px-2.5 py-1 text-xs font-medium ${naturezaNivelView === 3 ? "bg-teal-600 text-white" : "text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700"}`}
               >
-                Nível 3
+                Espécie
               </button>
             </div>
             <details className="relative">
@@ -637,12 +777,79 @@ export default function PainelReceitaPublicaClient() {
           </div>
         </div>
       </div>
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800">
+          <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Série mensal empilhada por {naturezaNivelLabel}</h3>
+          <p className="mb-2 text-xs text-slate-400 dark:text-slate-500">Principais categorias por arrecadação no período filtrado</p>
+          {serieMensalEmpilhada.series.length > 0 ? (
+            <Chart options={serieEmpilhadaOptions} series={serieMensalEmpilhada.series} type="bar" height={360} />
+          ) : (
+            <div className="flex h-[360px] items-center justify-center text-sm text-slate-500">Sem dados suficientes para série mensal.</div>
+          )}
+        </div>
+
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Ranking anual por {naturezaNivelLabel}</h3>
+            <div className="flex items-center gap-2">
+              <select
+                className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200"
+                value={anoAnteriorSelecionado ?? ""}
+                onChange={(e) => setAnoComparacaoAnterior(Number(e.target.value))}
+              >
+                {anosDisponiveis.map((ano) => (
+                  <option key={`ano-anterior-${ano}`} value={ano}>{ano}</option>
+                ))}
+              </select>
+              <span className="text-xs text-slate-500">x</span>
+              <select
+                className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200"
+                value={anoAtualSelecionado ?? ""}
+                onChange={(e) => setAnoComparacaoAtual(Number(e.target.value))}
+              >
+                {anosDisponiveis.map((ano) => (
+                  <option key={`ano-atual-${ano}`} value={ano}>{ano}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <p className="mb-2 text-xs text-slate-400 dark:text-slate-500">Maiores altas e quedas {rankingYoY.ref ? `(${rankingYoY.ref})` : ""}</p>
+          {rankingYoY.ref ? (
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <div className="rounded-xl border border-emerald-200 p-2 dark:border-emerald-800">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-300">Maiores altas</p>
+                <div className="space-y-1">
+                  {rankingYoY.high.map(([cat, delta, pct]) => (
+                    <div key={`high-${cat}`} className="flex items-center justify-between text-xs">
+                      <span className="truncate pr-2 text-slate-700 dark:text-slate-200">{cat}</span>
+                      <span className="whitespace-nowrap font-medium text-emerald-700 dark:text-emerald-300">{fmtCompacto(delta)} ({pct.toFixed(1)}%)</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="rounded-xl border border-red-200 p-2 dark:border-red-800">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-red-700 dark:text-red-300">Maiores quedas</p>
+                <div className="space-y-1">
+                  {rankingYoY.low.map(([cat, delta, pct]) => (
+                    <div key={`low-${cat}`} className="flex items-center justify-between text-xs">
+                      <span className="truncate pr-2 text-slate-700 dark:text-slate-200">{cat}</span>
+                      <span className="whitespace-nowrap font-medium text-red-700 dark:text-red-300">{fmtCompacto(delta)} ({pct.toFixed(1)}%)</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="flex h-[360px] items-center justify-center text-sm text-slate-500">Sem anos suficientes para comparação anual.</div>
+          )}
+        </div>
+      </div>
 
     </div>
   );
 }
 
-// ─── Sub-componentes ──────────────────────────────────────────────────────────
+// â”€â”€â”€ Sub-componentes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 type CorKpi = "slate" | "green" | "blue" | "amber" | "red";
 
@@ -707,4 +914,8 @@ function KpiCardDestaque({
     </div>
   );
 }
+
+
+
+
 
