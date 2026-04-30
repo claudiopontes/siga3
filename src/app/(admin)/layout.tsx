@@ -4,7 +4,6 @@ import { useSidebar } from "@/context/SidebarContext";
 import AppHeader from "@/layout/AppHeader";
 import AppSidebar from "@/layout/AppSidebar";
 import Backdrop from "@/layout/Backdrop";
-import { usePathname } from "next/navigation";
 import React from "react";
 
 export default function AdminLayout({
@@ -13,7 +12,6 @@ export default function AdminLayout({
   children: React.ReactNode;
 }) {
   const { isExpanded, isHovered, isMobileOpen } = useSidebar();
-  const pathname = usePathname();
 
   // Dynamic class for main content margin based on sidebar state
   const mainContentMargin = isMobileOpen
@@ -21,13 +19,7 @@ export default function AdminLayout({
     : isExpanded || isHovered
     ? "lg:ml-[290px]"
     : "lg:ml-[90px]";
-  const isPainelCombustivel =
-    pathname === "/painel-combustivel" ||
-    pathname === "/painel-combustivel-empenhos" ||
-    pathname === "/painel-receita-publica";
-  const contentPaddingClass = isPainelCombustivel
-    ? "px-4 pb-4 pt-1 md:px-6 md:pb-6 md:pt-2"
-    : "p-4 md:p-6";
+  const contentPaddingClass = "p-[5px]";
 
   return (
     <div className="min-h-screen xl:flex">

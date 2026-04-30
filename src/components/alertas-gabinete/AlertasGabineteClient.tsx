@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import type React from "react";
 import Link from "next/link";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 
@@ -11,41 +12,49 @@ type AlertaRow = {
   nivel_alerta: "alto" | "medio" | "baixo";
 };
 
+type ProcessoResumoRow = {
+  id_grupo: number;
+  grupo_atual: string;
+  total_processos: number;
+  processos_mais_15_dias: number;
+  processos_sensiveis: number;
+  processos_prazo_regulamentar_vencido: number;
+  maior_duracao_setor: number | null;
+  media_dias_setor: number | null;
+  atualizado_em: string | null;
+};
+
+type ProcessoAlertaRow = {
+  tipo_alerta: string | null;
+  titulo_alerta: string | null;
+  nivel_alerta: "alto" | "medio" | "baixo" | string | null;
+  processo: number | null;
+  grupo_atual: string | null;
+  id_grupo: number | null;
+  relator: string | null;
+  classe: string | null;
+  assunto: string | null;
+  orgao: string | null;
+  atividade_atual: string | null;
+  duracao_setor_dias: number | null;
+  dias_em_atraso: number | null;
+  data_chegada_setor_atual: string | null;
+  atualizado_em: string | null;
+};
+
 const NIVEL_ORDER: Record<AlertaRow["nivel_alerta"], number> = {
   alto: 0,
   medio: 1,
   baixo: 2,
 };
 
+const NIVEL_PROCESSO_ORDER: Record<string, number> = { alto: 0, medio: 1, baixo: 2 };
+
+// TODO: substituir filtro fixo por gabinete vinculado ao usuário autenticado.
+const GABINETE_ATUAL_ID = 20;
+const GABINETE_ATUAL_LABEL = "Gabinete do Cons. Ronald Polanco Ribeiro";
+
 const ALERTAS_SUGERIDOS = [
-  {
-    titulo: "Processos sensíveis",
-    descricao: "Cautelares, denúncias, representações, petições e pedidos de vista que exigem atenção do gabinete.",
-    prioridade: "Processual",
-    tom: "red",
-    icone: (
-      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-        <path d="M14 2v6h6" />
-        <path d="M12 17h.01" />
-        <path d="M12 11v3" />
-      </svg>
-    ),
-  },
-  {
-    titulo: "Processos há mais de 15 dias",
-    descricao: "Processos sem movimentação recente, pendentes de análise ou aguardando providência do gabinete.",
-    prioridade: "Prazo processual",
-    tom: "indigo",
-    icone: (
-      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <circle cx="12" cy="12" r="10" />
-        <path d="M12 6v6l3 2" />
-        <path d="M7 3.5 5 2" />
-        <path d="m17 3.5 2-1.5" />
-      </svg>
-    ),
-  },
   {
     titulo: "Dados atrasados",
     descricao: "Bases sem atualização dentro do prazo esperado ou cargas com falha.",
@@ -129,7 +138,7 @@ const ALERTAS_SUGERIDOS = [
   },
 ];
 
-function NivelBadge({ nivel }: { nivel: AlertaRow["nivel_alerta"] }) {
+function NivelBadge({ nivel }: { nivel: string | null | undefined }) {
   if (nivel === "alto") {
     return (
       <span className="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700 dark:bg-red-900/30 dark:text-red-400">
@@ -171,9 +180,127 @@ function CardSkeleton() {
   );
 }
 
+function formatarNumero(value: number | null | undefined) {
+  if (value === null || value === undefined) return "—";
+  return new Intl.NumberFormat("pt-BR").format(value);
+}
+
+function formatarDataHora(iso: string | null | undefined) {
+  if (!iso) return null;
+  return new Date(iso).toLocaleString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function DocumentoAlertaIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+      <path d="M14 2v6h6" />
+      <path d="M12 17h.01" />
+      <path d="M12 11v3" />
+    </svg>
+  );
+}
+
+function RelogioProcessualIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <circle cx="12" cy="12" r="10" />
+      <path d="M12 6v6l3 2" />
+      <path d="M7 3.5 5 2" />
+      <path d="m17 3.5 2-1.5" />
+    </svg>
+  );
+}
+
+function PrazoVencidoIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+      <path d="M12 9v4" />
+      <path d="M12 17h.01" />
+    </svg>
+  );
+}
+
+function ProcessoCard({
+  titulo,
+  descricao,
+  prioridade,
+  valor,
+  atualizadoEm,
+  icone,
+  destaque = false,
+  semDados,
+}: {
+  titulo: string;
+  descricao: string;
+  prioridade: string;
+  valor: number | null;
+  atualizadoEm: string | null | undefined;
+  icone: React.ReactNode;
+  destaque?: boolean;
+  semDados: boolean;
+}) {
+  return (
+    <div className={`rounded-xl border bg-white p-4 dark:bg-gray-800 ${
+      destaque ? "border-red-200 dark:border-red-800/50" : "border-gray-200 dark:border-gray-700"
+    }`}>
+      <div className="flex items-start justify-between gap-3">
+        <span className={`rounded-full p-1.5 ${
+          destaque
+            ? "bg-red-50 text-red-500 dark:bg-red-900/20 dark:text-red-400"
+            : "bg-gray-50 text-gray-500 dark:bg-gray-900/40 dark:text-gray-300"
+        }`}>
+          {icone}
+        </span>
+        {semDados ? (
+          <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500 dark:bg-gray-700 dark:text-gray-400">
+            Sem dados
+          </span>
+        ) : destaque ? (
+          <NivelBadge nivel="alto" />
+        ) : null}
+      </div>
+      <p className="mt-3 text-sm font-bold text-gray-900 dark:text-white">
+        {titulo}
+      </p>
+      {semDados ? (
+        <p className="mt-1 text-xs font-medium text-gray-400 dark:text-gray-500">
+          Aguardando carga processual
+        </p>
+      ) : (
+        <p className="mt-1 text-2xl font-bold text-gray-900 dark:text-white">
+          {formatarNumero(valor)}
+        </p>
+      )}
+      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+        {descricao}
+      </p>
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
+          {prioridade}
+        </p>
+        {!semDados && atualizadoEm ? (
+          <span className="text-[11px] text-gray-400 dark:text-gray-500">
+            Atualizado em: {formatarDataHora(atualizadoEm)}
+          </span>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 export default function AlertasGabineteClient() {
   const supabaseDisponivel = Boolean(isSupabaseConfigured && supabase);
   const [alertas, setAlertas] = useState<AlertaRow[]>([]);
+  const [resumoProcessos, setResumoProcessos] = useState<ProcessoResumoRow | null>(null);
+  const [alertasProcessos, setAlertasProcessos] = useState<ProcessoAlertaRow[]>([]);
   const [carregando, setCarregando] = useState(supabaseDisponivel);
   const [erro, setErro] = useState<string | null>(
     supabaseDisponivel ? null : "Supabase não configurado."
@@ -189,10 +316,22 @@ export default function AlertasGabineteClient() {
 
     async function carregarAlertas() {
       try {
-        const resAlertas = await clienteSupabase
-          .from("vw_alertas_cauc_ac")
-          .select("codigo_ibge,nome_ente,total_pendencias,nivel_alerta")
-          .order("total_pendencias", { ascending: false });
+        const [resAlertas, resResumoProcessos, resAlertasProcessos] = await Promise.all([
+          clienteSupabase
+            .from("vw_alertas_cauc_ac")
+            .select("codigo_ibge,nome_ente,total_pendencias,nivel_alerta")
+            .order("total_pendencias", { ascending: false }),
+          clienteSupabase
+            .from("vw_processos_gabinete_por_gabinete")
+            .select("id_grupo,grupo_atual,total_processos,processos_mais_15_dias,processos_sensiveis,processos_prazo_regulamentar_vencido,maior_duracao_setor,media_dias_setor,atualizado_em")
+            .eq("id_grupo", GABINETE_ATUAL_ID)
+            .limit(1)
+            .maybeSingle(),
+          clienteSupabase
+            .from("vw_alertas_processos_gabinete")
+            .select("tipo_alerta,titulo_alerta,nivel_alerta,processo,grupo_atual,id_grupo,relator,classe,assunto,orgao,atividade_atual,duracao_setor_dias,dias_em_atraso,data_chegada_setor_atual,atualizado_em")
+            .eq("id_grupo", GABINETE_ATUAL_ID),
+        ]);
 
         if (cancelado) return;
 
@@ -202,6 +341,19 @@ export default function AlertasGabineteClient() {
         }
 
         setAlertas((resAlertas.data ?? []) as AlertaRow[]);
+        if (!resResumoProcessos.error && resResumoProcessos.data) {
+          setResumoProcessos(resResumoProcessos.data as ProcessoResumoRow);
+        } else {
+          setResumoProcessos(null);
+          if (resResumoProcessos.error) console.error("Erro ao carregar resumo processual:", resResumoProcessos.error.message);
+        }
+
+        if (!resAlertasProcessos.error) {
+          setAlertasProcessos((resAlertasProcessos.data ?? []) as ProcessoAlertaRow[]);
+        } else {
+          setAlertasProcessos([]);
+          console.error("Erro ao carregar alertas processuais:", resAlertasProcessos.error.message);
+        }
       } catch (e) {
         if (!cancelado) setErro(String(e));
       } finally {
@@ -234,6 +386,23 @@ export default function AlertasGabineteClient() {
   );
 
   const maiorNivel = comPendencia[0]?.nivel_alerta;
+  const semDadosProcessuais = !resumoProcessos;
+  const alertasProcessosPrioritarios = useMemo(
+    () =>
+      [...alertasProcessos]
+        .sort((a, b) => {
+          const nivelA = NIVEL_PROCESSO_ORDER[a.nivel_alerta ?? ""] ?? 9;
+          const nivelB = NIVEL_PROCESSO_ORDER[b.nivel_alerta ?? ""] ?? 9;
+          if (nivelA !== nivelB) return nivelA - nivelB;
+          const duracao = (b.duracao_setor_dias ?? -1) - (a.duracao_setor_dias ?? -1);
+          if (duracao !== 0) return duracao;
+          const atraso = (b.dias_em_atraso ?? -1) - (a.dias_em_atraso ?? -1);
+          if (atraso !== 0) return atraso;
+          return (a.processo ?? 0) - (b.processo ?? 0);
+        })
+        .slice(0, 6),
+    [alertasProcessos]
+  );
 
   if (erro) {
     return (
@@ -292,6 +461,45 @@ export default function AlertasGabineteClient() {
           </div>
         )}
 
+        {carregando ? (
+          <>
+            <CardSkeleton />
+            <CardSkeleton />
+            <CardSkeleton />
+          </>
+        ) : (
+          <>
+            <ProcessoCard
+              titulo="Processos sensíveis"
+              descricao="Cautelares, denúncias, representações, petições e pedidos de vista no gabinete."
+              prioridade="Processual"
+              valor={resumoProcessos?.processos_sensiveis ?? null}
+              atualizadoEm={resumoProcessos?.atualizado_em}
+              icone={<DocumentoAlertaIcon />}
+              semDados={semDadosProcessuais}
+            />
+            <ProcessoCard
+              titulo="Processos há mais de 15 dias"
+              descricao="Processos aguardando movimentação há mais de 15 dias no gabinete atual."
+              prioridade="Prazo processual"
+              valor={resumoProcessos?.processos_mais_15_dias ?? null}
+              atualizadoEm={resumoProcessos?.atualizado_em}
+              icone={<RelogioProcessualIcon />}
+              semDados={semDadosProcessuais}
+            />
+            <ProcessoCard
+              titulo="Prazo regulamentar vencido"
+              descricao="Processos cujo tempo de registro ultrapassou o prazo regulamentar da classe."
+              prioridade="Alerta processual"
+              valor={resumoProcessos?.processos_prazo_regulamentar_vencido ?? null}
+              atualizadoEm={resumoProcessos?.atualizado_em}
+              icone={<PrazoVencidoIcon />}
+              destaque
+              semDados={semDadosProcessuais}
+            />
+          </>
+        )}
+
         {ALERTAS_SUGERIDOS.map((alerta) => (
           <div
             key={alerta.titulo}
@@ -315,6 +523,76 @@ export default function AlertasGabineteClient() {
           </div>
         ))}
       </div>
+
+      {alertasProcessosPrioritarios.length > 0 ? (
+        <div className="rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
+          <div className="flex flex-col gap-1 border-b border-gray-100 px-4 py-3 dark:border-gray-700 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-sm font-bold text-gray-800 dark:text-white">
+                Alertas processuais prioritários
+              </h2>
+              <p className="text-xs text-gray-400 dark:text-gray-500">
+                Principais alertas do {GABINETE_ATUAL_LABEL}
+              </p>
+            </div>
+            {resumoProcessos?.atualizado_em ? (
+              <span className="text-xs text-gray-400 dark:text-gray-500">
+                Atualizado em: {formatarDataHora(resumoProcessos.atualizado_em)}
+              </span>
+            ) : null}
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-100 bg-gray-50 dark:border-gray-700 dark:bg-gray-900/40">
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Nível</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Tipo</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Processo</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Classe / órgão</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Atividade</th>
+                  <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Dias setor</th>
+                  <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Atraso</th>
+                  <th className="px-4 py-3" />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50 dark:divide-gray-700/50">
+                {alertasProcessosPrioritarios.map((alerta) => (
+                  <tr key={`${alerta.tipo_alerta}-${alerta.processo}-${alerta.duracao_setor_dias}`} className="hover:bg-gray-50 dark:hover:bg-gray-700/30">
+                    <td className="px-4 py-3">
+                      <NivelBadge nivel={alerta.nivel_alerta} />
+                    </td>
+                    <td className="px-4 py-3 text-xs font-medium text-gray-700 dark:text-gray-300">
+                      {alerta.titulo_alerta ?? alerta.tipo_alerta ?? "Alerta processual"}
+                    </td>
+                    <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">
+                      {alerta.processo ?? "—"}
+                    </td>
+                    <td className="max-w-xs px-4 py-3">
+                      <p className="text-xs font-medium text-gray-700 dark:text-gray-300">{alerta.classe ?? "—"}</p>
+                      <p className="truncate text-xs text-gray-400 dark:text-gray-500">{alerta.orgao ?? "Órgão não informado"}</p>
+                    </td>
+                    <td className="max-w-xs px-4 py-3 text-xs text-gray-500 dark:text-gray-400">
+                      {alerta.atividade_atual ?? "—"}
+                    </td>
+                    <td className="px-4 py-3 text-center text-xs font-bold text-gray-700 dark:text-gray-300">
+                      {formatarNumero(alerta.duracao_setor_dias)}
+                    </td>
+                    <td className="px-4 py-3 text-center text-xs font-bold text-red-600 dark:text-red-400">
+                      {formatarNumero(alerta.dias_em_atraso)}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <span className="inline-flex cursor-not-allowed items-center rounded-lg border border-gray-200 px-2.5 py-1 text-xs font-medium text-gray-400 dark:border-gray-700 dark:text-gray-500">
+                        Análise em implantação
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

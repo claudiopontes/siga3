@@ -61,6 +61,10 @@ const AppHeader: React.FC = () => {
             )}
           </button>
 
+          <span className="hidden min-w-0 truncate text-sm font-semibold text-gray-700 dark:text-gray-200 lg:block">
+            Gabinete do Cons. Ronald Polanco Ribeiro
+          </span>
+
           <Link href="/" className="lg:hidden">
             <Image width={123} height={32} className="dark:hidden" src="./images/logo/logo.svg" alt="Logo" />
             <Image width={123} height={32} className="hidden dark:block" src="./images/logo/logo-dark.svg" alt="Logo" />

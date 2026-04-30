@@ -8,7 +8,7 @@ export const metadata: Metadata = {
 
 export default function PainelCoberturaFlorestalPage() {
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 p-1 sm:p-2">
+    <div className="min-h-screen bg-gray-50 p-[5px] dark:bg-gray-900">
       <HomeClient />
     </div>
   );
