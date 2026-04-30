@@ -25,6 +25,7 @@ const AppHeader: React.FC = () => {
     "/painel-combustivel": { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "Combustível NFe" }] },
     "/painel-combustivel-empenhos": { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "Combustível Empenhos" }] },
     "/painel-receita-publica": { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "Receita Pública" }] },
+    "/painel-cauc": { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "CAUC Municípios" }] },
     "/gabinete-digital/mapa": { crumbs: [{ label: "Home", href: "/" }, { label: "Mapa IDEB" }] },
     "/gabinete-digital/seletor-municipio": { crumbs: [{ label: "Home", href: "/" }, { label: "Seletor de Município" }] },
     "/calendar": { crumbs: [{ label: "Home", href: "/" }, { label: "Agenda" }] },

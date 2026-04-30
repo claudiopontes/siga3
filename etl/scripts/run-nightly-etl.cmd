@@ -23,6 +23,16 @@ if errorlevel 1 (
 )
 
 echo. >> "%LOG_FILE%"
+echo [%date% %time%] STEP CAUC - INICIO >> "%LOG_FILE%"
+call "%NPM_CMD%" run cauc >> "%LOG_FILE%" 2>&1
+if errorlevel 1 (
+  set "HAS_ERROR=1"
+  echo [%date% %time%] STEP CAUC - ERRO >> "%LOG_FILE%"
+) else (
+  echo [%date% %time%] STEP CAUC - OK >> "%LOG_FILE%"
+)
+
+echo. >> "%LOG_FILE%"
 echo [%date% %time%] STEP APC Polanco SQL - INICIO >> "%LOG_FILE%"
 call "%NPM_CMD%" run apc-polanco >> "%LOG_FILE%" 2>&1
 if errorlevel 1 (

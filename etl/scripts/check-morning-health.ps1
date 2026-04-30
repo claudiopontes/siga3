@@ -32,7 +32,7 @@ require("dotenv").config();
 const { createClient } = require("@supabase/supabase-js");
 const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 (async () => {
-  for (const table of ["tb_despesa_combustivel_polanco", "receita_publica_categoria_mensal"]) {
+  for (const table of ["tb_despesa_combustivel_polanco", "receita_publica_categoria_mensal", "cauc_situacao_raw"]) {
     const { count, error } = await sb.from(table).select("*", { count: "exact", head: true });
     if (error) {
       console.log(`${table} = ERRO: ${error.message}`);
@@ -54,7 +54,7 @@ const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_R
   const { data, error } = await sb
     .from("etl_log")
     .select("modulo,status,registros,executado_em")
-    .in("modulo", ["apc_polanco_sync_supabase","dimensoes_csv","receita_publica","combustivel"])
+    .in("modulo", ["cauc","apc_polanco_sync_supabase","dimensoes_csv","receita_publica","combustivel"])
     .order("executado_em", { ascending: false })
     .limit(15);
   if (error) {

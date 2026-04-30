@@ -12,6 +12,7 @@
     "dimensoes-receita-sqlserver": "ts-node jobs/dimensoes-receita-sqlserver.ts",
     "receita-publica": "ts-node jobs/receita-publica.ts",
     "populacao-ibge": "ts-node jobs/populacao-ibge.ts",
+    "cauc": "ts-node jobs/cauc.ts",
     "agendar": "ts-node schedule.ts"
   },
   "dependencies": {
