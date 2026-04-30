@@ -541,7 +541,7 @@ export default function PainelEmpenhoClient() {
     grid: { borderColor: "#f1f5f9" },
   };
 
-  const paretoSeries = [
+  const paretoSeries: { name: string; type: "column" | "line"; data: number[] }[] = [
     { name: "Empenhado", type: "column", data: credorPareto.map((r) => r.value) },
     { name: "Acumulado %", type: "line", data: credorPareto.map((r) => r.acumulado) },
   ];

@@ -33,11 +33,9 @@
 - Rotas principais:
   - `src/app/(admin)/painel-combustivel/page.tsx`
   - `src/app/(admin)/gabinete-digital/mapa/page.tsx`
-  - `src/app/(admin)/gabinete-digital/seletor-municipio/page.tsx`
 - Componentes criticos:
   - `src/components/combustivel/PainelCombustivelClient.tsx`
   - `src/components/combustivel/CombustivelHeaderFilters.tsx`
-  - `src/components/Maps/SeletorMunicipio.tsx`
   - `src/layout/AppHeader.tsx` e `src/layout/AppSidebar.tsx`
 - Infra/dados:
   - `src/lib/supabase.ts`
@@ -49,7 +47,7 @@
 ## 5) Estado Atual
 - Ultima atualizacao: 2026-04-16
 - O que ja foi concluido:
-  - Rotas de menu para Combustivel, IDEB Acre (mapa) e Seletor de Municipio estao ativas.
+  - Rotas de menu para Combustivel e IDEB Acre (mapa) estao ativas.
   - Painel de combustivel com filtros via query string (municipio, entidade, tipo, emitente).
   - Carregamento de dados no painel com protecao para Supabase nao configurado.
   - ETL com job de combustivel, job de dimensoes por CSV e scheduler diario.

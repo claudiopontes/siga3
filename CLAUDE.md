@@ -17,17 +17,13 @@ src/
 ├── app/
 │   └── (admin)/
 │       └── gabinete-digital/
-│           ├── mapa/
-│           │   └── page.tsx              # Mapa IDEB por município
-│           └── seletor-municipio/
-│               └── page.tsx              # Seletor de município (sem métricas)
+│           └── mapa/
+│               └── page.tsx              # Mapa IDEB por município
 │
 └── components/
     └── Maps/
         ├── MapaAcre.tsx                  # Wrapper com dynamic import (sem SSR)
-        ├── MapaAcreContent.tsx           # Mapa interativo com IDEB por município
-        ├── SeletorMunicipio.tsx          # Mapa para seleção de município (sem métricas)
-        └── SeletorMunicipioWrapper.tsx   # Wrapper com dynamic import (sem SSR)
+        └── MapaAcreContent.tsx           # Mapa interativo com IDEB por município
 ```
 
 ---
@@ -38,7 +34,6 @@ src/
 |-----------------------|----------------------------------------|
 | Dashboard             | `/`                                    |
 | Mapa IDEB             | `/gabinete-digital/mapa`               |
-| Seletor de Município  | `/gabinete-digital/seletor-municipio`  |
 
 ---
 
@@ -62,13 +57,11 @@ Todos os 22 municípios estão mapeados com `codIBGE`, coordenadas, IDEB e popul
 
 O módulo **Varadouro Digital** aparece no menu principal com sub-itens:
 - Mapa IDEB → `/gabinete-digital/mapa`
-- Seletor de Município → `/gabinete-digital/seletor-municipio`
 
 ---
 
 ## Próximos Passos (a definir)
 
-- [ ] Definir ações a executar após seleção de município no `SeletorMunicipio`
 - [ ] Integrar dados reais do TCE-AC (substituir dados simulados de IDEB)
 - [ ] Desenvolver demais funcionalidades do Varadouro Digital
 
