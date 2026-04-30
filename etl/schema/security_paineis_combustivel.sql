@@ -43,3 +43,12 @@ ON public.tb_despesa_combustivel_polanco
 FOR SELECT
 TO anon, authenticated
 USING (true);
+
+ALTER TABLE IF EXISTS public.combustivel_empenho_mensal ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "read_combustivel_empenho_mensal_anon" ON public.combustivel_empenho_mensal;
+CREATE POLICY "read_combustivel_empenho_mensal_anon"
+ON public.combustivel_empenho_mensal
+FOR SELECT
+TO anon, authenticated
+USING (true);

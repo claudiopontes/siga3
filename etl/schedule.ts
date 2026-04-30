@@ -12,6 +12,8 @@ import { executarSyncApcPolancoSupabase } from "./jobs/apc-polanco-sync-supabase
 import { executarETLReceitaPublica } from "./jobs/receita-publica";
 import { executarCargaDimensoesReceitaSqlServer } from "./jobs/dimensoes-receita-sqlserver";
 import { executarCargaDimensoesEnteEntidadeSqlServer } from "./jobs/dimensoes-ente-entidade-sqlserver";
+import { executarCargaDimensoesEmpenhoSqlServer } from "./jobs/dimensoes-empenho-sqlserver";
+import { executarETLFatoEmpenho } from "./jobs/fato-empenho";
 
 const TIMEZONE = process.env.ETL_TIMEZONE || "America/Rio_Branco";
 const FACT_ETL_CRON = process.env.FACT_ETL_CRON || "0 1 * * *"; // 01:00 daily
@@ -24,6 +26,9 @@ const RUN_DIM_RECEITA_SQLSERVER_NIGHTLY =
   (process.env.RUN_DIM_RECEITA_SQLSERVER_NIGHTLY ?? "true").toLowerCase() !== "false";
 const RUN_DIM_ENTE_ENTIDADE_SQLSERVER_NIGHTLY =
   (process.env.RUN_DIM_ENTE_ENTIDADE_SQLSERVER_NIGHTLY ?? "true").toLowerCase() !== "false";
+const RUN_DIM_EMPENHO_SQLSERVER_NIGHTLY =
+  (process.env.RUN_DIM_EMPENHO_SQLSERVER_NIGHTLY ?? "true").toLowerCase() !== "false";
+const RUN_FATO_EMPENHO_NIGHTLY = (process.env.RUN_FATO_EMPENHO_NIGHTLY ?? "true").toLowerCase() !== "false";
 
 console.log("ETL scheduler started - Varadouro Digital");
 console.log(`Nightly pipeline: cron="${FACT_ETL_CRON}" timezone="${TIMEZONE}"`);
@@ -33,6 +38,7 @@ console.log(`Nightly APC->Supabase sync: ${RUN_APC_POLANCO_SUPABASE_SYNC_NIGHTLY
 console.log(`Nightly Receita Publica: ${RUN_RECEITA_PUBLICA_NIGHTLY ? "enabled" : "disabled"}\n`);
 console.log(`Nightly Dimensoes Receita SQL: ${RUN_DIM_RECEITA_SQLSERVER_NIGHTLY ? "enabled" : "disabled"}\n`);
 console.log(`Nightly Dimensoes Ente/Entidade SQL: ${RUN_DIM_ENTE_ENTIDADE_SQLSERVER_NIGHTLY ? "enabled" : "disabled"}\n`);
+console.log(`Nightly Fato Empenho: ${RUN_FATO_EMPENHO_NIGHTLY ? "enabled" : "disabled"}\n`);
 
 // Full nightly pipeline: once per day
 cron.schedule(
@@ -93,7 +99,25 @@ cron.schedule(
       console.log("[CRON] Step 6/7: dimensoes ente/entidade skipped by RUN_DIM_ENTE_ENTIDADE_SQLSERVER_NIGHTLY=false");
     }
 
-    console.log("[CRON] Step 7/7: combustivel (NFE/SQL Server)");
+    if (RUN_DIM_EMPENHO_SQLSERVER_NIGHTLY) {
+      console.log("[CRON] Step 7/9: dimensoes empenho (SQL Server -> Supabase)");
+      await executarCargaDimensoesEmpenhoSqlServer().catch((error) => {
+        console.error("[CRON] dimensoes empenho sqlserver failed:", error);
+      });
+    } else {
+      console.log("[CRON] Step 7/9: dimensoes empenho skipped by RUN_DIM_EMPENHO_SQLSERVER_NIGHTLY=false");
+    }
+
+    if (RUN_FATO_EMPENHO_NIGHTLY) {
+      console.log("[CRON] Step 8/9: fato empenho (SQL Server -> Supabase)");
+      await executarETLFatoEmpenho().catch((error) => {
+        console.error("[CRON] fato empenho failed:", error);
+      });
+    } else {
+      console.log("[CRON] Step 8/9: fato empenho skipped by RUN_FATO_EMPENHO_NIGHTLY=false");
+    }
+
+    console.log("[CRON] Step 9/9: combustivel (NFE/SQL Server)");
     await executarETLCombustivel().catch((error) => {
       console.error("[CRON] combustivel failed:", error);
     });

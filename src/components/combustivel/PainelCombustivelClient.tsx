@@ -107,7 +107,6 @@ export default function PainelCombustivelClient() {
   const [mensalRows, setMensalRows] = useState<MensalRow[]>([]);
   const [municipios, setMunicipios] = useState<MunicipioRow[]>([]);
   const [hasMensalEmitente, setHasMensalEmitente] = useState(false);
-  const [lastUpdateLabel, setLastUpdateLabel] = useState<string | null>(null);
 
   const selectedMunicipio = searchParams.get("municipio") ?? "all";
   const selectedEntidade = searchParams.get("entidade") ?? "all";
@@ -218,7 +217,7 @@ export default function PainelCombustivelClient() {
       const client = supabase;
 
       try {
-        const [mensalResult, municipioData, updateData] = await Promise.all([
+        const [mensalResult, municipioData] = await Promise.all([
           (async () => {
             try {
               return await fetchAllMensalRows(client);
@@ -230,11 +229,6 @@ export default function PainelCombustivelClient() {
             }
           })(),
           fetchAllMunicipioRows(client),
-          client
-            .from("combustivel_mensal")
-            .select("atualizado_em")
-            .order("atualizado_em", { ascending: false })
-            .limit(1),
         ]);
 
         if (!active) return;
@@ -242,13 +236,6 @@ export default function PainelCombustivelClient() {
         setMensalRows(mensalResult.rows);
         setHasMensalEmitente(mensalResult.hasEmitente);
         setMunicipios(municipioData);
-
-        const raw = (updateData.data?.[0] as { atualizado_em?: string } | undefined)?.atualizado_em;
-        if (raw) {
-          setLastUpdateLabel(
-            new Date(raw).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" }),
-          );
-        }
 
         setLoading(false);
       } catch (error) {
@@ -920,7 +907,7 @@ export default function PainelCombustivelClient() {
   const kpiCardClass =
     "rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-700 dark:bg-gray-800";
   const actionButtonClass =
-    "inline-flex items-center rounded-md border border-gray-200 px-2 py-1 text-xs font-medium text-gray-600 transition hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-700";
+    "inline-flex items-center gap-1.5 rounded-lg border border-teal-200 bg-teal-50 px-2.5 py-1.5 text-xs font-semibold text-teal-700 shadow-sm transition hover:border-teal-300 hover:bg-teal-100 hover:text-teal-800 dark:border-teal-900/70 dark:bg-teal-950/30 dark:text-teal-300 dark:hover:bg-teal-900/40";
   const emptyChartClass =
     "flex h-full items-center justify-center rounded-lg border border-dashed border-gray-300 text-sm text-gray-500 dark:border-gray-700 dark:text-gray-400";
   const trendClass = (delta: number) => {
@@ -936,26 +923,31 @@ export default function PainelCombustivelClient() {
 
   const renderChartActions = (chart: ChartKey) => (
     <details className="relative">
-      <summary className={`${actionButtonClass} list-none cursor-pointer select-none`}>Ações</summary>
-      <div className="absolute right-0 z-20 mt-1 w-40 rounded-lg border border-gray-200 bg-white p-1 shadow-lg dark:border-gray-700 dark:bg-gray-800">
+      <summary className={`${actionButtonClass} list-none cursor-pointer select-none`}>
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
+        Ações
+      </summary>
+      <div className="absolute right-0 z-20 mt-1 w-44 rounded-lg border border-gray-200 bg-white p-1 shadow-lg dark:border-gray-700 dark:bg-gray-800">
         <button
           type="button"
-          className="w-full rounded-md px-3 py-2 text-left text-xs text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
+          className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-xs text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
           onClick={(event) => {
             closeActionsMenu(event);
             setHighlightedChart(chart);
           }}
         >
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
           Visualizar
         </button>
         <button
           type="button"
-          className="w-full rounded-md px-3 py-2 text-left text-xs text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
+          className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-xs text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700"
           onClick={(event) => {
             closeActionsMenu(event);
             printChart(chart);
           }}
         >
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
           Imprimir
         </button>
       </div>
@@ -1055,26 +1047,6 @@ export default function PainelCombustivelClient() {
             <span className="relative">Empenhos SIPAC</span>
           </Link>
 
-          {/* Box Fonte + Atualização */}
-          <div className="relative flex flex-1 flex-col gap-2 rounded-xl border border-sky-200/80 bg-gradient-to-b from-sky-50/90 to-cyan-50/70 p-3 shadow-sm shadow-sky-100/60 dark:border-sky-800/60 dark:from-sky-900/20 dark:to-cyan-900/10 dark:shadow-none">
-            <div className="flex flex-col gap-1">
-              <p className="text-[9px] font-semibold uppercase tracking-[0.1em] text-sky-600/90 dark:text-sky-400">
-                Fonte dos Dados
-              </p>
-              <p className="text-[13px] font-bold leading-tight text-gray-800 dark:text-gray-100">
-                Notas Fiscais Emitidas
-              </p>
-            </div>
-            <div className="h-px w-full bg-gradient-to-r from-sky-200 via-sky-200/70 to-transparent dark:from-sky-700/70 dark:via-sky-700/40" />
-            <div className="flex flex-col gap-1">
-              <p className="text-[9px] font-semibold uppercase tracking-[0.1em] text-sky-600/90 dark:text-sky-400">
-                Última Atualização
-              </p>
-              <p className="text-[13px] font-bold leading-tight text-gray-800 dark:text-gray-100">
-                {lastUpdateLabel ?? "—"}
-              </p>
-            </div>
-          </div>
         </div>
       </div>
       <div className="grid grid-cols-1 gap-3 xl:grid-cols-12">

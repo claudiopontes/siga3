@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { MapContainer, TileLayer, GeoJSON } from "react-leaflet";
@@ -146,7 +146,7 @@ export default function MapaAcreContent({ onSelect }: Props = {}) {
     return buildStyle(municipio?.ideb ?? 3.0, false);
   }, []);
 
-  // Registra handlers em cada polÃ­gono
+  // Registra handlers em cada polígono
   const onEachFeature = useCallback(
     (feature: AcreFeature, layer: Layer) => {
       const cod = feature?.properties?.codarea;
@@ -202,7 +202,7 @@ export default function MapaAcreContent({ onSelect }: Props = {}) {
                   : "text-gray-500 hover:text-gray-700 dark:text-gray-400"
               }`}
             >
-              ðŸ—ºï¸ Mapa
+              Mapa
             </button>
             <button
               onClick={() => setViewMode("lista")}
@@ -212,7 +212,7 @@ export default function MapaAcreContent({ onSelect }: Props = {}) {
                   : "text-gray-500 hover:text-gray-700 dark:text-gray-400"
               }`}
             >
-              ðŸ“‹ Ranking
+              Ranking
             </button>
           </div>
         </div>
@@ -269,10 +269,10 @@ export default function MapaAcreContent({ onSelect }: Props = {}) {
             <div className="absolute bottom-6 left-4 z-1000 rounded-lg bg-white p-3 shadow-lg dark:bg-gray-800">
               <p className="mb-2 text-xs font-semibold text-gray-600 dark:text-gray-300">IDEB</p>
               {[
-                { label: "â‰¥ 5.0", color: "#22c55e" },
-                { label: "4.5 â€“ 4.9", color: "#84cc16" },
-                { label: "4.0 â€“ 4.4", color: "#eab308" },
-                { label: "3.5 â€“ 3.9", color: "#f97316" },
+                { label: "≥ 5.0", color: "#22c55e" },
+                { label: "4.5 – 4.9", color: "#84cc16" },
+                { label: "4.0 – 4.4", color: "#eab308" },
+                { label: "3.5 – 3.9", color: "#f97316" },
                 { label: "< 3.5",  color: "#ef4444" },
               ].map((item) => (
                 <div
@@ -297,7 +297,7 @@ export default function MapaAcreContent({ onSelect }: Props = {}) {
                     onClick={handleDeselect}
                     className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700"
                   >
-                    âœ•
+                    ✕
                   </button>
                 </div>
 
@@ -325,13 +325,12 @@ export default function MapaAcreContent({ onSelect }: Props = {}) {
                   </div>
                 </div>
 
-                {/* Ãrea para Ações futuras */}
+                {/* Área para ações futuras */}
                 <div className="mt-4 border-t border-gray-100 pt-3 dark:border-gray-700">
                   <p className="text-xs text-gray-400">Ações para {selected.nome}</p>
                   <div className="mt-2 space-y-2">
-                    {/* Placeholder â€” substitua pelos botÃµes de aÃ§Ã£o reais */}
                     <button className="w-full rounded-lg bg-blue-50 px-3 py-2 text-left text-xs font-medium text-blue-600 hover:bg-blue-100 dark:bg-blue-900/20 dark:text-blue-400">
-                      Ver detalhes â†’
+                      Ver detalhes →
                     </button>
                   </div>
                 </div>
@@ -345,7 +344,7 @@ export default function MapaAcreContent({ onSelect }: Props = {}) {
           <div className="flex-1 overflow-y-auto p-6">
             <div className="mx-auto max-w-2xl">
               <h2 className="mb-4 text-lg font-semibold text-gray-700 dark:text-gray-200">
-                Ranking IDEB â€” {municipiosAcre.length} municípios
+                Ranking IDEB — {municipiosAcre.length} municípios
               </h2>
               <div className="space-y-2">
                 {[...municipiosAcre]
@@ -397,4 +396,3 @@ export default function MapaAcreContent({ onSelect }: Props = {}) {
     </div>
   );
 }
-

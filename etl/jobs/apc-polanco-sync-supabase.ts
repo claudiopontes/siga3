@@ -155,6 +155,10 @@ export async function executarSyncApcPolancoSupabase(): Promise<void> {
       console.log(`  -> Progresso: ${inseridos}/${total}`);
     }
 
+    console.log("  -> Atualizando tabela agregada combustivel_empenho_mensal...");
+    const { error: rpcError } = await supabase.rpc("fn_refresh_combustivel_empenho_mensal");
+    if (rpcError) throw new Error(`Erro ao atualizar combustivel_empenho_mensal: ${rpcError.message}`);
+
     const duracao = Date.now() - inicio;
     console.log(`  OK - Sync concluido em ${duracao}ms (${inseridos} registros)`);
     await gravarLog("sucesso", inseridos, duracao);

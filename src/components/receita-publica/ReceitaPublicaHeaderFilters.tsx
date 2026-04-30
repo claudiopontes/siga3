@@ -2,7 +2,7 @@
 
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 type NumericValue = number | string | null;
 
@@ -35,6 +35,85 @@ type EnteRow = {
   id_ente: number | string | null;
   nome: string | null;
 };
+
+type FilterDropdownProps = {
+  activeCount: number;
+  loading: boolean;
+  children: ReactNode;
+};
+
+function FilterDropdown({ activeCount, loading, children }: FilterDropdownProps) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onEsc = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("mousedown", handler);
+    document.addEventListener("keydown", onEsc);
+    return () => {
+      document.removeEventListener("mousedown", handler);
+      document.removeEventListener("keydown", onEsc);
+    };
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        disabled={loading}
+        className={`flex h-11 items-center gap-2 rounded-lg border px-4 text-sm font-medium shadow-theme-xs transition-colors disabled:opacity-60 ${
+          open || activeCount > 0
+            ? "border-teal-400 bg-teal-50 text-teal-700 dark:border-teal-600 dark:bg-teal-900/20 dark:text-teal-300"
+            : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
+        }`}
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+        </svg>
+        <span>Filtros</span>
+        {activeCount > 0 && (
+          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-teal-600 text-[10px] font-bold text-white dark:bg-teal-500">
+            {activeCount}
+          </span>
+        )}
+        {loading && (
+          <svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+          </svg>
+        )}
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className={`ml-auto transition-transform duration-200 ${open ? "rotate-180" : ""}`}
+        >
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      </button>
+
+      {open && (
+        <div className="absolute left-0 top-[calc(100%+6px)] z-110000 w-[520px] max-w-[calc(100vw-2rem)] rounded-xl border border-gray-200 bg-white p-4 shadow-xl dark:border-gray-700 dark:bg-gray-900">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500">
+            Filtros disponíveis
+          </p>
+          <div className="space-y-2">
+            {children}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function toStringValue(value: NumericValue | undefined): string {
   if (value === null || value === undefined || value === "") return "";
@@ -288,19 +367,19 @@ export default function ReceitaPublicaHeaderFilters() {
   return (
     <>
       <div className="flex w-full flex-wrap items-center gap-2 pb-1">
-        <div className="flex h-11 shrink-0 items-center gap-1 rounded-lg border border-gray-200 bg-transparent px-2 shadow-theme-xs dark:border-gray-700">
-          <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Período</span>
-          <button type="button" onClick={() => setDialog("anoInicio")} className="h-7 rounded-md border border-gray-200 bg-transparent px-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800">{displayedAnoInicio || "—"}</button>
-          <span className="text-xs text-gray-400">a</span>
-          <button type="button" onClick={() => setDialog("anoFim")} className="h-7 rounded-md border border-gray-200 bg-transparent px-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800">{displayedAnoFim || "—"}</button>
-        </div>
-
-        <FilterTrigger label="Ente" value={selectedMunicipio} placeholder="Todos" options={municipioOptions} onClick={() => setDialog("municipio")} />
-        <FilterTrigger label="Entidade" value={selectedEntidade} placeholder="Todas" options={availableEntidades} onClick={() => setDialog("entidade")} />
-
-        {hasActiveFilters ? (
-          <button type="button" onClick={clearAllFilters} className="h-11 shrink-0 rounded-lg border border-red-200 bg-red-50 px-3 text-sm font-medium text-red-700 hover:bg-red-100 dark:border-red-800/70 dark:bg-red-900/20 dark:text-red-300 dark:hover:bg-red-900/35">Limpar filtros ({activeFilterCount})</button>
-        ) : null}
+        <FilterDropdown activeCount={activeFilterCount} loading={loading && !hasLoadedOnce}>
+          <div className="flex h-11 items-center gap-1 rounded-lg border border-gray-200 bg-transparent px-2 shadow-theme-xs dark:border-gray-700">
+            <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Período</span>
+            <button type="button" onClick={() => setDialog("anoInicio")} className="h-7 rounded-md border border-gray-200 bg-transparent px-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800">{displayedAnoInicio || "—"}</button>
+            <span className="text-xs text-gray-400">a</span>
+            <button type="button" onClick={() => setDialog("anoFim")} className="h-7 rounded-md border border-gray-200 bg-transparent px-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800">{displayedAnoFim || "—"}</button>
+          </div>
+          <FilterTrigger label="Ente" value={selectedMunicipio} placeholder="Todos" options={municipioOptions} onClick={() => setDialog("municipio")} />
+          <FilterTrigger label="Entidade" value={selectedEntidade} placeholder="Todas" options={availableEntidades} onClick={() => setDialog("entidade")} />
+          {hasActiveFilters ? (
+            <button type="button" onClick={clearAllFilters} className="h-11 rounded-lg border border-red-200 bg-red-50 px-3 text-sm font-medium text-red-700 hover:bg-red-100 dark:border-red-800/70 dark:bg-red-900/20 dark:text-red-300 dark:hover:bg-red-900/35">Limpar filtros ({activeFilterCount})</button>
+          ) : null}
+        </FilterDropdown>
 
         {loading && !hasLoadedOnce ? <span className="shrink-0 whitespace-nowrap text-xs text-gray-500 dark:text-gray-400">Carregando filtros...</span> : null}
       </div>

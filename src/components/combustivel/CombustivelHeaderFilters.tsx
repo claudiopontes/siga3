@@ -7,7 +7,7 @@ import {
   normalizeName,
 } from "@/components/combustivel/filter-utils";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 type MunicipioRow = {
   codigo: string;
@@ -71,7 +71,7 @@ function isMissingEmitenteColumnError(error: unknown): boolean {
 function normalizeText(value: string): string {
   return value
     .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[̀-ͯ]/g, "")
     .toLowerCase()
     .trim();
 }
@@ -114,7 +114,7 @@ function DialogShell({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[120000] flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-120000 flex items-center justify-center p-4">
       <button
         type="button"
         aria-label="Fechar diálogo"
@@ -309,6 +309,95 @@ function MultiFilterDialog({
     </DialogShell>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Dropdown de filtros (Opção 1)
+// ---------------------------------------------------------------------------
+
+type FilterDropdownProps = {
+  activeCount: number;
+  loading: boolean;
+  children: React.ReactNode;
+};
+
+function FilterDropdown({ activeCount, loading, children }: FilterDropdownProps) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onEsc = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("mousedown", handler);
+    document.addEventListener("keydown", onEsc);
+    return () => {
+      document.removeEventListener("mousedown", handler);
+      document.removeEventListener("keydown", onEsc);
+    };
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        disabled={loading}
+        className={`flex h-11 items-center gap-2 rounded-lg border px-4 text-sm font-medium shadow-theme-xs transition-colors disabled:opacity-60 ${
+          open || activeCount > 0
+            ? "border-teal-400 bg-teal-50 text-teal-700 dark:border-teal-600 dark:bg-teal-900/20 dark:text-teal-300"
+            : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
+        }`}
+      >
+        {/* Funnel icon */}
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+        </svg>
+        <span>Filtros</span>
+        {activeCount > 0 && (
+          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-teal-600 text-[10px] font-bold text-white dark:bg-teal-500">
+            {activeCount}
+          </span>
+        )}
+        {loading && (
+          <svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+          </svg>
+        )}
+        {/* Chevron */}
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className={`ml-auto transition-transform duration-200 ${open ? "rotate-180" : ""}`}
+        >
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      </button>
+
+      {open && (
+        <div className="absolute left-0 top-[calc(100%+6px)] z-110000 w-[520px] max-w-[calc(100vw-2rem)] rounded-xl border border-gray-200 bg-white p-4 shadow-xl dark:border-gray-700 dark:bg-gray-900">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500">
+            Filtros disponíveis
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            {children}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Componente principal
+// ---------------------------------------------------------------------------
 
 export default function CombustivelHeaderFilters() {
   const router = useRouter();
@@ -535,162 +624,146 @@ export default function CombustivelHeaderFilters() {
   const selectedEntidadeTitle = buildTitle(entidadeOptions, selectedEntidade, "Todos");
   const selectedTipoTitle = buildMultiTitle(tipoOptions, selectedTipos);
   const selectedEmitenteTitle = buildTitle(emitenteOptions, selectedEmitente, "Todos");
+
   const hasActiveFilters =
     selectedMunicipio !== "all" ||
     selectedEntidade !== "all" ||
     selectedTipos.length > 0 ||
     selectedEmitente !== "all";
+
   const activeFilterCount =
     (selectedMunicipio !== "all" ? 1 : 0) +
     (selectedEntidade !== "all" ? 1 : 0) +
     selectedTipos.length +
     (selectedEmitente !== "all" ? 1 : 0);
 
+  const filterItemClass = (active: boolean) =>
+    `flex flex-col gap-0.5 rounded-lg border px-3 py-2.5 text-left text-sm transition-colors hover:bg-gray-50 dark:hover:bg-gray-800 ${
+      active
+        ? "border-teal-300 bg-teal-50 dark:border-teal-700 dark:bg-teal-900/20"
+        : "border-gray-200 dark:border-gray-700"
+    }`;
+
   return (
     <>
-      <div className="flex w-full items-center gap-2 overflow-x-auto pb-1">
-        <button
-          type="button"
-          onClick={() => setMunicipioDialogOpen(true)}
-          disabled={loading || Boolean(error)}
-          className="h-11 min-w-[180px] shrink-0 rounded-lg border border-gray-200 bg-transparent px-3 text-left text-sm text-gray-800 shadow-theme-xs disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-700 dark:text-white/90 lg:min-w-0 lg:flex-1 lg:shrink"
-        >
-          <span className="mr-2 text-xs text-gray-500 dark:text-gray-400">Município:</span>
-          <span className="inline-block max-w-[72%] truncate align-bottom font-medium">{selectedMunicipioTitle}</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setEntidadeDialogOpen(true)}
-          disabled={loading || Boolean(error)}
-          className="h-11 min-w-[220px] shrink-0 rounded-lg border border-gray-200 bg-transparent px-3 text-left text-sm text-gray-800 shadow-theme-xs disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-700 dark:text-white/90 lg:min-w-0 lg:flex-1 lg:shrink"
-        >
-          <span className="mr-2 text-xs text-gray-500 dark:text-gray-400">Entidade:</span>
-          <span className="inline-block max-w-[72%] truncate align-bottom font-medium">{selectedEntidadeTitle}</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setTipoDialogOpen(true)}
-          disabled={loading || Boolean(error)}
-          className="h-11 min-w-[220px] shrink-0 rounded-lg border border-gray-200 bg-transparent px-3 text-left text-sm text-gray-800 shadow-theme-xs disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-700 dark:text-white/90 lg:min-w-0 lg:flex-1 lg:shrink"
-        >
-          <span className="mr-2 text-xs text-gray-500 dark:text-gray-400">Tipo:</span>
-          <span className="inline-block max-w-[72%] truncate align-bottom font-medium">{selectedTipoTitle}</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setEmitenteDialogOpen(true)}
-          disabled={loading || Boolean(error)}
-          className="h-11 min-w-[260px] shrink-0 rounded-lg border border-gray-200 bg-transparent px-3 text-left text-sm text-gray-800 shadow-theme-xs disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-700 dark:text-white/90 lg:min-w-0 lg:flex-1 lg:shrink"
-        >
-          <span className="mr-2 text-xs text-gray-500 dark:text-gray-400">Emitente:</span>
-          <span className="inline-block max-w-[72%] truncate align-bottom font-medium">
-            {selectedEmitenteTitle}
-          </span>
-        </button>
-
-        {hasActiveFilters ? (
+      <div className="flex items-center gap-3">
+        <FilterDropdown activeCount={activeFilterCount} loading={loading}>
+          {/* Município */}
           <button
             type="button"
-            onClick={() => {
-              replaceParams((params) => {
-                params.delete("municipio");
-                params.delete("entidade");
-                params.delete("tipo");
-                params.delete("emitente");
-                params.delete("periodo");
-              });
-            }}
-            className="h-11 shrink-0 rounded-lg border border-red-200 bg-red-50 px-3 text-sm font-medium text-red-700 hover:bg-red-100 dark:border-red-800/70 dark:bg-red-900/20 dark:text-red-300 dark:hover:bg-red-900/35"
+            onClick={() => setMunicipioDialogOpen(true)}
+            disabled={loading}
+            className={filterItemClass(selectedMunicipio !== "all")}
           >
-            Limpar filtros ({activeFilterCount})
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500">Município</span>
+            <span className={`truncate font-medium ${selectedMunicipio !== "all" ? "text-teal-700 dark:text-teal-300" : "text-gray-700 dark:text-gray-200"}`}>
+              {selectedMunicipioTitle}
+            </span>
           </button>
-        ) : null}
 
-        {loading ? (
-          <span className="shrink-0 whitespace-nowrap text-xs text-gray-500 dark:text-gray-400">
-            Carregando filtros...
-          </span>
-        ) : null}
+          {/* Entidade */}
+          <button
+            type="button"
+            onClick={() => setEntidadeDialogOpen(true)}
+            disabled={loading}
+            className={filterItemClass(selectedEntidade !== "all")}
+          >
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500">Entidade</span>
+            <span className={`truncate font-medium ${selectedEntidade !== "all" ? "text-teal-700 dark:text-teal-300" : "text-gray-700 dark:text-gray-200"}`}>
+              {selectedEntidadeTitle}
+            </span>
+          </button>
+
+          {/* Tipo */}
+          <button
+            type="button"
+            onClick={() => setTipoDialogOpen(true)}
+            disabled={loading}
+            className={filterItemClass(selectedTipos.length > 0)}
+          >
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500">Tipo</span>
+            <span className={`truncate font-medium ${selectedTipos.length > 0 ? "text-teal-700 dark:text-teal-300" : "text-gray-700 dark:text-gray-200"}`}>
+              {selectedTipoTitle}
+            </span>
+          </button>
+
+          {/* Emitente */}
+          <button
+            type="button"
+            onClick={() => setEmitenteDialogOpen(true)}
+            disabled={loading}
+            className={filterItemClass(selectedEmitente !== "all")}
+          >
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500">Emitente</span>
+            <span className={`truncate font-medium ${selectedEmitente !== "all" ? "text-teal-700 dark:text-teal-300" : "text-gray-700 dark:text-gray-200"}`}>
+              {selectedEmitenteTitle}
+            </span>
+          </button>
+        </FilterDropdown>
+
+        {/* Chips de filtros ativos */}
+        {hasActiveFilters && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            {selectedMunicipio !== "all" && (
+              <button
+                type="button"
+                onClick={() => replaceParams((p) => { p.delete("municipio"); p.delete("entidade"); p.delete("periodo"); })}
+                className="inline-flex items-center gap-1 rounded-full border border-teal-200 bg-teal-50 px-2.5 py-1 text-xs font-medium text-teal-700 hover:bg-teal-100 dark:border-teal-700/50 dark:bg-teal-900/20 dark:text-teal-300"
+              >
+                {selectedMunicipioTitle}
+                <span className="opacity-60">×</span>
+              </button>
+            )}
+            {selectedEntidade !== "all" && (
+              <button
+                type="button"
+                onClick={() => replaceParams((p) => { p.delete("entidade"); p.delete("periodo"); })}
+                className="inline-flex items-center gap-1 rounded-full border border-teal-200 bg-teal-50 px-2.5 py-1 text-xs font-medium text-teal-700 hover:bg-teal-100 dark:border-teal-700/50 dark:bg-teal-900/20 dark:text-teal-300"
+              >
+                {selectedEntidadeTitle}
+                <span className="opacity-60">×</span>
+              </button>
+            )}
+            {selectedTipos.map((tipo) => (
+              <button
+                key={tipo}
+                type="button"
+                onClick={() => replaceParams((p) => {
+                  const next = selectedTipos.filter((t) => t !== tipo);
+                  p.delete("tipo");
+                  next.forEach((t) => p.append("tipo", t));
+                  p.delete("periodo");
+                })}
+                className="inline-flex items-center gap-1 rounded-full border border-teal-200 bg-teal-50 px-2.5 py-1 text-xs font-medium text-teal-700 hover:bg-teal-100 dark:border-teal-700/50 dark:bg-teal-900/20 dark:text-teal-300"
+              >
+                {tipo}
+                <span className="opacity-60">×</span>
+              </button>
+            ))}
+            {selectedEmitente !== "all" && (
+              <button
+                type="button"
+                onClick={() => replaceParams((p) => p.delete("emitente"))}
+                className="inline-flex items-center gap-1 rounded-full border border-teal-200 bg-teal-50 px-2.5 py-1 text-xs font-medium text-teal-700 hover:bg-teal-100 dark:border-teal-700/50 dark:bg-teal-900/20 dark:text-teal-300"
+              >
+                {selectedEmitenteTitle}
+                <span className="opacity-60">×</span>
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => replaceParams((p) => { p.delete("municipio"); p.delete("entidade"); p.delete("tipo"); p.delete("emitente"); p.delete("periodo"); })}
+              className="inline-flex items-center gap-1 rounded-full border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-medium text-red-600 hover:bg-red-100 dark:border-red-800/50 dark:bg-red-900/20 dark:text-red-400"
+            >
+              Limpar tudo
+            </button>
+          </div>
+        )}
+
         {error ? (
-          <span className="max-w-[220px] shrink-0 truncate text-xs text-red-600 dark:text-red-400">
-            {error}
-          </span>
+          <span className="truncate text-xs text-red-600 dark:text-red-400">{error}</span>
         ) : null}
       </div>
-
-      {hasActiveFilters ? (
-        <div className="flex flex-wrap items-center gap-2 pt-1">
-          {selectedMunicipio !== "all" ? (
-            <button
-              type="button"
-              onClick={() => {
-                replaceParams((params) => {
-                  params.delete("municipio");
-                  params.delete("entidade");
-                  params.delete("periodo");
-                });
-              }}
-              className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-xs text-gray-700 hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
-            >
-              <span>Município: {selectedMunicipioTitle}</span>
-              <span className="font-semibold">x</span>
-            </button>
-          ) : null}
-
-          {selectedEntidade !== "all" ? (
-            <button
-              type="button"
-              onClick={() => {
-                replaceParams((params) => {
-                  params.delete("entidade");
-                  params.delete("periodo");
-                });
-              }}
-              className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-xs text-gray-700 hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
-            >
-              <span>Entidade: {selectedEntidadeTitle}</span>
-              <span className="font-semibold">x</span>
-            </button>
-          ) : null}
-
-          {selectedTipos.map((tipo) => (
-            <button
-              key={tipo}
-              type="button"
-              onClick={() => {
-                replaceParams((params) => {
-                  const nextTipos = selectedTipos.filter((item) => item !== tipo);
-                  params.delete("tipo");
-                  nextTipos.forEach((item) => params.append("tipo", item));
-                  params.delete("periodo");
-                });
-              }}
-              className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-xs text-gray-700 hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
-            >
-              <span>Tipo: {tipo}</span>
-              <span className="font-semibold">x</span>
-            </button>
-          ))}
-
-          {selectedEmitente !== "all" ? (
-            <button
-              type="button"
-              onClick={() => {
-                replaceParams((params) => {
-                  params.delete("emitente");
-                });
-              }}
-              className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-xs text-gray-700 hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
-            >
-              <span>Emitente: {selectedEmitenteTitle}</span>
-              <span className="font-semibold">x</span>
-            </button>
-          ) : null}
-        </div>
-      ) : null}
 
       <SingleFilterDialog
         title="Selecionar Município"

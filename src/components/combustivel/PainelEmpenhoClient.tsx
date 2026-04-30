@@ -11,15 +11,16 @@ import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 const Chart = dynamic(() => import("react-apexcharts"), { ssr: false });
 
 type EmpenhoRow = {
-  id_despesa: number;
+  ano: number;
+  mes: number;
   entidade: string;
-  ano_empenho: number;
-  data_empenho: string;
-  nome_credor: string;
   tipo_combustivel: string;
   forma_fornecimento: string;
+  nome_credor: string;
   valor_empenho: number;
   valor_liquidado: number;
+  qtd_empenhos: number;
+  atualizado_em: string;
 };
 
 type ChartKey = "line" | "treemap" | "pie" | "donut" | "credorBar" | "pareto";
@@ -58,8 +59,8 @@ function formatDeltaPercent(value: number): string {
   }).format(value)}%`;
 }
 
-function monthKey(dateStr: string): string {
-  return dateStr.slice(0, 7);
+function rowMonthKey(row: EmpenhoRow): string {
+  return `${row.ano}-${String(row.mes).padStart(2, "0")}`;
 }
 
 function toMonthLabel(value: string | null): string {
@@ -69,19 +70,6 @@ function toMonthLabel(value: string | null): string {
   if (!year || !month) return value;
 
   return `${month}/${year}`;
-}
-
-function formatDateBR(value: string | null | undefined): string | null {
-  if (!value) return null;
-
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return null;
-
-  return parsed.toLocaleDateString("pt-BR", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  });
 }
 
 function extractErrorMessage(error: unknown): string {
@@ -105,7 +93,6 @@ export default function PainelEmpenhoClient() {
   const [error, setError] = useState<string | null>(null);
   const [highlightedChart, setHighlightedChart] = useState<ChartKey | null>(null);
   const [rows, setRows] = useState<EmpenhoRow[]>([]);
-  const [lastUpdateLabel, setLastUpdateLabel] = useState<string | null>(null);
 
   const selectedEntidade = searchParams.get("entidade") ?? "all";
   const selectedTipos = searchParams.getAll("tipo").filter((t) => t.length > 0);
@@ -134,11 +121,10 @@ export default function PainelEmpenhoClient() {
 
         while (true) {
           const { data, error } = await supabase
-            .from("tb_despesa_combustivel_polanco")
-            .select(
-              "id_despesa, entidade, ano_empenho, data_empenho, nome_credor, tipo_combustivel, forma_fornecimento, valor_empenho, valor_liquidado",
-            )
-            .order("data_empenho", { ascending: true })
+            .from("combustivel_empenho_mensal")
+            .select("ano, mes, entidade, tipo_combustivel, forma_fornecimento, nome_credor, valor_empenho, valor_liquidado, qtd_empenhos, atualizado_em")
+            .order("ano", { ascending: true })
+            .order("mes", { ascending: true })
             .range(offset, offset + pageSize - 1);
 
           if (error) throw error;
@@ -154,18 +140,11 @@ export default function PainelEmpenhoClient() {
 
         setRows(out);
 
-        const mostRecentDate = out
-          .map((row) => row.data_empenho)
-          .filter(Boolean)
-          .sort()
-          .at(-1);
-
-        setLastUpdateLabel(formatDateBR(mostRecentDate));
 
         // Auto-seleciona os últimos 2 anos se nenhum filtro de ano estiver definido
         const params = new URLSearchParams(window.location.search);
         if (!params.get("anoInicio") && !params.get("anoFim")) {
-          const anos = [...new Set(out.map((r) => r.ano_empenho))].sort((a, b) => a - b);
+          const anos = [...new Set(out.map((r) => r.ano))].sort((a, b) => a - b);
           const maxAno = anos.at(-1) ?? new Date().getFullYear();
           params.set("anoInicio", String(maxAno - 1));
           params.set("anoFim", String(maxAno));
@@ -209,7 +188,7 @@ export default function PainelEmpenhoClient() {
   );
 
   const availableYears = useMemo(
-    () => [...new Set(rows.map((r) => r.ano_empenho))].filter(Boolean).sort((a, b) => a - b),
+    () => [...new Set(rows.map((r) => r.ano))].filter(Boolean).sort((a, b) => a - b),
     [rows],
   );
 
@@ -237,12 +216,12 @@ export default function PainelEmpenhoClient() {
 
     if (selectedAnoInicio) {
       const inicio = parseInt(selectedAnoInicio, 10);
-      r = r.filter((row) => row.ano_empenho >= inicio);
+      r = r.filter((row) => row.ano >= inicio);
     }
 
     if (selectedAnoFim) {
       const fim = parseInt(selectedAnoFim, 10);
-      r = r.filter((row) => row.ano_empenho <= fim);
+      r = r.filter((row) => row.ano <= fim);
     }
 
     return r;
@@ -259,18 +238,21 @@ export default function PainelEmpenhoClient() {
   );
 
   const pctExecutado = totalEmpenhado > 0 ? (totalLiquidado / totalEmpenhado) * 100 : 0;
-  const qtdEmpenhos = filteredRows.length;
+  const qtdEmpenhos = useMemo(
+    () => filteredRows.reduce((s, r) => s + (r.qtd_empenhos ?? 0), 0),
+    [filteredRows],
+  );
 
   const kpiVariation = useMemo(() => {
     const byMonth = new Map<string, { emp: number; liq: number; qtd: number }>();
 
     for (const r of filteredRows) {
-      const key = monthKey(r.data_empenho);
+      const key = rowMonthKey(r);
       const cur = byMonth.get(key) ?? { emp: 0, liq: 0, qtd: 0 };
 
       cur.emp += r.valor_empenho ?? 0;
       cur.liq += r.valor_liquidado ?? 0;
-      cur.qtd += 1;
+      cur.qtd += r.qtd_empenhos ?? 0;
 
       byMonth.set(key, cur);
     }
@@ -294,7 +276,7 @@ export default function PainelEmpenhoClient() {
     const byMonth = new Map<string, { emp: number; liq: number }>();
 
     for (const r of filteredRows) {
-      const key = monthKey(r.data_empenho);
+      const key = rowMonthKey(r);
       const cur = byMonth.get(key) ?? { emp: 0, liq: 0 };
 
       cur.emp += r.valor_empenho ?? 0;
@@ -741,27 +723,6 @@ export default function PainelEmpenhoClient() {
               <span className="relative">Notas Fiscais</span>
             </Link>
 
-            <div className="flex min-h-[76px] flex-1 flex-col justify-center rounded-xl border border-sky-200 bg-sky-50/80 px-3 py-2 shadow-sm shadow-sky-100/70 ring-1 ring-white/60 dark:border-sky-800/60 dark:bg-slate-900/30 dark:shadow-none dark:ring-sky-900/20">
-              <div>
-                <p className="text-[8px] font-semibold uppercase tracking-[0.15em] text-sky-600 dark:text-sky-400">
-                  FONTE DOS DADOS
-                </p>
-                <p className="mt-0.5 text-xs font-bold leading-tight text-slate-900 dark:text-slate-100">
-                  Empenhos SIPAC
-                </p>
-              </div>
-
-              <div className="my-1.5 h-px w-full bg-sky-200/90 dark:bg-sky-800/60" />
-
-              <div>
-                <p className="text-[8px] font-semibold uppercase tracking-[0.15em] text-sky-600 dark:text-sky-400">
-                  ÚLTIMA ATUALIZAÇÃO
-                </p>
-                <p className="mt-0.5 text-xs font-bold leading-tight text-slate-900 dark:text-slate-100">
-                  {lastUpdateLabel ?? "—"}
-                </p>
-              </div>
-            </div>
           </div>
         </div>
       </div>
@@ -1009,10 +970,19 @@ function ChartActions({
 }) {
   return (
     <details className="relative">
-      <summary className="inline-flex list-none cursor-pointer select-none items-center rounded-md border border-gray-200 px-2 py-1 text-xs font-medium text-gray-600 transition hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-700">Ações</summary>
+      <summary className="inline-flex list-none cursor-pointer select-none items-center gap-1.5 rounded-lg border border-teal-200 bg-teal-50 px-2.5 py-1.5 text-xs font-semibold text-teal-700 shadow-sm transition hover:border-teal-300 hover:bg-teal-100 hover:text-teal-800 dark:border-teal-900/70 dark:bg-teal-950/30 dark:text-teal-300 dark:hover:bg-teal-900/40">
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
+        Ações
+      </summary>
       <div className="absolute right-0 z-20 mt-1 w-40 rounded-lg border border-gray-200 bg-white p-1 shadow-lg dark:border-gray-700 dark:bg-gray-800">
-        <button type="button" className="w-full rounded-md px-3 py-2 text-left text-xs text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700" onClick={(event) => { onCloseMenu(event); onView(); }}>Visualizar</button>
-        <button type="button" className="w-full rounded-md px-3 py-2 text-left text-xs text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700" onClick={(event) => { onCloseMenu(event); onPrint(chartKey); }}>Imprimir</button>
+        <button type="button" className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-xs text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700" onClick={(event) => { onCloseMenu(event); onView(); }}>
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          Visualizar
+        </button>
+        <button type="button" className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-xs text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700" onClick={(event) => { onCloseMenu(event); onPrint(chartKey); }}>
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+          Imprimir
+        </button>
       </div>
     </details>
   );

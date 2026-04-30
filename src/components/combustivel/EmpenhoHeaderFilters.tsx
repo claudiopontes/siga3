@@ -1,9 +1,9 @@
-"use client";
+﻿"use client";
 
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import { normalizeName } from "@/components/combustivel/filter-utils";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 type Option = { value: string; label: string };
 
@@ -27,14 +27,7 @@ type MultiFilterDialogProps = {
 };
 
 function normalizeText(value: string): string {
-  return value.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
-}
-
-function formatDateBR(value: string): string {
-  if (!value) return "";
-  const [year, month, day] = value.split("-");
-  if (!year || !month || !day) return value;
-  return `${day}/${month}/${year}`;
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
 }
 
 function buildTitle(options: Option[], value: string, allLabel: string): string {
@@ -72,7 +65,7 @@ function DialogShell({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[120000] flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-120000 flex items-center justify-center p-4">
       <button type="button" aria-label="Fechar" className="absolute inset-0 bg-gray-900/40" onClick={onClose} />
       <div className="relative max-h-[80vh] w-full max-w-2xl overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900">
         <div className="flex items-center justify-between border-b border-gray-200 px-5 py-3 dark:border-gray-700">
@@ -214,6 +207,89 @@ function MultiFilterDialog({ title, isOpen, options, selectedValues, onClose, on
   );
 }
 
+// ---------------------------------------------------------------------------
+// Componente principal
+// ---------------------------------------------------------------------------
+
+type FilterDropdownProps = {
+  activeCount: number;
+  loading: boolean;
+  children: React.ReactNode;
+};
+
+function FilterDropdown({ activeCount, loading, children }: FilterDropdownProps) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onEsc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    document.addEventListener("keydown", onEsc);
+    return () => {
+      document.removeEventListener("mousedown", handler);
+      document.removeEventListener("keydown", onEsc);
+    };
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        disabled={loading}
+        className={`flex h-11 items-center gap-2 rounded-lg border px-4 text-sm font-medium shadow-theme-xs transition-colors disabled:opacity-60 ${
+          open || activeCount > 0
+            ? "border-teal-400 bg-teal-50 text-teal-700 dark:border-teal-600 dark:bg-teal-900/20 dark:text-teal-300"
+            : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
+        }`}
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+        </svg>
+        <span>Filtros</span>
+        {activeCount > 0 && (
+          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-teal-600 text-[10px] font-bold text-white dark:bg-teal-500">
+            {activeCount}
+          </span>
+        )}
+        {loading && (
+          <svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+          </svg>
+        )}
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className={`ml-auto transition-transform duration-200 ${open ? "rotate-180" : ""}`}
+        >
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      </button>
+
+      {open && (
+        <div className="absolute left-0 top-[calc(100%+6px)] z-110000 w-[520px] max-w-[calc(100vw-2rem)] rounded-xl border border-gray-200 bg-white p-4 shadow-xl dark:border-gray-700 dark:bg-gray-900">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500">
+            Filtros disponíveis
+          </p>
+          <div className="grid grid-cols-2 gap-2">{children}</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function EmpenhoHeaderFilters() {
   const router = useRouter();
   const pathname = usePathname();
@@ -221,6 +297,7 @@ export default function EmpenhoHeaderFilters() {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
   const [entidades, setEntidades] = useState<string[]>([]);
   const [tipos, setTipos] = useState<string[]>([]);
   const [credores, setCredores] = useState<string[]>([]);
@@ -264,8 +341,8 @@ export default function EmpenhoHeaderFilters() {
 
         while (true) {
           const { data, error } = await supabase
-            .from("tb_despesa_combustivel_polanco")
-            .select("entidade, tipo_combustivel, nome_credor, forma_fornecimento, ano_empenho")
+            .from("combustivel_empenho_mensal")
+            .select("entidade, tipo_combustivel, nome_credor, forma_fornecimento, ano")
             .order("entidade", { ascending: true })
             .range(offset, offset + pageSize - 1);
 
@@ -275,7 +352,7 @@ export default function EmpenhoHeaderFilters() {
             tipo_combustivel: string;
             nome_credor: string;
             forma_fornecimento: string;
-            ano_empenho: number;
+            ano: number;
           }>;
 
           batch.forEach((row) => {
@@ -283,7 +360,7 @@ export default function EmpenhoHeaderFilters() {
             if (row.tipo_combustivel) tipoSet.add(row.tipo_combustivel);
             if (row.nome_credor) credorSet.add(row.nome_credor);
             if (row.forma_fornecimento) formaSet.add(row.forma_fornecimento);
-            if (row.ano_empenho) anoSet.add(row.ano_empenho);
+            if (row.ano) anoSet.add(row.ano);
           });
 
           if (batch.length < pageSize) break;
@@ -328,105 +405,104 @@ export default function EmpenhoHeaderFilters() {
   const tipoTitle = buildMultiTitle(tipoOptions, selectedTipos);
   const credorTitle = buildTitle(credorOptions, selectedCredor, "Todos");
   const formaTitle = buildTitle(formaOptions, selectedForma, "Todos");
-
   const hasAnoFilter = !!selectedAnoInicio || !!selectedAnoFim;
   const anoTitle = useMemo(() => {
     if (!selectedAnoInicio && !selectedAnoFim) return "Todos";
-    if (selectedAnoInicio && selectedAnoFim) return `${selectedAnoInicio} a ${selectedAnoFim}`;
+    if (selectedAnoInicio && selectedAnoFim) return `${selectedAnoInicio}–${selectedAnoFim}`;
     if (selectedAnoInicio) return `A partir de ${selectedAnoInicio}`;
     return `Até ${selectedAnoFim}`;
   }, [selectedAnoInicio, selectedAnoFim]);
 
   const hasActiveFilters =
-    selectedEntidade !== "all" || selectedTipos.length > 0 || selectedCredor !== "all" || selectedForma !== "all";
+    selectedEntidade !== "all" || selectedTipos.length > 0 || selectedCredor !== "all" ||
+    selectedForma !== "all" || hasAnoFilter;
   const activeFilterCount =
     (selectedEntidade !== "all" ? 1 : 0) + selectedTipos.length +
-    (selectedCredor !== "all" ? 1 : 0) + (selectedForma !== "all" ? 1 : 0);
+    (selectedCredor !== "all" ? 1 : 0) + (selectedForma !== "all" ? 1 : 0) +
+    (hasAnoFilter ? 1 : 0);
 
-  const btnClass =
-    "h-11 min-w-0 shrink rounded-lg border border-gray-200 bg-transparent px-3 text-left text-sm text-gray-800 shadow-theme-xs disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-700 dark:text-white/90 lg:flex-1";
+  const filterBtnClass = (active: boolean) =>
+    `flex flex-col gap-0.5 rounded-lg border px-3 py-2 text-left text-sm transition-colors hover:bg-gray-50 dark:hover:bg-gray-800 min-w-0 flex-1 ${
+      active
+        ? "border-teal-300 bg-teal-50 dark:border-teal-700 dark:bg-teal-900/20"
+        : "border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900"
+    }`;
 
   return (
     <>
-      <div className="flex w-full items-center gap-2 overflow-x-auto pb-1">
-        <button type="button" onClick={() => setEntidadeDialogOpen(true)} disabled={loading || Boolean(error)} className={btnClass} style={{ minWidth: 220 }}>
-          <span className="mr-2 text-xs text-gray-500 dark:text-gray-400">Entidade:</span>
-          <span className="inline-block max-w-[72%] truncate align-bottom font-medium">{entidadeTitle}</span>
-        </button>
-
-        <button type="button" onClick={() => setTipoDialogOpen(true)} disabled={loading || Boolean(error)} className={btnClass} style={{ minWidth: 180 }}>
-          <span className="mr-2 text-xs text-gray-500 dark:text-gray-400">Tipo:</span>
-          <span className="inline-block max-w-[72%] truncate align-bottom font-medium">{tipoTitle}</span>
-        </button>
-
-        <button type="button" onClick={() => setCredorDialogOpen(true)} disabled={loading || Boolean(error)} className={btnClass} style={{ minWidth: 200 }}>
-          <span className="mr-2 text-xs text-gray-500 dark:text-gray-400">Credor:</span>
-          <span className="inline-block max-w-[72%] truncate align-bottom font-medium">{credorTitle}</span>
-        </button>
-
-        <button type="button" onClick={() => setFormaDialogOpen(true)} disabled={loading || Boolean(error)} className={btnClass} style={{ minWidth: 200 }}>
-          <span className="mr-2 text-xs text-gray-500 dark:text-gray-400">Fornecimento:</span>
-          <span className="inline-block max-w-[72%] truncate align-bottom font-medium">{formaTitle}</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setAnoDialogOpen(true)}
-          className={`${btnClass} ${hasAnoFilter ? "border-orange-300 bg-orange-50 dark:border-orange-700 dark:bg-orange-900/10" : ""}`}
-          style={{ minWidth: 180 }}
-        >
-          <span className="mr-2 text-xs text-gray-500 dark:text-gray-400">Ano:</span>
-          <span className="inline-block max-w-[72%] truncate align-bottom font-medium">{anoTitle}</span>
-        </button>
-
-        {hasActiveFilters && (
-          <button
-            type="button"
-            onClick={() => replaceParams((p) => { p.delete("entidade"); p.delete("tipo"); p.delete("credor"); p.delete("forma"); })}
-            className="h-11 shrink-0 rounded-lg border border-red-200 bg-red-50 px-3 text-sm font-medium text-red-700 hover:bg-red-100 dark:border-red-800/70 dark:bg-red-900/20 dark:text-red-300 dark:hover:bg-red-900/35"
-          >
-            Limpar filtros ({activeFilterCount})
+      {/* Linha de controle: botão funil + chips ativos */}
+      <div className="flex items-center gap-2">
+        <FilterDropdown activeCount={activeFilterCount} loading={loading}>
+          <button type="button" onClick={() => setEntidadeDialogOpen(true)} disabled={loading} className={filterBtnClass(selectedEntidade !== "all")}>
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500">Entidade</span>
+            <span className={`truncate text-xs font-medium ${selectedEntidade !== "all" ? "text-teal-700 dark:text-teal-300" : "text-gray-700 dark:text-gray-200"}`}>{entidadeTitle}</span>
           </button>
+
+          <button type="button" onClick={() => setTipoDialogOpen(true)} disabled={loading} className={filterBtnClass(selectedTipos.length > 0)}>
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500">Tipo</span>
+            <span className={`truncate text-xs font-medium ${selectedTipos.length > 0 ? "text-teal-700 dark:text-teal-300" : "text-gray-700 dark:text-gray-200"}`}>{tipoTitle}</span>
+          </button>
+
+          <button type="button" onClick={() => setCredorDialogOpen(true)} disabled={loading} className={filterBtnClass(selectedCredor !== "all")}>
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500">Credor</span>
+            <span className={`truncate text-xs font-medium ${selectedCredor !== "all" ? "text-teal-700 dark:text-teal-300" : "text-gray-700 dark:text-gray-200"}`}>{credorTitle}</span>
+          </button>
+
+          <button type="button" onClick={() => setFormaDialogOpen(true)} disabled={loading} className={filterBtnClass(selectedForma !== "all")}>
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500">Fornecimento</span>
+            <span className={`truncate text-xs font-medium ${selectedForma !== "all" ? "text-teal-700 dark:text-teal-300" : "text-gray-700 dark:text-gray-200"}`}>{formaTitle}</span>
+          </button>
+
+          <button type="button" onClick={() => setAnoDialogOpen(true)} disabled={loading} className={filterBtnClass(hasAnoFilter)}>
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500">Ano</span>
+            <span className={`truncate text-xs font-medium ${hasAnoFilter ? "text-orange-600 dark:text-orange-400" : "text-gray-700 dark:text-gray-200"}`}>{anoTitle}</span>
+          </button>
+        </FilterDropdown>
+
+        {/* Chips filtros ativos */}
+        {hasActiveFilters && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            {selectedEntidade !== "all" && (
+              <button type="button" onClick={() => replaceParams((p) => p.delete("entidade"))}
+                className="inline-flex items-center gap-1 rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 text-xs font-medium text-teal-700 hover:bg-teal-100 dark:border-teal-700/50 dark:bg-teal-900/20 dark:text-teal-300">
+                {entidadeTitle} <span className="opacity-60">×</span>
+              </button>
+            )}
+            {selectedTipos.map((tipo) => (
+              <button key={tipo} type="button"
+                onClick={() => replaceParams((p) => { const next = selectedTipos.filter((t) => t !== tipo); p.delete("tipo"); next.forEach((t) => p.append("tipo", t)); })}
+                className="inline-flex items-center gap-1 rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 text-xs font-medium text-teal-700 hover:bg-teal-100 dark:border-teal-700/50 dark:bg-teal-900/20 dark:text-teal-300">
+                {tipo} <span className="opacity-60">×</span>
+              </button>
+            ))}
+            {selectedCredor !== "all" && (
+              <button type="button" onClick={() => replaceParams((p) => p.delete("credor"))}
+                className="inline-flex items-center gap-1 rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 text-xs font-medium text-teal-700 hover:bg-teal-100 dark:border-teal-700/50 dark:bg-teal-900/20 dark:text-teal-300">
+                {credorTitle} <span className="opacity-60">×</span>
+              </button>
+            )}
+            {selectedForma !== "all" && (
+              <button type="button" onClick={() => replaceParams((p) => p.delete("forma"))}
+                className="inline-flex items-center gap-1 rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 text-xs font-medium text-teal-700 hover:bg-teal-100 dark:border-teal-700/50 dark:bg-teal-900/20 dark:text-teal-300">
+                {formaTitle} <span className="opacity-60">×</span>
+              </button>
+            )}
+            {hasAnoFilter && (
+              <button type="button" onClick={() => replaceParams((p) => { p.delete("anoInicio"); p.delete("anoFim"); })}
+                className="inline-flex items-center gap-1 rounded-full border border-orange-200 bg-orange-50 px-2 py-0.5 text-xs font-medium text-orange-700 hover:bg-orange-100 dark:border-orange-700/50 dark:bg-orange-900/20 dark:text-orange-300">
+                {anoTitle} <span className="opacity-60">×</span>
+              </button>
+            )}
+            <button type="button"
+              onClick={() => replaceParams((p) => { p.delete("entidade"); p.delete("tipo"); p.delete("credor"); p.delete("forma"); p.delete("anoInicio"); p.delete("anoFim"); })}
+              className="inline-flex items-center gap-1 rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-xs font-medium text-red-600 hover:bg-red-100 dark:border-red-800/50 dark:bg-red-900/20 dark:text-red-400">
+              Limpar tudo
+            </button>
+          </div>
         )}
 
-        {loading && <span className="shrink-0 whitespace-nowrap text-xs text-gray-500 dark:text-gray-400">Carregando filtros...</span>}
-        {error && <span className="max-w-[220px] shrink-0 truncate text-xs text-red-600 dark:text-red-400">{error}</span>}
+        {error && <span className="truncate text-xs text-red-600 dark:text-red-400">{error}</span>}
       </div>
-
-      {hasActiveFilters && (
-        <div className="flex flex-wrap items-center gap-2 pt-1">
-          {selectedEntidade !== "all" && (
-            <button type="button" onClick={() => replaceParams((p) => p.delete("entidade"))} className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-xs text-gray-700 hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">
-              <span>Entidade: {entidadeTitle}</span>
-              <span className="font-semibold">x</span>
-            </button>
-          )}
-          {selectedTipos.map((tipo) => (
-            <button key={tipo} type="button" onClick={() => replaceParams((p) => { const next = selectedTipos.filter((t) => t !== tipo); p.delete("tipo"); next.forEach((t) => p.append("tipo", t)); })} className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-xs text-gray-700 hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">
-              <span>Tipo: {tipo}</span>
-              <span className="font-semibold">x</span>
-            </button>
-          ))}
-          {selectedCredor !== "all" && (
-            <button type="button" onClick={() => replaceParams((p) => p.delete("credor"))} className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-xs text-gray-700 hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">
-              <span>Credor: {credorTitle}</span>
-              <span className="font-semibold">x</span>
-            </button>
-          )}
-          {selectedForma !== "all" && (
-            <button type="button" onClick={() => replaceParams((p) => p.delete("forma"))} className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-3 py-1 text-xs text-gray-700 hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">
-              <span>Fornecimento: {formaTitle}</span>
-              <span className="font-semibold">x</span>
-            </button>
-          )}
-          {hasAnoFilter && (
-            <button type="button" onClick={() => replaceParams((p) => { p.delete("anoInicio"); p.delete("anoFim"); })} className="inline-flex items-center gap-1 rounded-full border border-orange-200 bg-orange-50 px-3 py-1 text-xs text-orange-700 hover:bg-orange-100 dark:border-orange-700/50 dark:bg-orange-900/20 dark:text-orange-300 dark:hover:bg-orange-900/30">
-              <span>Ano: {anoTitle}</span>
-              <span className="font-semibold">x</span>
-            </button>
-          )}
-        </div>
-      )}
 
       <SingleFilterDialog title="Selecionar Entidade" isOpen={entidadeDialogOpen} options={entidadeOptions} selectedValue={selectedEntidade} allLabel="Todos" onClose={() => setEntidadeDialogOpen(false)} onSelect={(v) => replaceParams((p) => { if (v === "all") p.delete("entidade"); else p.set("entidade", v); })} />
       <MultiFilterDialog title="Selecionar Tipos de Combustível" isOpen={tipoDialogOpen} options={tipoOptions} selectedValues={selectedTipos} onClose={() => setTipoDialogOpen(false)} onApply={(values) => replaceParams((p) => { p.delete("tipo"); values.forEach((v) => p.append("tipo", v)); })} />
@@ -450,12 +526,7 @@ export default function EmpenhoHeaderFilters() {
 }
 
 function AnoFiltroDialog({
-  isOpen,
-  anos,
-  anoInicio,
-  anoFim,
-  onClose,
-  onApply,
+  isOpen, anos, anoInicio, anoFim, onClose, onApply,
 }: {
   isOpen: boolean;
   anos: number[];
@@ -468,14 +539,10 @@ function AnoFiltroDialog({
   const [fim, setFim] = useState(anoFim);
 
   useEffect(() => {
-    if (isOpen) {
-      setInicio(anoInicio);
-      setFim(anoFim);
-    }
+    if (isOpen) { setInicio(anoInicio); setFim(anoFim); }
   }, [isOpen, anoInicio, anoFim]);
 
-  const selectClass =
-    "h-10 w-full rounded-lg border border-gray-300 bg-transparent px-3 text-sm text-gray-700 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-950 dark:text-white/90";
+  const selectClass = "h-10 w-full rounded-lg border border-gray-300 bg-transparent px-3 text-sm text-gray-700 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-950 dark:text-white/90";
 
   return (
     <DialogShell
@@ -484,18 +551,10 @@ function AnoFiltroDialog({
       onClose={onClose}
       footer={
         <>
-          <button
-            type="button"
-            onClick={() => { onApply("", ""); onClose(); }}
-            className="rounded-lg border border-gray-300 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800"
-          >
+          <button type="button" onClick={() => { onApply("", ""); onClose(); }} className="rounded-lg border border-gray-300 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-200 dark:hover:bg-gray-800">
             Limpar
           </button>
-          <button
-            type="button"
-            onClick={() => { onApply(inicio, fim); onClose(); }}
-            className="rounded-lg bg-brand-500 px-3 py-2 text-xs font-medium text-white hover:bg-brand-600"
-          >
+          <button type="button" onClick={() => { onApply(inicio, fim); onClose(); }} className="rounded-lg bg-brand-500 px-3 py-2 text-xs font-medium text-white hover:bg-brand-600">
             Aplicar
           </button>
         </>
@@ -503,33 +562,17 @@ function AnoFiltroDialog({
     >
       <div className="space-y-4">
         <div>
-          <label className="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">
-            Ano inicial
-          </label>
-          <select
-            value={inicio}
-            onChange={(e) => setInicio(e.target.value)}
-            className={selectClass}
-          >
+          <label className="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">Ano inicial</label>
+          <select value={inicio} onChange={(e) => setInicio(e.target.value)} className={selectClass}>
             <option value="">Todos</option>
-            {anos.map((a) => (
-              <option key={a} value={a}>{a}</option>
-            ))}
+            {anos.map((a) => <option key={a} value={a}>{a}</option>)}
           </select>
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">
-            Ano final
-          </label>
-          <select
-            value={fim}
-            onChange={(e) => setFim(e.target.value)}
-            className={selectClass}
-          >
+          <label className="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-300">Ano final</label>
+          <select value={fim} onChange={(e) => setFim(e.target.value)} className={selectClass}>
             <option value="">Todos</option>
-            {anos.map((a) => (
-              <option key={a} value={a}>{a}</option>
-            ))}
+            {anos.map((a) => <option key={a} value={a}>{a}</option>)}
           </select>
         </div>
         {inicio && fim && Number(inicio) > Number(fim) && (

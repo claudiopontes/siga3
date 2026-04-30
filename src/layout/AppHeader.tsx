@@ -20,6 +20,19 @@ const AppHeader: React.FC = () => {
   const isEmpenhoPage = pathname === "/painel-combustivel-empenhos";
   const isReceitaPage = pathname === "/painel-receita-publica";
 
+  const breadcrumbs: Record<string, { crumbs: { label: string; href?: string }[] }> = {
+    "/": { crumbs: [{ label: "Home" }] },
+    "/painel-combustivel": { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "Combustível NFe" }] },
+    "/painel-combustivel-empenhos": { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "Combustível Empenhos" }] },
+    "/painel-receita-publica": { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "Receita Pública" }] },
+    "/gabinete-digital/mapa": { crumbs: [{ label: "Home", href: "/" }, { label: "Mapa IDEB" }] },
+    "/gabinete-digital/seletor-municipio": { crumbs: [{ label: "Home", href: "/" }, { label: "Seletor de Município" }] },
+    "/calendar": { crumbs: [{ label: "Home", href: "/" }, { label: "Agenda" }] },
+    "/profile": { crumbs: [{ label: "Home", href: "/" }, { label: "Perfil" }] },
+  };
+
+  const currentCrumbs = breadcrumbs[pathname]?.crumbs ?? [{ label: "Home", href: "/" }, { label: pathname.replace(/\//g, " ").trim() }];
+
   const handleToggle = () => {
     if (window.innerWidth >= 1024) toggleSidebar();
     else toggleMobileSidebar();
@@ -85,15 +98,22 @@ const AppHeader: React.FC = () => {
           className={`${isApplicationMenuOpen ? "flex" : "hidden"} w-full min-w-0 items-center justify-between gap-4 overflow-x-auto px-5 py-4 shadow-theme-md lg:flex lg:w-auto lg:max-w-full lg:justify-end lg:overflow-visible lg:px-0 lg:shadow-none`}
         >
           <div className="flex min-w-max items-center gap-2 2xsm:gap-3 lg:min-w-0">
-            {isReceitaPage && (
-              <nav className="hidden items-center gap-1 text-sm lg:flex">
-                <Link href="/" className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300">Home</Link>
-                <span className="text-gray-300 dark:text-gray-600">/</span>
-                <span className="text-gray-400 dark:text-gray-500">Painéis</span>
-                <span className="text-gray-300 dark:text-gray-600">/</span>
-                <span className="font-semibold text-gray-700 dark:text-gray-200">Receita Pública</span>
-              </nav>
-            )}
+            <nav className="hidden items-center gap-1 text-sm lg:flex">
+              {currentCrumbs.map((crumb, i) => (
+                <React.Fragment key={i}>
+                  {i > 0 && <span className="text-gray-300 dark:text-gray-600">/</span>}
+                  {crumb.href ? (
+                    <Link href={crumb.href} className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300">
+                      {crumb.label}
+                    </Link>
+                  ) : i === currentCrumbs.length - 1 ? (
+                    <span className="font-semibold text-gray-700 dark:text-gray-200">{crumb.label}</span>
+                  ) : (
+                    <span className="text-gray-400 dark:text-gray-500">{crumb.label}</span>
+                  )}
+                </React.Fragment>
+              ))}
+            </nav>
             <ThemeToggleButton />
             <NotificationDropdown />
           </div>

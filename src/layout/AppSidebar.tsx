@@ -4,6 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useSidebar } from "../context/SidebarContext";
+import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import {
   CalenderIcon,
   ChevronDownIcon,
@@ -58,6 +59,27 @@ const getSubmenuFromPath = (
 const AppSidebar: React.FC = () => {
   const { isExpanded, isMobileOpen, isHovered, setIsHovered } = useSidebar();
   const pathname = usePathname();
+  const [lastUpdate, setLastUpdate] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured || !supabase) return;
+
+    const tabela =
+      pathname === "/painel-combustivel"            ? "combustivel_mensal"
+      : pathname === "/painel-combustivel-empenhos" ? "combustivel_empenho_mensal"
+      : pathname === "/painel-receita-publica"      ? "receita_publica_categoria_mensal"
+      :                                               "combustivel_mensal";
+
+    supabase
+      .from(tabela)
+      .select("atualizado_em")
+      .order("atualizado_em", { ascending: false })
+      .limit(1)
+      .then(({ data }) => {
+        const raw = (data?.[0] as { atualizado_em?: string } | undefined)?.atualizado_em;
+        setLastUpdate(raw ? new Date(raw).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" }) : null);
+      });
+  }, [pathname]);
 
   const renderMenuItems = (
     navItems: NavItem[],
@@ -275,7 +297,7 @@ const AppSidebar: React.FC = () => {
           )}
         </Link>
       </div>
-      <div className="flex flex-col overflow-y-auto duration-300 ease-linear no-scrollbar">
+      <div className="flex flex-1 flex-col overflow-y-auto duration-300 ease-linear no-scrollbar">
         <nav className="mb-6">
           <div className="flex flex-col gap-4">
             <div>
@@ -294,9 +316,27 @@ const AppSidebar: React.FC = () => {
               </h2>
               {renderMenuItems(navItems, "main")}
             </div>
-
           </div>
         </nav>
+
+        {lastUpdate && (
+          <div className="mt-auto pb-6">
+            {isExpanded || isHovered || isMobileOpen ? (
+              <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 dark:border-gray-700 dark:bg-gray-800">
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500">
+                  Última atualização
+                </p>
+                <p className="mt-0.5 text-sm font-bold text-gray-700 dark:text-gray-200">
+                  {lastUpdate}
+                </p>
+              </div>
+            ) : (
+              <div className="flex justify-center" title={`Atualizado em ${lastUpdate}`}>
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-400 dark:text-gray-500"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </aside>
   );
