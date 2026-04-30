@@ -26,8 +26,10 @@ const navItems: NavItem[] = [
     icon: <GridIcon />,
     name: "Painéis",
     subItems: [
+      { name: "Alertas do Gabinete", path: "/" },
       { name: "Combustível", path: "/painel-combustivel" },
       { name: "Receita Pública", path: "/painel-receita-publica", pro: false },
+      { name: "Cobertura Florestal", path: "/painel-cobertura-florestal" },
       { name: "CAUC Municípios", path: "/painel-cauc" },
       { name: "IDEB Acre", path: "/gabinete-digital/mapa" },
       { name: "Seletor de Município", path: "/gabinete-digital/seletor-municipio" },
