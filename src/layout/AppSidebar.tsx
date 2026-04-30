@@ -64,22 +64,24 @@ const AppSidebar: React.FC = () => {
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase) return;
 
-    const tabela =
-      pathname === "/painel-combustivel"            ? "combustivel_mensal"
-      : pathname === "/painel-combustivel-empenhos" ? "combustivel_empenho_mensal"
-      : pathname === "/painel-receita-publica"      ? "receita_publica_categoria_mensal"
-      :                                               "combustivel_mensal";
+    const tabelas = ["combustivel_mensal", "combustivel_empenho_mensal", "receita_publica_categoria_mensal"];
 
-    supabase
-      .from(tabela)
-      .select("atualizado_em")
-      .order("atualizado_em", { ascending: false })
-      .limit(1)
-      .then(({ data }) => {
-        const raw = (data?.[0] as { atualizado_em?: string } | undefined)?.atualizado_em;
-        setLastUpdate(raw ? new Date(raw).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" }) : null);
-      });
-  }, [pathname]);
+    Promise.all(
+      tabelas.map((tabela) =>
+        supabase!
+          .from(tabela)
+          .select("atualizado_em")
+          .order("atualizado_em", { ascending: false })
+          .limit(1)
+          .then(({ data }) => (data?.[0] as { atualizado_em?: string } | undefined)?.atualizado_em ?? null)
+      )
+    ).then((datas) => {
+      const validas = datas.filter(Boolean) as string[];
+      if (validas.length === 0) return;
+      const mais_recente = validas.sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0];
+      setLastUpdate(new Date(mais_recente).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" }));
+    });
+  }, []);
 
   const renderMenuItems = (
     navItems: NavItem[],
