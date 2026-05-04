@@ -48,6 +48,8 @@ export async function POST(request: Request) {
       displayName: authorizedUser.displayName ?? adUser.displayName,
       email: authorizedUser.email ?? adUser.email,
       profile: authorizedUser.profile,
+      photoUrl: authorizedUser.photoUrl,
+      photoPosition: authorizedUser.photoPosition,
       groups: adUser.groups,
       expiresAt: Date.now() + maxAge * 1000,
     });
@@ -57,6 +59,8 @@ export async function POST(request: Request) {
         displayName: authorizedUser.displayName ?? adUser.displayName,
         email: authorizedUser.email ?? adUser.email,
         profile: authorizedUser.profile,
+        photoUrl: authorizedUser.photoUrl,
+        photoPosition: authorizedUser.photoPosition,
       },
     });
 

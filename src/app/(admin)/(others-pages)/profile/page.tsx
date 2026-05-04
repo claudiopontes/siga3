@@ -1,13 +1,15 @@
 import LogoutButton from "@/components/auth/LogoutButton";
+import ProfilePhotoUploader from "@/components/user-profile/ProfilePhotoUploader";
+import { getAuthorizedUser } from "@/lib/auth/authorization";
 import { AUTH_COOKIE_NAME, verifySessionToken } from "@/lib/auth/session";
-import { Database, KeyRound, Mail, ShieldCheck, UserRound } from "lucide-react";
+import { KeyRound, Mail, ShieldCheck, UserRound } from "lucide-react";
 import { Metadata } from "next";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 export const metadata: Metadata = {
   title: "Perfil | Varadouro Digital",
-  description: "Perfil do usuário — Varadouro Digital TCE-AC",
+  description: "Perfil do usuário - Varadouro Digital TCE-AC",
 };
 
 export const dynamic = "force-dynamic";
@@ -24,19 +26,6 @@ function formatProfile(profile?: string) {
     .join(" ");
 }
 
-function getInitials(name: string) {
-  const parts = name.split(/\s+/).filter(Boolean);
-
-  if (parts.length === 0) {
-    return "VD";
-  }
-
-  return parts
-    .slice(0, 2)
-    .map((part) => part.charAt(0).toUpperCase())
-    .join("");
-}
-
 export default async function Profile() {
   const cookieStore = await cookies();
   const session = await verifySessionToken(cookieStore.get(AUTH_COOKIE_NAME)?.value);
@@ -45,19 +34,23 @@ export default async function Profile() {
     redirect("/signin");
   }
 
-  const displayName = session.displayName ?? session.username;
-  const email = session.email ?? "Não informado";
-  const profile = formatProfile(session.profile);
-  const authTable = process.env.AUTH_USERS_TABLE || "usuarios_autorizados";
+  const authorizedUser = await getAuthorizedUser(session.username).catch(() => null);
+  const displayName = authorizedUser?.displayName ?? session.displayName ?? session.username;
+  const email = authorizedUser?.email ?? session.email ?? "Não informado";
+  const profile = formatProfile(authorizedUser?.profile ?? session.profile);
+  const photoUrl = authorizedUser?.photoUrl ?? session.photoUrl;
+  const photoPosition = authorizedUser?.photoPosition ?? session.photoPosition ?? "center center";
 
   return (
     <div className="space-y-6">
       <section className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] lg:p-6">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
-            <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-full border border-brand-100 bg-brand-50 text-xl font-semibold text-brand-700 dark:border-brand-500/20 dark:bg-brand-500/10 dark:text-brand-300">
-              {getInitials(displayName)}
-            </div>
+            <ProfilePhotoUploader
+              displayName={displayName}
+              initialPhotoUrl={photoUrl}
+              initialPhotoPosition={photoPosition}
+            />
             <div>
               <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
                 Perfil autenticado
@@ -74,67 +67,26 @@ export default async function Profile() {
         </div>
       </section>
 
-      <section className="grid grid-cols-1 gap-6 xl:grid-cols-3">
-        <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] lg:p-6 xl:col-span-2">
-          <div className="mb-6 flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gray-100 text-gray-600 dark:bg-white/5 dark:text-gray-300">
-              <UserRound className="h-5 w-5" />
-            </div>
-            <div>
-              <h2 className="text-lg font-semibold text-gray-800 dark:text-white/90">
-                Dados do usuário
-              </h2>
-              <p className="text-sm text-gray-500 dark:text-gray-400">
-                Informações usadas pelo Varadouro Digital após o login de rede.
-              </p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <InfoItem label="Nome" value={displayName} icon={<UserRound className="h-4 w-4" />} />
-            <InfoItem label="Usuário AD" value={session.username} icon={<KeyRound className="h-4 w-4" />} />
-            <InfoItem label="E-mail" value={email} icon={<Mail className="h-4 w-4" />} />
-            <InfoItem label="Perfil" value={profile} icon={<ShieldCheck className="h-4 w-4" />} />
-          </div>
-        </div>
-
-        <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] lg:p-6">
-          <div className="mb-6 flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gray-100 text-gray-600 dark:bg-white/5 dark:text-gray-300">
-              <Database className="h-5 w-5" />
-            </div>
-            <div>
-              <h2 className="text-lg font-semibold text-gray-800 dark:text-white/90">
-                Autorização
-              </h2>
-              <p className="text-sm text-gray-500 dark:text-gray-400">
-                Controle mantido no Supabase.
-              </p>
-            </div>
-          </div>
-
-          <div className="space-y-4">
-            <InfoItem label="Fonte" value="Supabase" />
-            <InfoItem label="Tabela" value={authTable} />
-            <InfoItem label="Status" value="Acesso ativo" />
-          </div>
-        </div>
-      </section>
-
       <section className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] lg:p-6">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="mb-6 flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gray-100 text-gray-600 dark:bg-white/5 dark:text-gray-300">
+            <UserRound className="h-5 w-5" />
+          </div>
           <div>
             <h2 className="text-lg font-semibold text-gray-800 dark:text-white/90">
-              Modelo de acesso
+              Dados do usuário
             </h2>
-            <p className="mt-1 max-w-3xl text-sm text-gray-500 dark:text-gray-400">
-              O Active Directory valida a identidade com usuário e senha de rede. A autorização
-              e o perfil de acesso ficam separados na tabela de usuários do Supabase.
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              Informações usadas pelo Varadouro Digital após o login de rede.
             </p>
           </div>
-          <div className="rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium text-gray-600 dark:border-gray-800 dark:text-gray-300">
-            AD + Supabase
-          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <InfoItem label="Nome" value={displayName} icon={<UserRound className="h-4 w-4" />} />
+          <InfoItem label="Usuário AD" value={session.username} icon={<KeyRound className="h-4 w-4" />} />
+          <InfoItem label="E-mail" value={email} icon={<Mail className="h-4 w-4" />} />
+          <InfoItem label="Perfil" value={profile} icon={<ShieldCheck className="h-4 w-4" />} />
         </div>
       </section>
     </div>

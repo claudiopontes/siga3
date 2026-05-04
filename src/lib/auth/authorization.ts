@@ -5,6 +5,8 @@ export type AuthorizedUser = {
   displayName?: string;
   email?: string;
   profile: string;
+  photoUrl?: string;
+  photoPosition?: string;
 };
 
 type AuthorizationRow = {
@@ -12,6 +14,8 @@ type AuthorizationRow = {
   nome: string | null;
   email: string | null;
   perfil: string | null;
+  foto_url: string | null;
+  foto_posicao: string | null;
   ativo: boolean | null;
 };
 
@@ -24,7 +28,7 @@ export async function getAuthorizedUser(username: string) {
   const normalizedUsername = normalizeUsername(username);
   const { data, error } = await getAdminSupabase()
     .from(table)
-    .select("usuario_ad,nome,email,perfil,ativo")
+    .select("usuario_ad,nome,email,perfil,foto_url,foto_posicao,ativo")
     .eq("usuario_ad", normalizedUsername)
     .eq("ativo", true)
     .maybeSingle<AuthorizationRow>();
@@ -42,5 +46,7 @@ export async function getAuthorizedUser(username: string) {
     displayName: data.nome ?? undefined,
     email: data.email ?? undefined,
     profile: data.perfil ?? "usuario",
+    photoUrl: data.foto_url ?? undefined,
+    photoPosition: data.foto_posicao ?? undefined,
   } satisfies AuthorizedUser;
 }

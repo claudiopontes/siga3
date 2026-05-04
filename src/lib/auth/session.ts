@@ -5,6 +5,8 @@ export type AuthSession = {
   displayName?: string;
   email?: string;
   profile?: string;
+  photoUrl?: string;
+  photoPosition?: string;
   groups: string[];
   expiresAt: number;
 };
