@@ -12,6 +12,7 @@ import {
   HorizontaLDots,
   UserCircleIcon,
 } from "../icons/index";
+import { ShieldCheck } from "lucide-react";
 
 
 type NavItem = {
@@ -21,7 +22,7 @@ type NavItem = {
   subItems?: { name: string; path: string; pro?: boolean; new?: boolean }[];
 };
 
-const navItems: NavItem[] = [
+const baseNavItems: NavItem[] = [
   {
     icon: <GridIcon />,
     name: "Painéis",
@@ -48,10 +49,11 @@ const navItems: NavItem[] = [
 
 
 const getSubmenuFromPath = (
-  path: string
+  path: string,
+  items: NavItem[]
 ): { type: "main" | "others"; index: number } | null => {
-  for (let index = 0; index < navItems.length; index++) {
-    if (navItems[index].subItems?.some((sub) => sub.path === path)) {
+  for (let index = 0; index < items.length; index++) {
+    if (items[index].subItems?.some((sub) => sub.path === path)) {
       return { type: "main", index };
     }
   }
@@ -62,6 +64,30 @@ const AppSidebar: React.FC = () => {
   const { isExpanded, isMobileOpen, isHovered, setIsHovered } = useSidebar();
   const pathname = usePathname();
   const [lastUpdate, setLastUpdate] = useState<string | null>(null);
+  const [profile, setProfile] = useState<string | null>(null);
+  const navItems = React.useMemo(() => {
+    const normalizedProfile = profile?.trim().toLowerCase();
+
+    if (normalizedProfile !== "admin" && normalizedProfile !== "administrador") {
+      return baseNavItems;
+    }
+
+    return [
+      ...baseNavItems,
+      {
+        icon: <ShieldCheck className="h-5 w-5" />,
+        name: "Segurança",
+        path: "/seguranca/usuarios",
+      },
+    ];
+  }, [profile]);
+
+  useEffect(() => {
+    fetch("/api/auth/me")
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data: { user?: { profile?: string } } | null) => setProfile(data?.user?.profile ?? null))
+      .catch(() => setProfile(null));
+  }, []);
 
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase) return;
@@ -214,7 +240,7 @@ const AppSidebar: React.FC = () => {
   const [openSubmenu, setOpenSubmenu] = useState<{
     type: "main" | "others";
     index: number;
-  } | null>(() => getSubmenuFromPath(pathname));
+  } | null>(() => getSubmenuFromPath(pathname, baseNavItems));
   const [subMenuHeight, setSubMenuHeight] = useState<Record<string, number>>(
     {}
   );
@@ -224,8 +250,8 @@ const AppSidebar: React.FC = () => {
 
   // Sincroniza o submenu aberto quando a rota muda
   useEffect(() => {
-    setOpenSubmenu(getSubmenuFromPath(pathname));
-  }, [pathname]);
+    setOpenSubmenu(getSubmenuFromPath(pathname, navItems));
+  }, [pathname, navItems]);
 
   // Atualiza a altura do submenu quando ele Ã© aberto
   useEffect(() => {

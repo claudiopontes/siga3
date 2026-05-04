@@ -6,6 +6,7 @@ import ReceitaPublicaHeaderFilters from "@/components/receita-publica/ReceitaPub
 import DespesaHeaderFilters from "@/components/despesa/DespesaHeaderFilters";
 import { ThemeToggleButton } from "@/components/common/ThemeToggleButton";
 import NotificationDropdown from "@/components/header/NotificationDropdown";
+import UserDropdown from "@/components/header/UserDropdown";
 import { useSidebar } from "@/context/SidebarContext";
 import Image from "next/image";
 import Link from "next/link";
@@ -33,6 +34,7 @@ const AppHeader: React.FC = () => {
     "/gabinete-digital/mapa": { crumbs: [{ label: "Home", href: "/" }, { label: "Mapa IDEB" }] },
     "/calendar": { crumbs: [{ label: "Home", href: "/" }, { label: "Agenda" }] },
     "/profile": { crumbs: [{ label: "Home", href: "/" }, { label: "Perfil" }] },
+    "/seguranca/usuarios": { crumbs: [{ label: "Home", href: "/" }, { label: "Segurança" }, { label: "Usuários e perfis" }] },
   };
 
   const currentCrumbs = breadcrumbs[pathname]?.crumbs ?? [{ label: "Home", href: "/" }, { label: pathname.replace(/\//g, " ").trim() }];
@@ -129,6 +131,7 @@ const AppHeader: React.FC = () => {
             </nav>
             <ThemeToggleButton />
             <NotificationDropdown />
+            <UserDropdown />
           </div>
         </div>
 

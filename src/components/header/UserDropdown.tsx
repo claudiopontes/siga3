@@ -39,7 +39,7 @@ export default function UserDropdown() {
     router.refresh();
   };
 
-  const displayName = user?.displayName ?? user?.username ?? "Usuario";
+  const displayName = user?.displayName ?? user?.username ?? "Usuário";
   const email = user?.email ?? `${user?.username ?? "usuario"}@tceac.local`;
 
   return (

@@ -4,6 +4,7 @@ export type AuthSession = {
   username: string;
   displayName?: string;
   email?: string;
+  profile?: string;
   groups: string[];
   expiresAt: number;
 };
@@ -14,7 +15,7 @@ function getSecret() {
   const secret = process.env.AUTH_SESSION_SECRET;
 
   if (!secret) {
-    throw new Error("AUTH_SESSION_SECRET nao configurado.");
+    throw new Error("AUTH_SESSION_SECRET não configurado.");
   }
 
   return secret;

@@ -15,6 +15,7 @@ export async function GET() {
       username: session.username,
       displayName: session.displayName,
       email: session.email,
+      profile: session.profile,
     },
   });
 }

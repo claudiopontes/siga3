@@ -11,7 +11,7 @@ function requireEnv(name: string) {
   const value = process.env[name];
 
   if (!value) {
-    throw new Error(`${name} nao configurado.`);
+    throw new Error(`${name} não configurado.`);
   }
 
   return value;
@@ -48,28 +48,13 @@ function normalizeValues(value: unknown) {
   return [String(value)];
 }
 
-function getCommonName(groupDn: string) {
-  const match = groupDn.match(/(?:^|,)CN=([^,]+)/i);
-
-  return match?.[1] ?? groupDn;
-}
-
-function isAllowedGroup(userGroups: string[]) {
-  const allowedGroups = (process.env.AD_ALLOWED_GROUPS ?? "")
-    .split(";")
-    .map((group) => group.trim().toLowerCase())
-    .filter(Boolean);
-
-  if (allowedGroups.length === 0) {
-    throw new Error("AD_ALLOWED_GROUPS nao configurado.");
+function logGroupDiagnostic(username: string, userGroups: string[]) {
+  if (process.env.AD_DEBUG_GROUPS !== "true") {
+    return;
   }
 
-  return userGroups.some((group) => {
-    const normalizedGroup = group.toLowerCase();
-    const normalizedCn = getCommonName(group).toLowerCase();
-
-    return allowedGroups.includes(normalizedGroup) || allowedGroups.includes(normalizedCn);
-  });
+  console.warn("[AD] Usuário autenticado:", username);
+  console.warn("[AD] Grupos retornados pelo AD para o usuário:", userGroups);
 }
 
 async function getDefaultNamingContext(client: Client) {
@@ -94,7 +79,7 @@ async function getDefaultNamingContext(client: Client) {
     return String(defaultNamingContext[0]);
   }
 
-  throw new Error("Nao foi possivel descobrir o Base DN do Active Directory.");
+  throw new Error("Não foi possível descobrir o Base DN do Active Directory.");
 }
 
 export async function authenticateActiveDirectoryUser(username: string, password: string) {
@@ -130,10 +115,7 @@ export async function authenticateActiveDirectoryUser(username: string, password
     }
 
     const groups = normalizeValues(entry.memberOf);
-
-    if (!isAllowedGroup(groups)) {
-      return null;
-    }
+    logGroupDiagnostic(cleanUsername, groups);
 
     return {
       username: cleanUsername,

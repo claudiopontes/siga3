@@ -37,7 +37,7 @@ export default function SignInForm() {
 
       if (!response.ok) {
         const data = (await response.json().catch(() => null)) as { message?: string } | null;
-        setErrorMessage(data?.message ?? "Nao foi possivel entrar com essas credenciais.");
+        setErrorMessage(data?.message ?? "Não foi possível entrar com essas credenciais.");
         return;
       }
 
@@ -67,7 +67,7 @@ export default function SignInForm() {
               Entrar no Varadouro Digital
             </h1>
             <p className="text-sm text-gray-500 dark:text-gray-400">
-              Use seu usuario e senha de rede do TCE-AC.
+              Use seu usuário e senha de rede do TCE-AC.
             </p>
           </div>
           <div>
@@ -75,7 +75,7 @@ export default function SignInForm() {
               <div className="space-y-6">
                 <div>
                   <Label>
-                    Usuario <span className="text-error-500">*</span>{" "}
+                    Usuário <span className="text-error-500">*</span>{" "}
                   </Label>
                   <Input
                     placeholder="nome.sobrenome"
