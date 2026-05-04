@@ -3,6 +3,7 @@
 import CombustivelHeaderFilters from "@/components/combustivel/CombustivelHeaderFilters";
 import EmpenhoHeaderFilters from "@/components/combustivel/EmpenhoHeaderFilters";
 import ReceitaPublicaHeaderFilters from "@/components/receita-publica/ReceitaPublicaHeaderFilters";
+import DespesaHeaderFilters from "@/components/despesa/DespesaHeaderFilters";
 import { ThemeToggleButton } from "@/components/common/ThemeToggleButton";
 import NotificationDropdown from "@/components/header/NotificationDropdown";
 import { useSidebar } from "@/context/SidebarContext";
@@ -19,12 +20,14 @@ const AppHeader: React.FC = () => {
   const isCombustivelPage = pathname === "/painel-combustivel";
   const isEmpenhoPage = pathname === "/painel-combustivel-empenhos";
   const isReceitaPage = pathname === "/painel-receita-publica";
+  const isDespesaPage = pathname === "/painel-despesa";
 
   const breadcrumbs: Record<string, { crumbs: { label: string; href?: string }[] }> = {
     "/": { crumbs: [{ label: "Home" }] },
     "/painel-combustivel": { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "Combustível NFe" }] },
     "/painel-combustivel-empenhos": { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "Combustível Empenhos" }] },
     "/painel-receita-publica": { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "Receita Pública" }] },
+    "/painel-despesa": { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "Despesa Pública" }] },
     "/painel-cobertura-florestal": { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "Cobertura Florestal" }] },
     "/painel-cauc": { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "CAUC Municípios" }] },
     "/gabinete-digital/mapa": { crumbs: [{ label: "Home", href: "/" }, { label: "Mapa IDEB" }] },
@@ -93,6 +96,11 @@ const AppHeader: React.FC = () => {
             {isReceitaPage && (
               <Suspense fallback={<div className="h-11 rounded-lg border border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800" />}>
                 <ReceitaPublicaHeaderFilters />
+              </Suspense>
+            )}
+            {isDespesaPage && (
+              <Suspense fallback={<div className="h-11 rounded-lg border border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800" />}>
+                <DespesaHeaderFilters />
               </Suspense>
             )}
           </div>

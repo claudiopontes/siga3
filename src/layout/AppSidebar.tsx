@@ -28,6 +28,7 @@ const navItems: NavItem[] = [
     subItems: [
       { name: "Combustível", path: "/painel-combustivel" },
       { name: "Receita Pública", path: "/painel-receita-publica", pro: false },
+      { name: "Despesa Pública", path: "/painel-despesa" },
       { name: "Cobertura Florestal", path: "/painel-cobertura-florestal" },
       { name: "CAUC Municípios", path: "/painel-cauc" },
       { name: "IDEB Acre", path: "/gabinete-digital/mapa" },
