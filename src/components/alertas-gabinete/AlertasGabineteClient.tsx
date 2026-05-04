@@ -42,6 +42,8 @@ type ProcessoAlertaRow = {
   atualizado_em: string | null;
 };
 
+type TipoModalProcessual = "processo_sensivel" | "mais_15_dias" | "prazo_regulamentar_vencido";
+
 const NIVEL_ORDER: Record<AlertaRow["nivel_alerta"], number> = {
   alto: 0,
   medio: 1,
@@ -52,7 +54,22 @@ const NIVEL_PROCESSO_ORDER: Record<string, number> = { alto: 0, medio: 1, baixo:
 
 // TODO: substituir filtro fixo por gabinete vinculado ao usuário autenticado.
 const GABINETE_ATUAL_ID = 20;
-const GABINETE_ATUAL_LABEL = "Gabinete do Cons. Ronald Polanco Ribeiro";
+const LIMITE_REGISTROS_MODAL = 20;
+
+const MODAIS_PROCESSUAIS: Record<TipoModalProcessual, { titulo: string; subtitulo: string }> = {
+  processo_sensivel: {
+    titulo: "Processos sensíveis",
+    subtitulo: "Cautelares, denúncias, representações, petições e pedidos de vista no Gabinete do Cons. Ronald Polanco Ribeiro.",
+  },
+  mais_15_dias: {
+    titulo: "Processos há mais de 15 dias",
+    subtitulo: "Processos aguardando movimentação há mais de 15 dias no gabinete atual.",
+  },
+  prazo_regulamentar_vencido: {
+    titulo: "Prazo regulamentar vencido",
+    subtitulo: "Processos cujo tempo de registro ultrapassou o prazo regulamentar da classe.",
+  },
+};
 
 const ALERTAS_SUGERIDOS = [
   {
@@ -185,17 +202,6 @@ function formatarNumero(value: number | null | undefined) {
   return new Intl.NumberFormat("pt-BR").format(value);
 }
 
-function formatarDataHora(iso: string | null | undefined) {
-  if (!iso) return null;
-  return new Date(iso).toLocaleString("pt-BR", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
 function DocumentoAlertaIcon() {
   return (
     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -233,22 +239,22 @@ function ProcessoCard({
   descricao,
   prioridade,
   valor,
-  atualizadoEm,
   icone,
   destaque = false,
   semDados,
+  onDetalhes,
 }: {
   titulo: string;
   descricao: string;
   prioridade: string;
   valor: number | null;
-  atualizadoEm: string | null | undefined;
   icone: React.ReactNode;
   destaque?: boolean;
   semDados: boolean;
+  onDetalhes: () => void;
 }) {
   return (
-    <div className={`rounded-xl border bg-white p-4 dark:bg-gray-800 ${
+    <div className={`rounded-xl border bg-white p-4 transition hover:border-gray-300 dark:bg-gray-800 dark:hover:border-gray-600 ${
       destaque ? "border-red-200 dark:border-red-800/50" : "border-gray-200 dark:border-gray-700"
     }`}>
       <div className="flex items-start justify-between gap-3">
@@ -286,10 +292,116 @@ function ProcessoCard({
         <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
           {prioridade}
         </p>
-        {!semDados && atualizadoEm ? (
-          <span className="text-[11px] text-gray-400 dark:text-gray-500">
-            Atualizado em: {formatarDataHora(atualizadoEm)}
-          </span>
+      </div>
+      <button
+        type="button"
+        onClick={onDetalhes}
+        disabled={semDados}
+        className="mt-3 inline-flex items-center gap-1 rounded-lg bg-blue-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-blue-500 dark:hover:bg-blue-600"
+      >
+        Ver detalhes
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M5 12h14" />
+          <path d="m12 5 7 7-7 7" />
+        </svg>
+      </button>
+    </div>
+  );
+}
+
+function ordenarAlertasProcessuais(rows: ProcessoAlertaRow[]) {
+  return [...rows].sort((a, b) => {
+    const nivelA = NIVEL_PROCESSO_ORDER[a.nivel_alerta ?? ""] ?? 9;
+    const nivelB = NIVEL_PROCESSO_ORDER[b.nivel_alerta ?? ""] ?? 9;
+    if (nivelA !== nivelB) return nivelA - nivelB;
+    const duracao = (b.duracao_setor_dias ?? -1) - (a.duracao_setor_dias ?? -1);
+    if (duracao !== 0) return duracao;
+    const atraso = (b.dias_em_atraso ?? -1) - (a.dias_em_atraso ?? -1);
+    if (atraso !== 0) return atraso;
+    return (a.processo ?? 0) - (b.processo ?? 0);
+  });
+}
+
+function ModalProcessual({
+  tipo,
+  registros,
+  onClose,
+}: {
+  tipo: TipoModalProcessual;
+  registros: ProcessoAlertaRow[];
+  onClose: () => void;
+}) {
+  const config = MODAIS_PROCESSUAIS[tipo];
+  const registrosOrdenados = ordenarAlertasProcessuais(registros);
+  const registrosVisiveis = registrosOrdenados.slice(0, LIMITE_REGISTROS_MODAL);
+  const temMaisRegistros = registrosOrdenados.length > LIMITE_REGISTROS_MODAL;
+
+  return (
+    <div className="fixed inset-0 z-120000 flex items-center justify-center p-3 sm:p-5">
+      <button
+        type="button"
+        aria-label="Fechar detalhes processuais"
+        className="absolute inset-0 bg-gray-900/70 backdrop-blur-[1px]"
+        onClick={onClose}
+      />
+      <div className="relative z-10 flex max-h-[90vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900">
+        <div className="flex items-start justify-between gap-3 border-b border-gray-100 px-4 py-3 dark:border-gray-700">
+          <div>
+            <h2 className="text-base font-bold text-gray-900 dark:text-white">{config.titulo}</h2>
+            <p className="mt-0.5 max-w-3xl text-xs text-gray-500 dark:text-gray-400">{config.subtitulo}</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+          >
+            Fechar
+          </button>
+        </div>
+
+        {registrosOrdenados.length === 0 ? (
+          <div className="px-4 py-10 text-center text-sm text-gray-500 dark:text-gray-400">
+            Nenhum processo encontrado para este alerta.
+          </div>
+        ) : (
+          <div className="overflow-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-100 bg-gray-50 dark:border-gray-700 dark:bg-gray-900/40">
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Nível</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Processo</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Classe</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Órgão</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Atividade atual</th>
+                  <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Dias no setor</th>
+                  <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Atraso</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50 dark:divide-gray-700/50">
+                {registrosVisiveis.map((alerta) => (
+                  <tr key={`${alerta.tipo_alerta}-${alerta.processo}-${alerta.duracao_setor_dias}`} className="hover:bg-gray-50 dark:hover:bg-gray-800/60">
+                    <td className="px-4 py-3"><NivelBadge nivel={alerta.nivel_alerta} /></td>
+                    <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">{alerta.processo ?? "—"}</td>
+                    <td className="max-w-xs px-4 py-3 text-xs text-gray-700 dark:text-gray-300">{alerta.classe ?? "—"}</td>
+                    <td className="max-w-sm px-4 py-3 text-xs text-gray-500 dark:text-gray-400">{alerta.orgao ?? "Órgão não informado"}</td>
+                    <td className="max-w-xs px-4 py-3 text-xs text-gray-500 dark:text-gray-400">{alerta.atividade_atual ?? "—"}</td>
+                    <td className="px-4 py-3 text-center text-xs font-bold text-gray-700 dark:text-gray-300">
+                      {formatarNumero(alerta.duracao_setor_dias)}
+                    </td>
+                    <td className="px-4 py-3 text-center text-xs font-bold text-red-600 dark:text-red-400">
+                      {formatarNumero(alerta.dias_em_atraso)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {temMaisRegistros ? (
+          <div className="border-t border-gray-100 px-4 py-3 text-xs text-gray-400 dark:border-gray-700 dark:text-gray-500">
+            Exibindo os 20 principais registros. A página analítica completa será implementada em etapa futura.
+          </div>
         ) : null}
       </div>
     </div>
@@ -301,6 +413,7 @@ export default function AlertasGabineteClient() {
   const [alertas, setAlertas] = useState<AlertaRow[]>([]);
   const [resumoProcessos, setResumoProcessos] = useState<ProcessoResumoRow | null>(null);
   const [alertasProcessos, setAlertasProcessos] = useState<ProcessoAlertaRow[]>([]);
+  const [modalProcessual, setModalProcessual] = useState<TipoModalProcessual | null>(null);
   const [carregando, setCarregando] = useState(supabaseDisponivel);
   const [erro, setErro] = useState<string | null>(
     supabaseDisponivel ? null : "Supabase não configurado."
@@ -387,21 +500,9 @@ export default function AlertasGabineteClient() {
 
   const maiorNivel = comPendencia[0]?.nivel_alerta;
   const semDadosProcessuais = !resumoProcessos;
-  const alertasProcessosPrioritarios = useMemo(
-    () =>
-      [...alertasProcessos]
-        .sort((a, b) => {
-          const nivelA = NIVEL_PROCESSO_ORDER[a.nivel_alerta ?? ""] ?? 9;
-          const nivelB = NIVEL_PROCESSO_ORDER[b.nivel_alerta ?? ""] ?? 9;
-          if (nivelA !== nivelB) return nivelA - nivelB;
-          const duracao = (b.duracao_setor_dias ?? -1) - (a.duracao_setor_dias ?? -1);
-          if (duracao !== 0) return duracao;
-          const atraso = (b.dias_em_atraso ?? -1) - (a.dias_em_atraso ?? -1);
-          if (atraso !== 0) return atraso;
-          return (a.processo ?? 0) - (b.processo ?? 0);
-        })
-        .slice(0, 6),
-    [alertasProcessos]
+  const registrosModalProcessual = useMemo(
+    () => (modalProcessual ? alertasProcessos.filter((alerta) => alerta.tipo_alerta === modalProcessual) : []),
+    [alertasProcessos, modalProcessual]
   );
 
   if (erro) {
@@ -474,28 +575,28 @@ export default function AlertasGabineteClient() {
               descricao="Cautelares, denúncias, representações, petições e pedidos de vista no gabinete."
               prioridade="Processual"
               valor={resumoProcessos?.processos_sensiveis ?? null}
-              atualizadoEm={resumoProcessos?.atualizado_em}
               icone={<DocumentoAlertaIcon />}
               semDados={semDadosProcessuais}
+              onDetalhes={() => setModalProcessual("processo_sensivel")}
             />
             <ProcessoCard
               titulo="Processos há mais de 15 dias"
               descricao="Processos aguardando movimentação há mais de 15 dias no gabinete atual."
               prioridade="Prazo processual"
               valor={resumoProcessos?.processos_mais_15_dias ?? null}
-              atualizadoEm={resumoProcessos?.atualizado_em}
               icone={<RelogioProcessualIcon />}
               semDados={semDadosProcessuais}
+              onDetalhes={() => setModalProcessual("mais_15_dias")}
             />
             <ProcessoCard
               titulo="Prazo regulamentar vencido"
               descricao="Processos cujo tempo de registro ultrapassou o prazo regulamentar da classe."
               prioridade="Alerta processual"
               valor={resumoProcessos?.processos_prazo_regulamentar_vencido ?? null}
-              atualizadoEm={resumoProcessos?.atualizado_em}
               icone={<PrazoVencidoIcon />}
               destaque
               semDados={semDadosProcessuais}
+              onDetalhes={() => setModalProcessual("prazo_regulamentar_vencido")}
             />
           </>
         )}
@@ -524,74 +625,12 @@ export default function AlertasGabineteClient() {
         ))}
       </div>
 
-      {alertasProcessosPrioritarios.length > 0 ? (
-        <div className="rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
-          <div className="flex flex-col gap-1 border-b border-gray-100 px-4 py-3 dark:border-gray-700 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h2 className="text-sm font-bold text-gray-800 dark:text-white">
-                Alertas processuais prioritários
-              </h2>
-              <p className="text-xs text-gray-400 dark:text-gray-500">
-                Principais alertas do {GABINETE_ATUAL_LABEL}
-              </p>
-            </div>
-            {resumoProcessos?.atualizado_em ? (
-              <span className="text-xs text-gray-400 dark:text-gray-500">
-                Atualizado em: {formatarDataHora(resumoProcessos.atualizado_em)}
-              </span>
-            ) : null}
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-100 bg-gray-50 dark:border-gray-700 dark:bg-gray-900/40">
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Nível</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Tipo</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Processo</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Classe / órgão</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Atividade</th>
-                  <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Dias setor</th>
-                  <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Atraso</th>
-                  <th className="px-4 py-3" />
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50 dark:divide-gray-700/50">
-                {alertasProcessosPrioritarios.map((alerta) => (
-                  <tr key={`${alerta.tipo_alerta}-${alerta.processo}-${alerta.duracao_setor_dias}`} className="hover:bg-gray-50 dark:hover:bg-gray-700/30">
-                    <td className="px-4 py-3">
-                      <NivelBadge nivel={alerta.nivel_alerta} />
-                    </td>
-                    <td className="px-4 py-3 text-xs font-medium text-gray-700 dark:text-gray-300">
-                      {alerta.titulo_alerta ?? alerta.tipo_alerta ?? "Alerta processual"}
-                    </td>
-                    <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">
-                      {alerta.processo ?? "—"}
-                    </td>
-                    <td className="max-w-xs px-4 py-3">
-                      <p className="text-xs font-medium text-gray-700 dark:text-gray-300">{alerta.classe ?? "—"}</p>
-                      <p className="truncate text-xs text-gray-400 dark:text-gray-500">{alerta.orgao ?? "Órgão não informado"}</p>
-                    </td>
-                    <td className="max-w-xs px-4 py-3 text-xs text-gray-500 dark:text-gray-400">
-                      {alerta.atividade_atual ?? "—"}
-                    </td>
-                    <td className="px-4 py-3 text-center text-xs font-bold text-gray-700 dark:text-gray-300">
-                      {formatarNumero(alerta.duracao_setor_dias)}
-                    </td>
-                    <td className="px-4 py-3 text-center text-xs font-bold text-red-600 dark:text-red-400">
-                      {formatarNumero(alerta.dias_em_atraso)}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <span className="inline-flex cursor-not-allowed items-center rounded-lg border border-gray-200 px-2.5 py-1 text-xs font-medium text-gray-400 dark:border-gray-700 dark:text-gray-500">
-                        Análise em implantação
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+      {modalProcessual ? (
+        <ModalProcessual
+          tipo={modalProcessual}
+          registros={registrosModalProcessual}
+          onClose={() => setModalProcessual(null)}
+        />
       ) : null}
     </div>
   );
