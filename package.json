@@ -23,6 +23,7 @@
     "apexcharts": "^4.7.0",
     "autoprefixer": "^10.4.22",
     "flatpickr": "^4.6.13",
+    "ldapts": "^8.1.7",
     "leaflet": "^1.9.4",
     "lucide-react": "^1.14.0",
     "next": "^16.1.6",
