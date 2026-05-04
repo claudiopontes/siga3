@@ -25,11 +25,18 @@ type EmpenhoRow = {
   valor_pago: number | null;
   valor_a_liquidar: number | null;
   valor_a_pagar: number | null;
+  qtd_empenhos?: number | null;
 };
 
 type DimEnteRow = {
   id_ente: number;
   codigo: number;
+  nome: string;
+};
+
+type DimEntidadeRow = {
+  id_entidade: number;
+  id_ente: number;
   nome: string;
 };
 
@@ -121,12 +128,14 @@ export default function PainelDespesaClient() {
   const paramAnoInicio = searchParams.get("anoInicio");
   const paramAnoFim    = searchParams.get("anoFim");
   const paramEnte      = searchParams.get("ente");
+  const paramEntidade  = searchParams.get("entidade");
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [rows, setRows] = useState<EmpenhoRow[]>([]);
   const [credores, setCredores] = useState<DimCredorRow[]>([]);
-  const [enteByCode, setEnteByCode] = useState<Map<number, DimEnteRow>>(new Map());
+  const [enteById, setEnteById] = useState<Map<number, DimEnteRow>>(new Map());
+  const [entidadeById, setEntidadeById] = useState<Map<number, DimEntidadeRow>>(new Map());
 
   const evolucaoRef = useRef<HTMLDivElement | null>(null);
   const entesRef = useRef<HTMLDivElement | null>(null);
@@ -140,21 +149,26 @@ export default function PainelDespesaClient() {
 
     Promise.all([
       client.from("dim_ente").select("id_ente,codigo,nome").range(0, 9999),
+      client.from("dim_entidade").select("id_entidade,id_ente,nome").range(0, 9999),
       loadAllPaginated<DimCredorRow>(client, "dim_credor", "cnpj_cpf,nome"),
-    ]).then(([entesRes, credoresData]) => {
+    ]).then(([entesRes, entidadesRes, credoresData]) => {
       if (!entesRes.error) {
         const m = new Map<number, DimEnteRow>();
-        ((entesRes.data ?? []) as DimEnteRow[]).forEach((e) => m.set(Number(e.codigo), e));
-        setEnteByCode(m);
+        ((entesRes.data ?? []) as DimEnteRow[]).forEach((e) => m.set(Number(e.id_ente), e));
+        setEnteById(m);
+      }
+      if (!entidadesRes.error) {
+        const m = new Map<number, DimEntidadeRow>();
+        ((entidadesRes.data ?? []) as DimEntidadeRow[]).forEach((e) => m.set(Number(e.id_entidade), e));
+        setEntidadeById(m);
       }
       setCredores(credoresData);
     });
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
-  // Carrega fato_empenho quando os params de URL mudam
+  // Carrega despesa agregada quando os params de URL mudam
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase) {
-      setLoading(false);
       return;
     }
     if (!paramAnoInicio || !paramAnoFim) {
@@ -163,36 +177,59 @@ export default function PainelDespesaClient() {
     }
 
     let active = true;
-    setLoading(true);
-    setError(null);
     const client = supabase!;
     const anoInicioNum = Number(paramAnoInicio);
     const anoFimNum    = Number(paramAnoFim);
     const enteNum = paramEnte && paramEnte !== "all" ? Number(paramEnte) : null;
+    const entidadeNum = paramEntidade && paramEntidade !== "all" ? Number(paramEntidade) : null;
 
     async function load() {
-      // Filtra por ano_remessa (indexado via idx_fato_empenho_entidade_ano).
-      // Para reduzir volume transferido, execute etl/schema/views_despesa.sql no Supabase.
+      if (!active) return;
+      setLoading(true);
+      setError(null);
+
       const pageSize = 1000;
       let offset = 0;
       const allRows: EmpenhoRow[] = [];
+      const entidadeIdsDoEnte =
+        enteNum != null
+          ? [...entidadeById.values()]
+              .filter((entidade) => Number(entidade.id_ente) === enteNum)
+              .map((entidade) => Number(entidade.id_entidade))
+          : [];
+
+      if (enteNum != null && entidadeIdsDoEnte.length === 0) {
+        setRows([]);
+        setLoading(false);
+        return;
+      }
 
       while (true) {
         const baseQuery = client
-          .from("fato_empenho")
+          .from("vw_despesa_painel")
           .select(
-            "id_entidade,ano_remessa,data_empenho,cpf_cnpj_credor,numero_categoria_economica,numero_grupo_natureza_despesa,numero_elemento_despesa,numero_funcao,valor_empenhado_liquido,valor_liquidado,valor_pago,valor_a_liquidar,valor_a_pagar",
+            "id_entidade,ano_remessa,data_empenho:mes_empenho,cpf_cnpj_credor,numero_categoria_economica,numero_grupo_natureza_despesa,valor_empenhado_liquido,valor_liquidado,valor_pago,valor_a_liquidar,valor_a_pagar,qtd_empenhos",
           )
           .gte("ano_remessa", anoInicioNum)
           .lte("ano_remessa", anoFimNum);
 
-        const finalQuery = enteNum != null
-          ? baseQuery.eq("id_entidade", enteNum)
-          : baseQuery;
+        let finalQuery = baseQuery;
+
+        if (entidadeNum != null) {
+          finalQuery = finalQuery.eq("id_entidade", entidadeNum);
+        } else if (enteNum != null) {
+          finalQuery = finalQuery.in("id_entidade", entidadeIdsDoEnte);
+        }
 
         const { data, error: queryError } = await finalQuery.range(offset, offset + pageSize - 1);
 
-        if (queryError) throw new Error(formatSupabaseError(queryError));
+        if (queryError) {
+          throw new Error(
+            queryError.code === "PGRST205"
+              ? "A view vw_despesa_painel não existe no Supabase. Execute etl/schema/views_despesa.sql para acelerar o painel."
+              : formatSupabaseError(queryError),
+          );
+        }
 
         const batch = (data ?? []) as EmpenhoRow[];
         allRows.push(...batch);
@@ -212,7 +249,7 @@ export default function PainelDespesaClient() {
     });
 
     return () => { active = false; };
-  }, [paramAnoInicio, paramAnoFim, paramEnte]);
+  }, [paramAnoInicio, paramAnoFim, paramEnte, paramEntidade, entidadeById]);
 
   // --- Mapas auxiliares ---
 
@@ -239,7 +276,8 @@ export default function PainelDespesaClient() {
       pago += toNum(row.valor_pago);
       aLiquidar += toNum(row.valor_a_liquidar);
       aPagar += toNum(row.valor_a_pagar);
-      if (row.id_entidade) entesSet.add(row.id_entidade);
+      const enteId = entidadeById.get(Number(row.id_entidade))?.id_ente;
+      if (enteId) entesSet.add(Number(enteId));
       if (row.cpf_cnpj_credor) credoresSet.add(row.cpf_cnpj_credor);
     });
 
@@ -254,7 +292,7 @@ export default function PainelDespesaClient() {
       qtdEntes: entesSet.size,
       qtdCredores: credoresSet.size,
     };
-  }, [rows]);
+  }, [rows, entidadeById]);
 
   // --- Evolução mensal ---
 
@@ -321,9 +359,9 @@ export default function PainelDespesaClient() {
     >();
 
     rows.forEach((row) => {
-      const code = row.id_entidade;
-      if (!acc.has(code)) acc.set(code, { empenhado: 0, liquidado: 0, pago: 0, aPagar: 0 });
-      const e = acc.get(code)!;
+      const enteId = entidadeById.get(Number(row.id_entidade))?.id_ente ?? Number(row.id_entidade);
+      if (!acc.has(enteId)) acc.set(enteId, { empenhado: 0, liquidado: 0, pago: 0, aPagar: 0 });
+      const e = acc.get(enteId)!;
       e.empenhado += toNum(row.valor_empenhado_liquido);
       e.liquidado += toNum(row.valor_liquidado);
       e.pago += toNum(row.valor_pago);
@@ -332,12 +370,12 @@ export default function PainelDespesaClient() {
 
     return [...acc.entries()]
       .map(([code, values]) => ({
-        nome: enteByCode.get(code)?.nome ?? String(code),
+        nome: enteById.get(code)?.nome ?? entidadeById.get(code)?.nome ?? String(code),
         ...values,
       }))
       .sort((a, b) => b.empenhado - a.empenhado)
       .slice(0, 10);
-  }, [rows, enteByCode]);
+  }, [rows, enteById, entidadeById]);
 
   // --- Ranking credores ---
 
@@ -353,7 +391,7 @@ export default function PainelDespesaClient() {
       const e = acc.get(key)!;
       e.empenhado += toNum(row.valor_empenhado_liquido);
       e.pago += toNum(row.valor_pago);
-      e.qtd += 1;
+      e.qtd += Number(row.qtd_empenhos ?? 1);
     });
 
     return [...acc.entries()]

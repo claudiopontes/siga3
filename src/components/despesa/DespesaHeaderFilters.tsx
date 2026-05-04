@@ -9,6 +9,10 @@ type SelectOption = {
   label: string;
 };
 
+type EntidadeOption = SelectOption & {
+  idEnte: string;
+};
+
 // --- FilterDropdown ---
 
 function FilterDropdown({
@@ -265,11 +269,14 @@ export default function DespesaHeaderFilters() {
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [anosDisponiveis, setAnosDisponiveis] = useState<number[]>([]);
   const [entesOptions, setEntesOptions] = useState<SelectOption[]>([]);
-  const [dialog, setDialog] = useState<null | "anoInicio" | "anoFim" | "ente">(null);
+  const [entidadesOptions, setEntidadesOptions] = useState<EntidadeOption[]>([]);
+  const [dialog, setDialog] = useState<null | "anoInicio" | "anoFim" | "ente" | "entidade">(null);
 
   const selectedAnoInicio = searchParams.get("anoInicio") ?? "";
   const selectedAnoFim    = searchParams.get("anoFim")    ?? "";
   const selectedEnte      = searchParams.get("ente")      ?? "all";
+  const selectedEntidade  = searchParams.get("entidade")  ?? "all";
+  const periodoManual     = searchParams.get("periodoManual") === "1";
 
   // Carrega anos disponíveis e entes
   useEffect(() => {
@@ -283,39 +290,60 @@ export default function DespesaHeaderFilters() {
       }
 
       try {
-        const [anosRes, entesRes] = await Promise.all([
-          // ano_remessa é indexado — sem full scan
+        const [anoMaxRes, anoMinRes, entesRes, entidadesRes] = await Promise.all([
           supabase
             .from("fato_empenho")
             .select("ano_remessa")
+            .not("ano_remessa", "is", null)
             .order("ano_remessa", { ascending: false })
-            .limit(5000),
+            .limit(1)
+            .maybeSingle(),
+          supabase
+            .from("fato_empenho")
+            .select("ano_remessa")
+            .not("ano_remessa", "is", null)
+            .order("ano_remessa", { ascending: true })
+            .limit(1)
+            .maybeSingle(),
           supabase
             .from("dim_ente")
-            .select("codigo,nome")
+            .select("id_ente,nome")
+            .order("nome", { ascending: true })
+            .range(0, 9999),
+          supabase
+            .from("dim_entidade")
+            .select("id_entidade,id_ente,nome")
             .order("nome", { ascending: true })
             .range(0, 9999),
         ]);
 
         if (!active) return;
 
-        const anos = [
-          ...new Set(
-            (anosRes.data ?? [])
-              .map((r: { ano_remessa: number | null }) => Number(r.ano_remessa))
-              .filter((v) => Number.isFinite(v) && v > 0),
-          ),
-        ].sort((a, b) => b - a);
+        const anoMax = Number((anoMaxRes.data as { ano_remessa?: number | null } | null)?.ano_remessa);
+        const anoMin = Number((anoMinRes.data as { ano_remessa?: number | null } | null)?.ano_remessa);
+        const anos =
+          Number.isFinite(anoMax) && Number.isFinite(anoMin) && anoMax >= anoMin
+            ? Array.from({ length: anoMax - anoMin + 1 }, (_, index) => anoMax - index)
+            : [];
 
         const entes = (entesRes.data ?? [])
-          .filter((e: { codigo: number | null; nome: string | null }) => e.codigo != null && e.nome)
-          .map((e: { codigo: number; nome: string }) => ({
-            value: String(e.codigo),
+          .filter((e: { id_ente: number | null; nome: string | null }) => e.id_ente != null && e.nome)
+          .map((e: { id_ente: number; nome: string }) => ({
+            value: String(e.id_ente),
             label: e.nome,
+          }));
+
+        const entidades = (entidadesRes.data ?? [])
+          .filter((e: { id_entidade: number | null; id_ente: number | null; nome: string | null }) => e.id_entidade != null && e.id_ente != null && e.nome)
+          .map((e: { id_entidade: number; id_ente: number; nome: string }) => ({
+            value: String(e.id_entidade),
+            label: e.nome,
+            idEnte: String(e.id_ente),
           }));
 
         setAnosDisponiveis(anos);
         setEntesOptions(entes);
+        setEntidadesOptions(entidades);
       } catch (err) {
         console.error("Falha ao carregar filtros da despesa:", err);
       } finally {
@@ -325,7 +353,7 @@ export default function DespesaHeaderFilters() {
 
     load();
     return () => { active = false; };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   // Defaults: ano mais recente como anoFim, anterior como anoInicio
   const defaultAnoFim = useMemo(() => {
@@ -359,6 +387,28 @@ export default function DespesaHeaderFilters() {
     router,
   ]);
 
+  useEffect(() => {
+    if (!hasLoadedOnce || periodoManual) return;
+    if (defaultAnoInicio === defaultAnoFim) return;
+    if (selectedAnoInicio !== selectedAnoFim) return;
+    if (selectedAnoFim !== defaultAnoFim) return;
+
+    const next = new URLSearchParams(searchParams.toString());
+    next.set("anoInicio", defaultAnoInicio);
+    next.set("anoFim", defaultAnoFim);
+    router.replace(`${pathname}?${next.toString()}`, { scroll: false });
+  }, [
+    hasLoadedOnce,
+    periodoManual,
+    selectedAnoInicio,
+    selectedAnoFim,
+    defaultAnoInicio,
+    defaultAnoFim,
+    searchParams,
+    pathname,
+    router,
+  ]);
+
   const displayedAnoInicio = selectedAnoInicio || defaultAnoInicio;
   const displayedAnoFim    = selectedAnoFim    || defaultAnoFim;
 
@@ -366,33 +416,46 @@ export default function DespesaHeaderFilters() {
     const next = new URLSearchParams(searchParams.toString());
     if (value === "all" || value === "") next.delete(key);
     else next.set(key, value);
+    if (key === "anoInicio" || key === "anoFim") next.set("periodoManual", "1");
+    if (key === "ente") next.delete("entidade");
     router.replace(`${pathname}?${next.toString()}`, { scroll: false });
   };
 
   const clearFilters = () => {
     const next = new URLSearchParams(searchParams.toString());
     next.delete("ente");
+    next.delete("entidade");
     router.replace(`${pathname}?${next.toString()}`, { scroll: false });
   };
 
-  const hasActiveFilters = selectedEnte !== "all";
-  const activeFilterCount = [selectedEnte !== "all"].filter(Boolean).length;
+  const hasActiveFilters = selectedEnte !== "all" || selectedEntidade !== "all";
+  const activeFilterCount = [selectedEnte !== "all", selectedEntidade !== "all"].filter(Boolean).length;
 
   const anosOptions = useMemo(
     () => anosDisponiveis.map((a) => ({ value: String(a), label: String(a) })),
     [anosDisponiveis],
   );
 
-  const optionsByDialog: Record<"anoInicio" | "anoFim" | "ente", SelectOption[]> = {
+  const entidadesFiltradas = useMemo(
+    () =>
+      selectedEnte === "all"
+        ? entidadesOptions
+        : entidadesOptions.filter((entidade) => entidade.idEnte === selectedEnte),
+    [entidadesOptions, selectedEnte],
+  );
+
+  const optionsByDialog: Record<"anoInicio" | "anoFim" | "ente" | "entidade", SelectOption[]> = {
     anoInicio: anosOptions,
     anoFim:    anosOptions,
     ente:      entesOptions,
+    entidade:  entidadesFiltradas,
   };
 
-  const valueByDialog: Record<"anoInicio" | "anoFim" | "ente", string> = {
+  const valueByDialog: Record<"anoInicio" | "anoFim" | "ente" | "entidade", string> = {
     anoInicio: displayedAnoInicio,
     anoFim:    displayedAnoFim,
     ente:      selectedEnte,
+    entidade:  selectedEntidade,
   };
 
   return (
@@ -427,6 +490,14 @@ export default function DespesaHeaderFilters() {
             onClick={() => setDialog("ente")}
           />
 
+          <FilterTrigger
+            label="Entidade"
+            value={selectedEntidade}
+            placeholder="Todas"
+            options={entidadesFiltradas}
+            onClick={() => setDialog("entidade")}
+          />
+
           {hasActiveFilters && (
             <button
               type="button"
@@ -452,17 +523,20 @@ export default function DespesaHeaderFilters() {
             ? "Selecionar ano inicial"
             : dialog === "anoFim"
               ? "Selecionar ano final"
-              : "Selecionar ente"
+              : dialog === "ente"
+                ? "Selecionar ente"
+                : "Selecionar entidade"
         }
         isOpen={dialog !== null}
         value={dialog ? valueByDialog[dialog] : "all"}
-        placeholder={dialog === "anoInicio" || dialog === "anoFim" ? "Todos" : "Todos"}
+        placeholder={dialog === "entidade" ? "Todas" : "Todos"}
         options={dialog ? optionsByDialog[dialog] : []}
         onClose={() => setDialog(null)}
         onSelect={(value) => {
           if (dialog === "anoInicio") setFilter("anoInicio", value);
           else if (dialog === "anoFim") setFilter("anoFim", value);
           else if (dialog === "ente") setFilter("ente", value);
+          else if (dialog === "entidade") setFilter("entidade", value);
         }}
       />
     </>
