@@ -1,0 +1,25 @@
+name: varadouro-postgres
+
+services:
+  postgres:
+    image: postgres:17
+    container_name: varadouro_postgres
+    restart: unless-stopped
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-varadouro}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-varadouro_dev}
+      POSTGRES_DB: ${POSTGRES_DB:-varadouro_digital}
+    volumes:
+      - varadouro_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-varadouro} -d ${POSTGRES_DB:-varadouro_digital}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+volumes:
+  varadouro_pgdata:
+    name: varadouro_pgdata

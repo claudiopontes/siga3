@@ -33,6 +33,16 @@ etl/logs/
 .env*.local
 .env
 etl/.env
+infra/postgres/.env
+
+# Dumps e backups locais
+*.dump
+*.backup
+etl/dumps/
+infra/postgres/dumps/
+
+# Volumes locais docker (caso exportados)
+infra/postgres/data/
 
 # vercel
 .vercel

@@ -14,10 +14,15 @@
     "populacao-ibge": "ts-node jobs/populacao-ibge.ts",
     "cauc": "ts-node jobs/cauc.ts",
     "processos-gabinete": "ts-node jobs/processos-gabinete.ts",
-    "agendar": "ts-node schedule.ts"
+    "agendar": "ts-node schedule.ts",
+    "postgres:check": "ts-node jobs/postgres-check.ts",
+    "postgres:migrate": "ts-node jobs/postgres-migrate.ts",
+    "migrar:supabase-postgres": "ts-node jobs/migrar-supabase-para-postgres.ts",
+    "mart:despesa": "ts-node jobs/refresh-mart-despesa.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.8",
+    "pg": "^8.13.3",
     "dotenv": "^16.5.0",
     "msnodesqlv8": "^4.5.0",
     "mssql": "^11.0.1",
@@ -25,6 +30,7 @@
   },
   "devDependencies": {
     "@types/mssql": "^9.1.5",
+    "@types/pg": "^8.11.11",
     "@types/node": "^20.19.25",
     "@types/node-cron": "^3.0.11",
     "ts-node": "^10.9.2",
