@@ -9,10 +9,6 @@ type SelectOption = {
   label: string;
 };
 
-type EntidadeOption = SelectOption & {
-  idEnte: string;
-};
-
 // --- FilterDropdown ---
 
 function FilterDropdown({
@@ -102,7 +98,7 @@ function FilterDropdown({
       </button>
 
       {open && (
-        <div className="absolute left-0 top-[calc(100%+6px)] z-[110000] w-[520px] max-w-[calc(100vw-2rem)] rounded-xl border border-gray-200 bg-white p-4 shadow-xl dark:border-gray-700 dark:bg-gray-900">
+        <div className="absolute left-0 top-[calc(100%+6px)] z-110000 w-[520px] max-w-[calc(100vw-2rem)] rounded-xl border border-gray-200 bg-white p-4 shadow-xl dark:border-gray-700 dark:bg-gray-900">
           <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500">
             Filtros disponíveis
           </p>
@@ -137,7 +133,7 @@ function FilterTrigger({
     <button
       type="button"
       onClick={onClick}
-      className={`flex h-11 min-w-[170px] max-w-[240px] items-center gap-2 rounded-lg border px-3 text-left shadow-theme-xs transition hover:bg-gray-50 dark:hover:bg-gray-800 ${
+      className={`flex h-11 min-w-[170px] max-w-60 items-center gap-2 rounded-lg border px-3 text-left shadow-theme-xs transition hover:bg-gray-50 dark:hover:bg-gray-800 ${
         value !== "all" && value !== ""
           ? "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-800/70 dark:bg-blue-900/20 dark:text-blue-300"
           : "border-gray-200 bg-transparent text-gray-700 dark:border-gray-700 dark:text-gray-200"
@@ -189,7 +185,7 @@ function FilterDialog({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[120000] flex items-center justify-center p-3 sm:p-4">
+    <div className="fixed inset-0 z-120000 flex items-center justify-center p-3 sm:p-4">
       <button
         type="button"
         aria-label="Fechar filtro"
@@ -265,6 +261,8 @@ export default function DespesaHeaderFilters() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
+  type EntidadeOption = SelectOption & { idEnte: string };
+
   const [loading, setLoading] = useState(true);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [anosDisponiveis, setAnosDisponiveis] = useState<number[]>([]);
@@ -278,7 +276,7 @@ export default function DespesaHeaderFilters() {
   const selectedEntidade  = searchParams.get("entidade")  ?? "all";
   const periodoManual     = searchParams.get("periodoManual") === "1";
 
-  // Carrega anos disponíveis e entes
+  // Carrega anos disponíveis, entes e entidades
   useEffect(() => {
     let active = true;
 
@@ -313,6 +311,7 @@ export default function DespesaHeaderFilters() {
           supabase
             .from("dim_entidade")
             .select("id_entidade,id_ente,nome")
+            .eq("inativo", 0)
             .order("nome", { ascending: true })
             .range(0, 9999),
         ]);
@@ -326,6 +325,7 @@ export default function DespesaHeaderFilters() {
             ? Array.from({ length: anoMax - anoMin + 1 }, (_, index) => anoMax - index)
             : [];
 
+        // value = dim_ente.id_ente (chave usada nas materialized views)
         const entes = (entesRes.data ?? [])
           .filter((e: { id_ente: number | null; nome: string | null }) => e.id_ente != null && e.nome)
           .map((e: { id_ente: number; nome: string }) => ({
@@ -333,8 +333,10 @@ export default function DespesaHeaderFilters() {
             label: e.nome,
           }));
 
+        // value = dim_entidade.id_entidade; idEnte = dim_entidade.id_ente para cascata
         const entidades = (entidadesRes.data ?? [])
-          .filter((e: { id_entidade: number | null; id_ente: number | null; nome: string | null }) => e.id_entidade != null && e.id_ente != null && e.nome)
+          .filter((e: { id_entidade: number | null; id_ente: number | null; nome: string | null }) =>
+            e.id_entidade != null && e.id_ente != null && e.nome)
           .map((e: { id_entidade: number; id_ente: number; nome: string }) => ({
             value: String(e.id_entidade),
             label: e.nome,
@@ -417,6 +419,7 @@ export default function DespesaHeaderFilters() {
     if (value === "all" || value === "") next.delete(key);
     else next.set(key, value);
     if (key === "anoInicio" || key === "anoFim") next.set("periodoManual", "1");
+    // Ao trocar ente, limpa entidade (cascata)
     if (key === "ente") next.delete("entidade");
     router.replace(`${pathname}?${next.toString()}`, { scroll: false });
   };
@@ -436,11 +439,12 @@ export default function DespesaHeaderFilters() {
     [anosDisponiveis],
   );
 
+  // Entidades filtradas pelo ente selecionado (cascata)
   const entidadesFiltradas = useMemo(
     () =>
       selectedEnte === "all"
         ? entidadesOptions
-        : entidadesOptions.filter((entidade) => entidade.idEnte === selectedEnte),
+        : entidadesOptions.filter((e) => e.idEnte === selectedEnte),
     [entidadesOptions, selectedEnte],
   );
 
@@ -519,13 +523,10 @@ export default function DespesaHeaderFilters() {
       <FilterDialog
         key={dialog ?? "closed"}
         title={
-          dialog === "anoInicio"
-            ? "Selecionar ano inicial"
-            : dialog === "anoFim"
-              ? "Selecionar ano final"
-              : dialog === "ente"
-                ? "Selecionar ente"
-                : "Selecionar entidade"
+          dialog === "anoInicio" ? "Selecionar ano inicial"
+          : dialog === "anoFim" ? "Selecionar ano final"
+          : dialog === "ente" ? "Selecionar ente"
+          : "Selecionar entidade"
         }
         isOpen={dialog !== null}
         value={dialog ? valueByDialog[dialog] : "all"}
@@ -533,10 +534,7 @@ export default function DespesaHeaderFilters() {
         options={dialog ? optionsByDialog[dialog] : []}
         onClose={() => setDialog(null)}
         onSelect={(value) => {
-          if (dialog === "anoInicio") setFilter("anoInicio", value);
-          else if (dialog === "anoFim") setFilter("anoFim", value);
-          else if (dialog === "ente") setFilter("ente", value);
-          else if (dialog === "entidade") setFilter("entidade", value);
+          if (dialog) setFilter(dialog, value);
         }}
       />
     </>
