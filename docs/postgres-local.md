@@ -109,6 +109,46 @@ Isso popula as tabelas:
 
 ---
 
+## Carga full a partir das fontes oficiais do TCE
+
+O caminho preferencial de carga é direto das fontes do TCE (SQL Server) para o PostgreSQL local:
+
+```
+SQL Server (TCE) → ETL → PostgreSQL local
+```
+
+O script `migrar:supabase-postgres` é apenas um fallback legado para situações onde o acesso ao SQL Server não esteja disponível.
+
+### Como executar a carga full
+
+```bash
+cd etl
+npm run postgres:migrate   # aplica schemas (apenas na primeira vez)
+npm run carga-full:postgres  # carrega dimensões + despesa + mart
+```
+
+Esse comando executa em sequência:
+1. `dimensoes:postgres` — carrega dim_ente, dim_entidade e dim_credor do SQL Server
+2. `despesa:full:postgres` — carrega fato_empenho do SQL Server via staging
+3. `mart:despesa` — recalcula as tabelas mart.*
+
+### Trocar para o PostgreSQL institucional
+
+Quando a infraestrutura entregar o banco PostgreSQL de homologação/produção, basta alterar no `etl/.env`:
+
+```
+DATABASE_URL=postgres://usuario:senha@host-institucional:5432/banco
+# ou separadamente:
+PGHOST=host-institucional
+PGDATABASE=nome_banco
+PGUSER=usuario
+PGPASSWORD=senha
+```
+
+Nenhuma alteração de código é necessária.
+
+---
+
 ## Trocar para o banco institucional (produção)
 
 Basta alterar `DATABASE_URL` ou as variáveis `PG*` no `etl/.env` para apontar para o servidor PostgreSQL institucional do TCE-AC. Nenhum código precisa ser alterado.

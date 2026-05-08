@@ -18,7 +18,10 @@
     "postgres:check": "ts-node jobs/postgres-check.ts",
     "postgres:migrate": "ts-node jobs/postgres-migrate.ts",
     "migrar:supabase-postgres": "ts-node jobs/migrar-supabase-para-postgres.ts",
-    "mart:despesa": "ts-node jobs/refresh-mart-despesa.ts"
+    "mart:despesa": "ts-node jobs/refresh-mart-despesa.ts",
+    "dimensoes:postgres": "ts-node jobs/dimensoes-ente-entidade-postgres.ts",
+    "despesa:full:postgres": "ts-node jobs/despesa-full-postgres.ts",
+    "carga-full:postgres": "npm run dimensoes:postgres && npm run despesa:full:postgres && npm run mart:despesa"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.8",
