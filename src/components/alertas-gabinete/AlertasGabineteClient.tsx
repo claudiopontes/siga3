@@ -44,6 +44,36 @@ type ProcessoAlertaRow = {
 
 type TipoModalProcessual = "processo_sensivel" | "mais_15_dias" | "prazo_regulamentar_vencido";
 
+type RemessaResumoRow = {
+  ano: number;
+  total_remessas: number;
+  total_entidades: number;
+  total_nao_enviadas_prazo: number;
+  total_enviadas_atraso: number;
+  total_sem_confirmacao: number;
+  total_sem_processamento: number;
+  total_criticas: number;
+  total_altas: number;
+  total_medias: number;
+};
+
+type RemessaAlertaRow = {
+  id_alerta: number;
+  id_remessa: number | null;
+  id_entidade: number;
+  nome_entidade: string | null;
+  nome_ente: string | null;
+  ano: number;
+  numero: number;
+  tipo_alerta: string;
+  nivel: string;
+  descricao: string;
+  prazo_envio: string | null;
+  data_envio: string | null;
+  dias_atraso: number | null;
+  situacao: string | null;
+};
+
 const NIVEL_ORDER: Record<AlertaRow["nivel_alerta"], number> = {
   alto: 0,
   medio: 1,
@@ -418,6 +448,33 @@ export default function AlertasGabineteClient() {
   const [erro, setErro] = useState<string | null>(
     supabaseDisponivel ? null : "Supabase não configurado."
   );
+  const [resumoRemessas, setResumoRemessas] = useState<RemessaResumoRow[]>([]);
+  const [alertasRemessas, setAlertasRemessas] = useState<RemessaAlertaRow[]>([]);
+  const [modalRemessas, setModalRemessas] = useState(false);
+  const [carregandoRemessas, setCarregandoRemessas] = useState(true);
+
+  // Busca remessas contábeis via API local (PostgreSQL)
+  useEffect(() => {
+    let cancelado = false;
+    async function carregarRemessas() {
+      try {
+        const anoAtual = new Date().getFullYear();
+        const [resResumo, resAlertas] = await Promise.all([
+          fetch(`/api/remessas/resumo?ano=${anoAtual}`).then((r) => r.json()),
+          fetch(`/api/remessas/alertas?ano=${anoAtual}&limit=50`).then((r) => r.json()),
+        ]);
+        if (cancelado) return;
+        if (Array.isArray(resResumo)) setResumoRemessas(resResumo as RemessaResumoRow[]);
+        if (Array.isArray(resAlertas)) setAlertasRemessas(resAlertas as RemessaAlertaRow[]);
+      } catch {
+        // silencioso — card mostrará sem dados
+      } finally {
+        if (!cancelado) setCarregandoRemessas(false);
+      }
+    }
+    void carregarRemessas();
+    return () => { cancelado = true; };
+  }, []);
 
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase) {
@@ -601,6 +658,71 @@ export default function AlertasGabineteClient() {
           </>
         )}
 
+        {/* Card remessas contábeis — dados reais */}
+        {carregandoRemessas ? (
+          <CardSkeleton />
+        ) : (() => {
+          const resumo = resumoRemessas[0];
+          const totalCriticos = resumo?.total_nao_enviadas_prazo ?? 0;
+          const totalAltos = resumo?.total_enviadas_atraso ?? 0;
+          const totalMedios = (resumo?.total_sem_confirmacao ?? 0) + (resumo?.total_sem_processamento ?? 0);
+          const totalAlertas = totalCriticos + totalAltos + totalMedios;
+          const semDados = !resumo;
+          return (
+            <div className={`rounded-xl border bg-white p-4 dark:bg-gray-800 ${
+              totalCriticos > 0
+                ? "border-red-200 dark:border-red-800/50"
+                : totalAltos > 0
+                  ? "border-amber-200 dark:border-amber-800/50"
+                  : "border-gray-200 dark:border-gray-700"
+            }`}>
+              <div className="flex items-start justify-between gap-3">
+                <span className={`rounded-full p-1.5 ${
+                  totalCriticos > 0
+                    ? "bg-red-50 text-red-500 dark:bg-red-900/20 dark:text-red-400"
+                    : "bg-orange-50 text-orange-500 dark:bg-orange-900/20 dark:text-orange-400"
+                }`}>
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                    <path d="M14 2v6h6" />
+                    <path d="M12 17h.01" /><path d="M12 11v3" />
+                  </svg>
+                </span>
+                {semDados ? (
+                  <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500 dark:bg-gray-700 dark:text-gray-400">Sem dados</span>
+                ) : totalCriticos > 0 ? (
+                  <NivelBadge nivel="alto" />
+                ) : totalAltos > 0 ? (
+                  <NivelBadge nivel="medio" />
+                ) : null}
+              </div>
+              <p className="mt-3 text-sm font-bold text-gray-900 dark:text-white">Remessas contábeis</p>
+              {semDados ? (
+                <p className="mt-1 text-xs font-medium text-gray-400 dark:text-gray-500">Aguardando carga de dados</p>
+              ) : (
+                <p className="mt-1 text-2xl font-bold text-gray-900 dark:text-white">{formatarNumero(totalAlertas)}</p>
+              )}
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {semDados
+                  ? "Execute npm run carga-remessas:postgres"
+                  : `${totalCriticos} não enviadas · ${totalAltos} com atraso · ${totalMedios} sem confirmação`}
+              </p>
+              <p className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">Prestação de contas</p>
+              <button
+                type="button"
+                disabled={semDados || totalAlertas === 0}
+                onClick={() => setModalRemessas(true)}
+                className="mt-3 inline-flex items-center gap-1 rounded-lg bg-blue-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-blue-500 dark:hover:bg-blue-600"
+              >
+                Ver detalhes
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M5 12h14" /><path d="m12 5 7 7-7 7" />
+                </svg>
+              </button>
+            </div>
+          );
+        })()}
+
         {ALERTAS_SUGERIDOS.map((alerta) => (
           <div
             key={alerta.titulo}
@@ -631,6 +753,76 @@ export default function AlertasGabineteClient() {
           registros={registrosModalProcessual}
           onClose={() => setModalProcessual(null)}
         />
+      ) : null}
+
+      {modalRemessas ? (
+        <div className="fixed inset-0 z-120000 flex items-center justify-center p-3 sm:p-5">
+          <button
+            type="button"
+            aria-label="Fechar detalhes de remessas"
+            className="absolute inset-0 bg-gray-900/70 backdrop-blur-[1px]"
+            onClick={() => setModalRemessas(false)}
+          />
+          <div className="relative z-10 flex max-h-[90vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900">
+            <div className="flex items-start justify-between gap-3 border-b border-gray-100 px-4 py-3 dark:border-gray-700">
+              <div>
+                <h2 className="text-base font-bold text-gray-900 dark:text-white">Alertas de remessas contábeis</h2>
+                <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                  Remessas obrigatórias de prestação de contas com pendências no ano atual.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setModalRemessas(false)}
+                className="rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+              >
+                Fechar
+              </button>
+            </div>
+            {alertasRemessas.length === 0 ? (
+              <div className="px-4 py-10 text-center text-sm text-gray-500 dark:text-gray-400">Nenhum alerta encontrado.</div>
+            ) : (
+              <div className="overflow-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-100 bg-gray-50 dark:border-gray-700 dark:bg-gray-900/40">
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Nível</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Entidade</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Tipo</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Prazo</th>
+                      <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-gray-500">Dias de atraso</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50 dark:divide-gray-700/50">
+                    {alertasRemessas.map((a) => (
+                      <tr key={a.id_alerta} className="hover:bg-gray-50 dark:hover:bg-gray-800/60">
+                        <td className="px-4 py-3">
+                          <NivelBadge nivel={a.nivel === "CRITICO" ? "alto" : a.nivel === "ALTO" ? "medio" : "baixo"} />
+                        </td>
+                        <td className="px-4 py-3 text-xs text-gray-700 dark:text-gray-300">
+                          {a.nome_entidade ?? `Entidade ${a.id_entidade}`}
+                          {a.nome_ente ? <span className="ml-1 text-gray-400">({a.nome_ente})</span> : null}
+                        </td>
+                        <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400">{a.descricao}</td>
+                        <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400">
+                          {a.prazo_envio ? new Date(a.prazo_envio).toLocaleDateString("pt-BR") : "—"}
+                        </td>
+                        <td className="px-4 py-3 text-center text-xs font-bold text-red-600 dark:text-red-400">
+                          {a.dias_atraso ?? "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            {alertasRemessas.length >= 50 ? (
+              <div className="border-t border-gray-100 px-4 py-3 text-xs text-gray-400 dark:border-gray-700">
+                Exibindo os 50 principais alertas do ano atual.
+              </div>
+            ) : null}
+          </div>
+        </div>
       ) : null}
     </div>
   );

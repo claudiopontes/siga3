@@ -163,3 +163,35 @@ PGSSLMODE=require
 ## Observação sobre o frontend
 
 O frontend Next.js (Painel de Despesa e demais painéis) continua usando o Supabase como backend de leitura. A migração para PostgreSQL local é exclusiva do ETL. Quando o banco institucional estiver disponível, o frontend poderá ser adaptado para consumir uma API própria ou Supabase apontando para o PostgreSQL institucional via connection pooler.
+
+---
+
+## Remessas obrigatórias de prestação de contas
+
+Fonte principal: `APC.dbo.REMESSA` (SQL Server)
+Destino DW: `dw.fato_remessa_contabil`
+Destino Mart: `mart.remessa_alertas`, `mart.remessa_resumo`
+
+### Comandos
+
+```bash
+# Inspecionar valores de domínio e tabelas auxiliares
+npm run remessas:inspecionar
+
+# Carga completa (remessas + dimensões + mart)
+npm run carga-remessas:postgres
+```
+
+### Regras de alerta atuais (fase 1)
+
+Baseadas apenas em datas:
+- `remessa_nao_enviada_no_prazo` — CRITICO
+- `remessa_enviada_com_atraso` — ALTO
+- `remessa_sem_confirmacao` — MEDIO
+- `remessa_sem_processamento` — MEDIO
+
+SITUACAO, STATUS, STATUS_PUBLICACAO e TIPO_LIBERACAO serão analisados após execução do job `remessas:inspecionar` para conhecer os valores reais.
+
+### Integração futura
+
+A API `/api/remessas/alertas` e `/api/remessas/resumo` já estão disponíveis para integração com a tela "Alertas do Gabinete".
