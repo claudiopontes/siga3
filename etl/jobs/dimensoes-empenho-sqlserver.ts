@@ -7,7 +7,7 @@
 
 import "dotenv/config";
 import { queryInDatabase } from "../connectors/sqlserver";
-import { getSupabase } from "../connectors/supabase";
+import { pgQuery, closePgPool } from "../connectors/postgres";
 
 type AplicacaoRow = {
   id_aplicacao: number;
@@ -32,14 +32,12 @@ type CredorRow = {
 
 const MODULO = "dimensoes_empenho_sqlserver";
 const SQL_DATABASE = process.env.SQLSERVER_APC_DATABASE || "APC";
-const SUPABASE_BATCH = toPositiveInt(Number(process.env.DIM_EMPENHO_SUPABASE_BATCH || "500"), 500);
+const PG_BATCH = toPositiveInt(Number(process.env.DIM_EMPENHO_SUPABASE_BATCH || "500"), 500);
 
 const TABELAS = {
   aplicacao: process.env.DIM_APLICACAO_TABLE || "dim_aplicacao",
   credor: process.env.DIM_CREDOR_TABLE || "dim_credor",
 };
-
-const supabase = getSupabase();
 
 function toPositiveInt(input: number, fallback: number): number {
   if (!Number.isFinite(input) || input < 1) return fallback;
@@ -47,36 +45,56 @@ function toPositiveInt(input: number, fallback: number): number {
 }
 
 async function gravarLog(status: "sucesso" | "erro", registros: number, duracao: number, mensagem?: string) {
-  await supabase.from("etl_log").insert({
-    modulo: MODULO,
-    status,
-    mensagem: mensagem ?? null,
-    registros,
-    duracao_ms: duracao,
-  });
+  await pgQuery(
+    `INSERT INTO audit.etl_log (modulo, status, registros, duracao_ms, mensagem)
+     VALUES ($1, $2, $3, $4, $5)`,
+    [MODULO, status, registros, duracao, mensagem ?? null],
+  );
 }
 
-async function validarTabelaDestino(tabela: string): Promise<void> {
-  const { error } = await supabase.from(tabela).select("*").limit(1);
-  if (error) {
+async function validarTabelaDestino(schema: string, tabela: string): Promise<void> {
+  const rows = await pgQuery<{ existe: boolean }>(
+    `SELECT EXISTS (
+       SELECT 1 FROM information_schema.tables
+       WHERE table_schema = $1 AND table_name = $2
+     ) AS existe`,
+    [schema, tabela],
+  );
+  if (!rows[0]?.existe) {
     throw new Error(
-      `Tabela destino indisponivel no Supabase (${tabela}). ` +
-        "Aplique o schema em etl/schema/dimensoes_empenho.sql. " +
-        `Detalhe: ${error.message}`,
+      `Tabela destino nao encontrada no PostgreSQL: ${schema}.${tabela}. ` +
+      `Execute: npm run postgres:migrate`,
     );
   }
 }
 
-async function upsertEmLotes<T extends Record<string, unknown>>(
-  tabela: string,
-  rows: T[],
-  onConflict: string,
-): Promise<void> {
+async function upsertAplicacaoEmLotes(rows: AplicacaoRow[]): Promise<void> {
   if (rows.length === 0) return;
-  for (let i = 0; i < rows.length; i += SUPABASE_BATCH) {
-    const lote = rows.slice(i, i + SUPABASE_BATCH);
-    const { error } = await supabase.from(tabela).upsert(lote, { onConflict });
-    if (error) throw new Error(`Erro no upsert de ${tabela}: ${error.message}`);
+  for (let i = 0; i < rows.length; i += PG_BATCH) {
+    const lote = rows.slice(i, i + PG_BATCH);
+    for (const r of lote) {
+      await pgQuery(
+        `INSERT INTO public.dim_aplicacao (id_aplicacao, codigo, descricao, atualizado_em)
+         VALUES ($1,$2,$3,$4)
+         ON CONFLICT (id_aplicacao) DO UPDATE SET codigo=$2, descricao=$3, atualizado_em=$4`,
+        [r.id_aplicacao, r.codigo, r.descricao, r.atualizado_em],
+      );
+    }
+  }
+}
+
+async function upsertCredorEmLotes(rows: CredorRow[]): Promise<void> {
+  if (rows.length === 0) return;
+  for (let i = 0; i < rows.length; i += PG_BATCH) {
+    const lote = rows.slice(i, i + PG_BATCH);
+    for (const r of lote) {
+      await pgQuery(
+        `INSERT INTO public.dim_credor (cnpj_cpf, inscricao_estadual, inscricao_municipal, nome, endereco, bairro, cidade, uf, cep, fone, atualizado_em)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+         ON CONFLICT (cnpj_cpf) DO UPDATE SET inscricao_estadual=$2, inscricao_municipal=$3, nome=$4, endereco=$5, bairro=$6, cidade=$7, uf=$8, cep=$9, fone=$10, atualizado_em=$11`,
+        [r.cnpj_cpf, r.inscricao_estadual, r.inscricao_municipal, r.nome, r.endereco, r.bairro, r.cidade, r.uf, r.cep, r.fone, r.atualizado_em],
+      );
+    }
   }
 }
 
@@ -122,13 +140,16 @@ export async function executarCargaDimensoesEmpenhoSqlServer(): Promise<void> {
   console.log(`  -> Destino Supabase: ${TABELAS.aplicacao} / ${TABELAS.credor}`);
 
   try {
-    await Promise.all([validarTabelaDestino(TABELAS.aplicacao), validarTabelaDestino(TABELAS.credor)]);
+    await Promise.all([
+      validarTabelaDestino("public", TABELAS.aplicacao),
+      validarTabelaDestino("public", TABELAS.credor),
+    ]);
 
     const [aplicacoes, credores] = await Promise.all([carregarAplicacao(), carregarCredor()]);
     console.log(`  -> Registros fonte: aplicacao=${aplicacoes.length} | credor=${credores.length}`);
 
-    await upsertEmLotes(TABELAS.aplicacao, aplicacoes, "id_aplicacao");
-    await upsertEmLotes(TABELAS.credor, credores, "cnpj_cpf");
+    await upsertAplicacaoEmLotes(aplicacoes);
+    await upsertCredorEmLotes(credores);
 
     const duracao = Date.now() - inicio;
     const total = aplicacoes.length + credores.length;
@@ -144,5 +165,7 @@ export async function executarCargaDimensoesEmpenhoSqlServer(): Promise<void> {
 }
 
 if (require.main === module) {
-  executarCargaDimensoesEmpenhoSqlServer().catch(() => process.exit(1));
+  executarCargaDimensoesEmpenhoSqlServer()
+    .catch(() => process.exit(1))
+    .finally(() => closePgPool());
 }

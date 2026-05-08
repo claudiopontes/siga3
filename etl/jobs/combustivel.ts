@@ -5,9 +5,8 @@
  */
 
 import { query, closePool } from '../connectors/sqlserver'
-import { getSupabase } from '../connectors/supabase'
+import { pgQuery, closePgPool } from '../connectors/postgres'
 
-const supabase = getSupabase()
 const MODULO = 'combustivel'
 const SQL_EMITENTE_EXPR = `
 COALESCE(
@@ -135,28 +134,67 @@ FROM dbo.vw_NF_combustiveis
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 async function limparTabela(tabela: string): Promise<void> {
-  const { error } = await supabase.from(tabela).delete().neq('id', 0)
-  if (error) throw new Error(`Erro ao limpar ${tabela}: ${error.message}`)
+  await pgQuery(`DELETE FROM public.${tabela}`)
 }
 
-async function inserir(tabela: string, dados: Record<string, unknown>[]): Promise<void> {
+async function inserirMensal(dados: (RowMensal & { atualizado_em: string })[]): Promise<void> {
   if (dados.length === 0) return
-  const tamanhoLote = 500
-  for (let i = 0; i < dados.length; i += tamanhoLote) {
-    const lote = dados.slice(i, i + tamanhoLote)
-    const { error } = await supabase.from(tabela).insert(lote)
-    if (error) throw new Error(`Erro ao inserir em ${tabela}: ${error.message}`)
+  for (const r of dados) {
+    await pgQuery(
+      `INSERT INTO public.combustivel_mensal (ano, mes, entidade, emitente, tipo_combustivel, litros, valor_total, qtd_notas, atualizado_em)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+      [r.ano, r.mes, r.entidade, r.emitente, r.tipo_combustivel, r.litros, r.valor_total, r.qtd_notas, r.atualizado_em],
+    )
   }
 }
 
+async function inserirEntidade(dados: (RowEntidade & { atualizado_em: string })[]): Promise<void> {
+  if (dados.length === 0) return
+  for (const r of dados) {
+    await pgQuery(
+      `INSERT INTO public.combustivel_entidade (entidade, litros, valor_total, qtd_notas, atualizado_em)
+       VALUES ($1,$2,$3,$4,$5)`,
+      [r.entidade, r.litros, r.valor_total, r.qtd_notas, r.atualizado_em],
+    )
+  }
+}
+
+async function inserirTipo(dados: (RowTipo & { atualizado_em: string })[]): Promise<void> {
+  if (dados.length === 0) return
+  for (const r of dados) {
+    await pgQuery(
+      `INSERT INTO public.combustivel_tipo (tipo_combustivel, litros, valor_total, qtd_notas, atualizado_em)
+       VALUES ($1,$2,$3,$4,$5)`,
+      [r.tipo_combustivel, r.litros, r.valor_total, r.qtd_notas, r.atualizado_em],
+    )
+  }
+}
+
+async function inserirEmitente(dados: (RowEmitente & { atualizado_em: string })[]): Promise<void> {
+  if (dados.length === 0) return
+  for (const r of dados) {
+    await pgQuery(
+      `INSERT INTO public.combustivel_emitente (emitente, litros, valor_total, qtd_notas, atualizado_em)
+       VALUES ($1,$2,$3,$4,$5)`,
+      [r.emitente, r.litros, r.valor_total, r.qtd_notas, r.atualizado_em],
+    )
+  }
+}
+
+async function inserirKpis(kpi: RowKpi & { atualizado_em: string }): Promise<void> {
+  await pgQuery(
+    `INSERT INTO public.combustivel_kpis (valor_total, litros_total, preco_medio, total_entidades, total_notas, data_inicio, data_fim, atualizado_em)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+    [kpi.valor_total, kpi.litros_total, kpi.preco_medio, kpi.total_entidades, kpi.total_notas, kpi.data_inicio || null, kpi.data_fim || null, kpi.atualizado_em],
+  )
+}
+
 async function gravarLog(status: 'sucesso' | 'erro', registros: number, duracao: number, mensagem?: string) {
-  await supabase.from('etl_log').insert({
-    modulo: MODULO,
-    status,
-    mensagem: mensagem ?? null,
-    registros,
-    duracao_ms: duracao,
-  })
+  await pgQuery(
+    `INSERT INTO audit.etl_log (modulo, status, registros, duracao_ms, mensagem)
+     VALUES ($1, $2, $3, $4, $5)`,
+    [MODULO, status, registros, duracao, mensagem ?? null],
+  )
 }
 
 // ─── Job principal ────────────────────────────────────────────────────────────
@@ -179,26 +217,22 @@ export async function executarETLCombustivel(): Promise<void> {
     console.log(`  → Registros: mensal=${mensal.length} | entidade=${entidade.length} | tipo=${tipo.length} | emitente=${emitente.length}`)
 
     // 2. Limpar e reinserir (substituição total)
-    console.log('  → Atualizando Supabase...')
+    console.log('  → Atualizando PostgreSQL...')
     const agora = new Date().toISOString()
 
-    await Promise.all([
-      limparTabela('combustivel_mensal'),
-      limparTabela('combustivel_entidade'),
-      limparTabela('combustivel_tipo'),
-      limparTabela('combustivel_emitente'),
-      limparTabela('combustivel_kpis'),
-    ])
+    await limparTabela('combustivel_kpis')
+    await limparTabela('combustivel_emitente')
+    await limparTabela('combustivel_tipo')
+    await limparTabela('combustivel_entidade')
+    await limparTabela('combustivel_mensal')
 
-    await Promise.all([
-      inserir('combustivel_mensal',   mensal.map(r   => ({ ...r, atualizado_em: agora }))),
-      inserir('combustivel_entidade', entidade.map(r => ({ ...r, atualizado_em: agora }))),
-      inserir('combustivel_tipo',     tipo.map(r     => ({ ...r, atualizado_em: agora }))),
-      inserir('combustivel_emitente', emitente.map(r => ({ ...r, atualizado_em: agora }))),
-    ])
+    await inserirMensal(mensal.map(r => ({ ...r, atualizado_em: agora })))
+    await inserirEntidade(entidade.map(r => ({ ...r, atualizado_em: agora })))
+    await inserirTipo(tipo.map(r => ({ ...r, atualizado_em: agora })))
+    await inserirEmitente(emitente.map(r => ({ ...r, atualizado_em: agora })))
 
     if (kpis.length > 0) {
-      await inserir('combustivel_kpis', [{ ...kpis[0], atualizado_em: agora }])
+      await inserirKpis({ ...kpis[0], atualizado_em: agora })
     }
 
     const duracao = Date.now() - inicio
@@ -220,5 +254,7 @@ export async function executarETLCombustivel(): Promise<void> {
 
 // Execução direta
 if (require.main === module) {
-  executarETLCombustivel().catch(() => process.exit(1))
+  executarETLCombustivel()
+    .catch(() => process.exit(1))
+    .finally(() => closePgPool())
 }

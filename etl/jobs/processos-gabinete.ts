@@ -1,7 +1,7 @@
 import "dotenv/config";
 import crypto from "node:crypto";
 import { query, closePool } from "../connectors/sqlserver";
-import { getSupabase } from "../connectors/supabase";
+import { pgQuery, closePgPool } from "../connectors/postgres";
 
 const MODULO = "processos_gabinete";
 const SQL_DATABASE = process.env.PROCESSOS_GABINETE_SQLSERVER_DATABASE ?? "EPROCESS";
@@ -252,59 +252,55 @@ function gerarResumoPorGabinete(rows: Omit<SupabaseProcessoGabineteRow, "carga_i
 }
 
 async function gravarLog(status: "sucesso" | "erro", registros: number, duracao: number, mensagem?: string): Promise<void> {
-  const supabase = getSupabase();
-  await supabase.from("etl_log").insert({
-    modulo: MODULO,
-    status,
-    mensagem: mensagem ?? null,
-    registros,
-    duracao_ms: duracao,
-  });
+  await pgQuery(
+    `INSERT INTO audit.etl_log (modulo, status, registros, duracao_ms, mensagem)
+     VALUES ($1, $2, $3, $4, $5)`,
+    [MODULO, status, registros, duracao, mensagem ?? null],
+  );
 }
 
 async function criarCarga(): Promise<number> {
-  const supabase = getSupabase();
-  const { data, error } = await supabase
-    .from("processos_gabinete_carga")
-    .insert({
-      fonte: "sqlserver",
-      view_origem: VIEW_ORIGEM,
-      status: "iniciada",
-      registros: 0,
-    })
-    .select("id")
-    .single();
-
-  if (error) throw new Error(`Erro ao criar processos_gabinete_carga: ${error.message}`);
-  return (data as { id: number }).id;
+  const rows = await pgQuery<{ id: number }>(
+    `INSERT INTO public.processos_gabinete_carga (fonte, view_origem, status, registros)
+     VALUES ($1, $2, $3, $4)
+     RETURNING id`,
+    ["sqlserver", VIEW_ORIGEM, "iniciada", 0],
+  );
+  return rows[0].id;
 }
 
 async function finalizarCarga(cargaId: number, status: "sucesso" | "erro", registros: number, mensagem?: string): Promise<void> {
-  const supabase = getSupabase();
-  const { error } = await supabase
-    .from("processos_gabinete_carga")
-    .update({
-      status,
-      finalizado_em: new Date().toISOString(),
-      registros,
-      mensagem: mensagem ?? null,
-    })
-    .eq("id", cargaId);
-
-  if (error) throw new Error(`Erro ao finalizar processos_gabinete_carga ${cargaId}: ${error.message}`);
+  await pgQuery(
+    `UPDATE public.processos_gabinete_carga
+     SET status = $1, finalizado_em = now(), registros = $2, mensagem = $3
+     WHERE id = $4`,
+    [status, registros, mensagem ?? null, cargaId],
+  );
 }
 
 async function inserirLotes(rows: Omit<SupabaseProcessoGabineteRow, "carga_id">[], cargaId: number): Promise<number> {
-  const supabase = getSupabase();
   let inseridos = 0;
 
   for (let i = 0; i < rows.length; i += SUPABASE_BATCH) {
-    const lote = rows.slice(i, i + SUPABASE_BATCH).map((row) => ({ ...row, carga_id: cargaId }));
-    const { error } = await supabase.from("processos_gabinete_raw").insert(lote);
-    if (error) {
-      throw new Error(`Erro ao inserir processos_gabinete_raw (lote ${i / SUPABASE_BATCH + 1}): ${error.message}`);
+    const lote = rows.slice(i, i + SUPABASE_BATCH);
+    for (const row of lote) {
+      await pgQuery(
+        `INSERT INTO public.processos_gabinete_raw
+           (carga_id, relator, id_grupo, grupo_atual, ic_gabinete_cons, setor, usuario_atual, processo,
+            assunto, classe, orgao, atividade_atual, data_criacao, data_chegada_setor_atual, duracao_setor_dias,
+            tempo_de_registro_dias, prazo_regulamentado_dias, dias_em_atraso, flag_mais_15_dias,
+            flag_processo_sensivel, flag_prazo_regulamentar_vencido, dados, hash_registro, coletado_em)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)`,
+        [
+          cargaId, row.relator, row.id_grupo, row.grupo_atual, row.ic_gabinete_cons, row.setor, row.usuario_atual,
+          row.processo, row.assunto, row.classe, row.orgao, row.atividade_atual, row.data_criacao,
+          row.data_chegada_setor_atual, row.duracao_setor_dias, row.tempo_de_registro_dias,
+          row.prazo_regulamentado_dias, row.dias_em_atraso, row.flag_mais_15_dias, row.flag_processo_sensivel,
+          row.flag_prazo_regulamentar_vencido, JSON.stringify(row.dados), row.hash_registro, row.coletado_em,
+        ],
+      );
+      inseridos++;
     }
-    inseridos += lote.length;
   }
 
   return inseridos;
@@ -336,7 +332,7 @@ function imprimirDryRun(rows: Omit<SupabaseProcessoGabineteRow, "carga_id">[], t
 export async function executarCargaProcessosGabinete(): Promise<void> {
   const inicio = Date.now();
   console.log(`[${new Date().toISOString()}] Iniciando ETL: ${MODULO}`);
-  if (DRY_RUN) console.log("  -> Modo dry-run ativo. Nenhum dado sera gravado no Supabase.");
+  if (DRY_RUN) console.log("  -> Modo dry-run ativo. Nenhum dado sera gravado no PostgreSQL.");
 
   assertSafeSqlDatabase(SQL_DATABASE);
   assertSafeSqlIdentifier(VIEW_ORIGEM);
@@ -368,7 +364,7 @@ export async function executarCargaProcessosGabinete(): Promise<void> {
       return;
     }
 
-    console.log("  -> Criando carga no Supabase...");
+    console.log("  -> Criando carga no PostgreSQL...");
     cargaId = await criarCarga();
     console.log(`     carga_id=${cargaId}`);
 
@@ -403,5 +399,7 @@ export async function executarCargaProcessosGabinete(): Promise<void> {
 }
 
 if (require.main === module) {
-  executarCargaProcessosGabinete().catch(() => process.exit(1));
+  executarCargaProcessosGabinete()
+    .catch(() => process.exit(1))
+    .finally(() => closePgPool());
 }

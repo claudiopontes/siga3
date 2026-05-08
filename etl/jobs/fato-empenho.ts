@@ -6,7 +6,7 @@
 
 import "dotenv/config";
 import { queryInDatabase } from "../connectors/sqlserver";
-import { getSupabase } from "../connectors/supabase";
+import { pgQuery, closePgPool } from "../connectors/postgres";
 
 type ModoCarga = "FULL" | "INCREMENTAL";
 
@@ -53,14 +53,13 @@ type EmpenhoRow = {
 };
 
 const MODULO = "fato_empenho";
-const supabase = getSupabase();
 
 const SQL_DATABASE = process.env.FATO_EMPENHO_SQLSERVER_DATABASE || process.env.SQLSERVER_APC_DATABASE || "APC";
 const SOURCE_VIEW = process.env.FATO_EMPENHO_SOURCE_VIEW || "audit.vw_fato_empenho_polanco";
-const SUPABASE_TABLE = process.env.FATO_EMPENHO_SUPABASE_TABLE || "fato_empenho";
+const PG_TABLE = process.env.FATO_EMPENHO_SUPABASE_TABLE || "fato_empenho";
 const MODO_CARGA = normalizeModo(process.env.FATO_EMPENHO_MODO_CARGA || "INCREMENTAL");
 const LOOKBACK_REMESSAS = toPositiveInt(Number(process.env.FATO_EMPENHO_LOOKBACK_REMESSAS || "3"), 3);
-const SUPABASE_UPSERT_BATCH = toPositiveInt(Number(process.env.FATO_EMPENHO_SUPABASE_BATCH || "500"), 500);
+const PG_UPSERT_BATCH = toPositiveInt(Number(process.env.FATO_EMPENHO_SUPABASE_BATCH || "500"), 500);
 
 function normalizeModo(value: string): ModoCarga {
   return value.toUpperCase() === "FULL" ? "FULL" : "INCREMENTAL";
@@ -82,22 +81,25 @@ function chaveRemessa(r: Remessa): number {
 }
 
 async function gravarLog(status: "sucesso" | "erro", registros: number, duracao: number, mensagem?: string) {
-  await supabase.from("etl_log").insert({
-    modulo: MODULO,
-    status,
-    mensagem: mensagem ?? null,
-    registros,
-    duracao_ms: duracao,
-  });
+  await pgQuery(
+    `INSERT INTO audit.etl_log (modulo, status, registros, duracao_ms, mensagem)
+     VALUES ($1, $2, $3, $4, $5)`,
+    [MODULO, status, registros, duracao, mensagem ?? null],
+  );
 }
 
 async function validarDestino(): Promise<void> {
-  const { error } = await supabase.from(SUPABASE_TABLE).select("id_despesa").limit(1);
-  if (error) {
+  const rows = await pgQuery<{ existe: boolean }>(
+    `SELECT EXISTS (
+       SELECT 1 FROM information_schema.tables
+       WHERE table_schema = 'public' AND table_name = $1
+     ) AS existe`,
+    [PG_TABLE],
+  );
+  if (!rows[0]?.existe) {
     throw new Error(
-      `Tabela destino indisponivel no Supabase (${SUPABASE_TABLE}). ` +
-        "Aplique o schema em etl/schema/fato_empenho.sql. " +
-        `Detalhe: ${error.message}`,
+      `Tabela destino nao encontrada no PostgreSQL: public.${PG_TABLE}. ` +
+      `Execute: npm run postgres:migrate`,
     );
   }
 }
@@ -114,18 +116,14 @@ ORDER BY ANO_REMESSA, NUMERO_REMESSA;
 }
 
 async function buscarUltimaRemessaDestino(): Promise<Remessa | null> {
-  const { data, error } = await supabase
-    .from(SUPABASE_TABLE)
-    .select("ano_remessa,numero_remessa")
-    .order("ano_remessa", { ascending: false })
-    .order("numero_remessa", { ascending: false })
-    .limit(1);
-
-  if (error) throw new Error(`Erro ao consultar ultima remessa no Supabase: ${error.message}`);
-  if (!data || data.length === 0) return null;
-
-  const row = data[0] as Remessa;
-  return { ano_remessa: row.ano_remessa, numero_remessa: row.numero_remessa };
+  const rows = await pgQuery<Remessa>(
+    `SELECT ano_remessa, numero_remessa
+     FROM public.${PG_TABLE}
+     ORDER BY ano_remessa DESC, numero_remessa DESC
+     LIMIT 1`,
+  );
+  if (rows.length === 0) return null;
+  return { ano_remessa: rows[0].ano_remessa, numero_remessa: rows[0].numero_remessa };
 }
 
 async function escolherRemessasCarga(): Promise<Remessa[]> {
@@ -194,10 +192,40 @@ ORDER BY ID_DESPESA;
 async function upsertEmLotes(rows: EmpenhoRow[], batchSize: number): Promise<void> {
   for (let i = 0; i < rows.length; i += batchSize) {
     const batch = rows.slice(i, i + batchSize);
-    const { error } = await supabase
-      .from(SUPABASE_TABLE)
-      .upsert(batch, { onConflict: "id_despesa" });
-    if (error) throw new Error(`Erro ao fazer upsert no Supabase (lote ${i / batchSize + 1}): ${error.message}`);
+    for (const r of batch) {
+      await pgQuery(
+        `INSERT INTO public.${PG_TABLE} (
+           id_despesa, id_remessa, ano_remessa, numero_remessa, id_entidade, id_acao, id_programa,
+           id_unidade_orcamentaria, id_fonte_destinacao_recurso, id_aplicacao, numero_funcao, numero_subfuncao,
+           numero_categoria_economica, numero_grupo_natureza_despesa, numero_modalidade_aplicacao,
+           numero_elemento_despesa, cpf_cnpj_credor, tipo_credor, numero_empenho, ano_empenho, data_empenho,
+           tipo_empenho, numero_empenho_ref, tipo_lancamento, historico_empenho, valor_empenho, valor_anulado,
+           valor_liquidado, valor_pago, valor_retido, valor_empenhado_liquido, valor_a_liquidar, valor_a_pagar,
+           etl_atualizado_em
+         ) VALUES (
+           $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,
+           $26,$27,$28,$29,$30,$31,$32,$33,$34
+         )
+         ON CONFLICT (id_despesa) DO UPDATE SET
+           id_remessa=$2, ano_remessa=$3, numero_remessa=$4, id_entidade=$5, id_acao=$6, id_programa=$7,
+           id_unidade_orcamentaria=$8, id_fonte_destinacao_recurso=$9, id_aplicacao=$10, numero_funcao=$11,
+           numero_subfuncao=$12, numero_categoria_economica=$13, numero_grupo_natureza_despesa=$14,
+           numero_modalidade_aplicacao=$15, numero_elemento_despesa=$16, cpf_cnpj_credor=$17, tipo_credor=$18,
+           numero_empenho=$19, ano_empenho=$20, data_empenho=$21, tipo_empenho=$22, numero_empenho_ref=$23,
+           tipo_lancamento=$24, historico_empenho=$25, valor_empenho=$26, valor_anulado=$27, valor_liquidado=$28,
+           valor_pago=$29, valor_retido=$30, valor_empenhado_liquido=$31, valor_a_liquidar=$32, valor_a_pagar=$33,
+           etl_atualizado_em=$34`,
+        [
+          r.id_despesa, r.id_remessa, r.ano_remessa, r.numero_remessa, r.id_entidade, r.id_acao, r.id_programa,
+          r.id_unidade_orcamentaria, r.id_fonte_destinacao_recurso, r.id_aplicacao, r.numero_funcao, r.numero_subfuncao,
+          r.numero_categoria_economica, r.numero_grupo_natureza_despesa, r.numero_modalidade_aplicacao,
+          r.numero_elemento_despesa, r.cpf_cnpj_credor, r.tipo_credor, r.numero_empenho, r.ano_empenho, r.data_empenho,
+          r.tipo_empenho, r.numero_empenho_ref, r.tipo_lancamento, r.historico_empenho, r.valor_empenho, r.valor_anulado,
+          r.valor_liquidado, r.valor_pago, r.valor_retido, r.valor_empenhado_liquido, r.valor_a_liquidar, r.valor_a_pagar,
+          r.etl_atualizado_em,
+        ],
+      );
+    }
   }
 }
 
@@ -205,7 +233,7 @@ export async function executarETLFatoEmpenho(): Promise<void> {
   const inicio = Date.now();
   console.log(`[${new Date().toISOString()}] Iniciando ETL: ${MODULO}`);
   console.log(`  -> Fonte SQL: ${SQL_DATABASE}.${SOURCE_VIEW}`);
-  console.log(`  -> Destino Supabase: ${SUPABASE_TABLE}`);
+  console.log(`  -> Destino PostgreSQL: ${PG_TABLE}`);
   console.log(
     `  -> Modo: ${MODO_CARGA}${MODO_CARGA === "INCREMENTAL" ? ` (lookback=${LOOKBACK_REMESSAS} remessas)` : ""}`,
   );
@@ -234,7 +262,7 @@ export async function executarETLFatoEmpenho(): Promise<void> {
       const remessa = remessas[i];
       const rows = await carregarRemessa(remessa, agora);
       if (rows.length > 0) {
-        await upsertEmLotes(rows, SUPABASE_UPSERT_BATCH);
+        await upsertEmLotes(rows, PG_UPSERT_BATCH);
         totalRegistros += rows.length;
       }
       console.log(
@@ -255,5 +283,7 @@ export async function executarETLFatoEmpenho(): Promise<void> {
 }
 
 if (require.main === module) {
-  executarETLFatoEmpenho().catch(() => process.exit(1));
+  executarETLFatoEmpenho()
+    .catch(() => process.exit(1))
+    .finally(() => closePgPool());
 }

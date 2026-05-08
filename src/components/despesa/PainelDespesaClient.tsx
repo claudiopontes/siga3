@@ -1,83 +1,21 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useMemo, useRef } from "react";
 import { useSearchParams } from "next/navigation";
-import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import dynamic from "next/dynamic";
 import type { ApexOptions } from "apexcharts";
 import { Eye, SlidersHorizontal, Printer, AlertTriangle } from "lucide-react";
+import { useDespesaData } from "@/hooks/useDespesaData";
 
 const Chart = dynamic(() => import("react-apexcharts"), { ssr: false });
 
-// --- Tipos das views agregadas ---
-
-type ResumoRow = {
-  ano_remessa: number;
-  id_entidade: number;
-  id_ente: number;
-  nome_ente: string;
-  nome_entidade: string;
-  valor_empenhado_liquido: number;
-  valor_liquidado: number;
-  valor_pago: number;
-  valor_a_liquidar: number;
-  valor_a_pagar: number;
-  qtd_empenhos: number;
-  qtd_credores: number;
-  percentual_pago: number;
-};
-
-type EvolucaoRow = {
-  ano_remessa: number;
-  mes_empenho: string;
-  id_entidade: number;
-  id_ente: number;
-  valor_empenhado_liquido: number;
-  valor_liquidado: number;
-  valor_pago: number;
-};
-
-type RankingEnteRow = {
-  ano_remessa: number;
-  id_ente: number;
-  nome_ente: string;
-  valor_empenhado_liquido: number;
-  valor_liquidado: number;
-  valor_pago: number;
-  valor_a_pagar: number;
-  qtd_empenhos: number;
-};
-
-type RankingCredorRow = {
-  ano_remessa: number;
-  id_ente: number;
-  cpf_cnpj_credor: string;
-  nome_credor: string;
-  valor_empenhado_liquido: number;
-  valor_pago: number;
-  qtd_empenhos: number;
-};
-
-type ComposicaoRow = {
-  ano_remessa: number;
-  id_entidade: number;
-  id_ente: number;
-  tipo_composicao: string;
-  codigo: string;
-  rotulo: string;
-  valor_empenhado_liquido: number;
-  valor_pago: number;
-};
-
-type AlertaRow = {
-  ano_remessa: number;
-  id_ente: number;
-  id_entidade: number;
-  tipo_alerta: string;
-  descricao: string;
-  cpf_cnpj_credor: string | null;
-  valor_principal: number;
-};
+// --- Re-export de tipos para uso local ---
+type ResumoRow = import("@/hooks/useDespesaData").ResumoRow;
+type EvolucaoRow = import("@/hooks/useDespesaData").EvolucaoRow;
+type RankingEnteRow = import("@/hooks/useDespesaData").RankingEnteRow;
+type RankingCredorRow = import("@/hooks/useDespesaData").RankingCredorRow;
+type ComposicaoRow = import("@/hooks/useDespesaData").ComposicaoRow;
+type AlertaRow = import("@/hooks/useDespesaData").AlertaRow;
 
 // --- Helpers ---
 
@@ -116,31 +54,6 @@ function fmtNum(v: number): string {
   return v.toLocaleString("pt-BR");
 }
 
-function formatSupabaseError(error: unknown): string {
-  if (!error) return "Erro desconhecido.";
-  if (error instanceof Error) return error.message;
-  if (typeof error === "string") return error;
-  if (typeof error === "object") {
-    const e = error as { message?: string; details?: string; hint?: string; code?: string };
-    return [e.message, e.details, e.hint, e.code].filter(Boolean).join(" | ") || JSON.stringify(error);
-  }
-  return String(error);
-}
-
-// 42P01 = PostgreSQL "relation does not exist"
-// 42703 = PostgreSQL "column does not exist"
-// PGRST205 = PostgREST "table not found in schema cache"
-const VIEW_NOT_FOUND_CODES = new Set(["42P01", "42703", "PGRST205"]);
-
-function isViewMissing(err: unknown): boolean {
-  if (!err || typeof err !== "object") return false;
-  const e = err as { code?: string; message?: string };
-  if (VIEW_NOT_FOUND_CODES.has(e.code ?? "")) return true;
-  // PostgREST às vezes retorna o código em `details` ou na mensagem
-  const msg = (e.message ?? "").toLowerCase();
-  return msg.includes("could not find the table") || msg.includes("schema cache");
-}
-
 // --- Componente principal ---
 
 export default function PainelDespesaClient() {
@@ -152,155 +65,18 @@ export default function PainelDespesaClient() {
   const paramEnte       = searchParams.get("ente");       // dim_ente.id_ente
   const paramEntidade   = searchParams.get("entidade");   // dim_entidade.id_entidade
 
-  const [loading, setLoading]       = useState(isSupabaseConfigured);
-  const [error, setError]           = useState<string | null>(null);
-  const [viewsMissing, setViewsMissing] = useState(false);
-
-  const [resumo, setResumo]             = useState<ResumoRow[]>([]);
-  const [evolucao, setEvolucao]         = useState<EvolucaoRow[]>([]);
-  const [rankEntes, setRankEntes]       = useState<RankingEnteRow[]>([]);
-  const [rankCredores, setRankCredores] = useState<RankingCredorRow[]>([]);
-  const [composicao, setComposicao]     = useState<ComposicaoRow[]>([]);
-  const [alertas, setAlertas]           = useState<AlertaRow[]>([]);
-
   const evolucaoRef   = useRef<HTMLDivElement | null>(null);
   const entesRef      = useRef<HTMLDivElement | null>(null);
   const credoresRef   = useRef<HTMLDivElement | null>(null);
   const composicaoRef = useRef<HTMLDivElement | null>(null);
 
-  useEffect(() => {
-    if (!isSupabaseConfigured || !supabase || !paramAnoInicio || !paramAnoFim) return;
-
-    let active = true;
-    const client = supabase!;
-    const anoInicioNum  = Number(paramAnoInicio);
-    const anoFimNum     = Number(paramAnoFim);
-    // Filtro por entidade específica tem precedência sobre filtro por ente
-    const entidadeNum   = paramEntidade && paramEntidade !== "all" ? Number(paramEntidade) : null;
-    const enteNum       = !entidadeNum && paramEnte && paramEnte !== "all" ? Number(paramEnte) : null;
-
-    async function queryView<T>(
-      view: string,
-      cols: string,
-      extra?: (q: ReturnType<typeof client.from>) => ReturnType<typeof client.from>,
-    ): Promise<T[]> {
-      let q = client
-        .from(view)
-        .select(cols)
-        .gte("ano_remessa", anoInicioNum)
-        .lte("ano_remessa", anoFimNum);
-
-      // Filtro de entidade específica (mais restrito)
-      if (entidadeNum != null) q = q.eq("id_entidade", entidadeNum) as typeof q;
-      // Filtro de ente (agrupa todas as entidades do ente)
-      else if (enteNum != null) q = q.eq("id_ente", enteNum) as typeof q;
-
-      if (extra) q = extra(q) as typeof q;
-
-      const { data, error: qErr } = await q;
-      if (qErr) {
-        if (isViewMissing(qErr)) throw Object.assign(new Error("view_missing"), { viewMissing: true });
-        throw new Error(`${view}: ${formatSupabaseError(qErr)}`);
-      }
-      return (data ?? []) as T[];
-    }
-
-    async function load() {
-      setLoading(true);
-      setError(null);
-      setViewsMissing(false);
-
-      // mv_ = Materialized Views — leitura rápida, sem recálculo em tempo real
-      const [
-        resumoResult,
-        evolucaoResult,
-        entesResult,
-        credoresResult,
-        composicaoResult,
-        alertasEntesResult,
-        alertasCredoresResult,
-      ] = await Promise.allSettled([
-        queryView<ResumoRow>("mv_despesa_resumo", "*"),
-
-        queryView<EvolucaoRow>(
-          "mv_despesa_evolucao_mensal",
-          "ano_remessa,mes_empenho,id_entidade,valor_empenhado_liquido,valor_liquidado,valor_pago",
-          (q) => q.order("mes_empenho", { ascending: true }),
-        ),
-
-        queryView<RankingEnteRow>(
-          "mv_despesa_ranking_entes",
-          "ano_remessa,id_entidade,nome_ente,valor_empenhado_liquido,valor_liquidado,valor_pago,valor_a_pagar,qtd_empenhos",
-          (q) => q.order("valor_empenhado_liquido", { ascending: false }).limit(10),
-        ),
-
-        queryView<RankingCredorRow>(
-          "mv_despesa_ranking_credores",
-          "ano_remessa,cpf_cnpj_credor,nome_credor,valor_empenhado_liquido,valor_pago,qtd_empenhos",
-          (q) => q.order("valor_pago", { ascending: false }).limit(10),
-        ),
-
-        queryView<ComposicaoRow>(
-          "mv_despesa_composicao",
-          "ano_remessa,id_entidade,tipo_composicao,codigo,rotulo,valor_empenhado_liquido,valor_pago",
-          (q) => q.in("tipo_composicao", ["categoria_economica", "grupo_natureza"]),
-        ),
-
-        client
-          .from("mv_alertas_despesa")
-          .select("ano_remessa,id_entidade,tipo_alerta,descricao,cpf_cnpj_credor,valor_principal")
-          .gte("ano_remessa", anoInicioNum)
-          .lte("ano_remessa", anoFimNum)
-          .eq("tipo_alerta", "ente_maior_a_pagar")
-          .order("valor_principal", { ascending: false })
-          .limit(5),
-
-        client
-          .from("mv_alertas_despesa")
-          .select("ano_remessa,id_entidade,tipo_alerta,descricao,cpf_cnpj_credor,valor_principal")
-          .gte("ano_remessa", anoInicioNum)
-          .lte("ano_remessa", anoFimNum)
-          .eq("tipo_alerta", "credor_concentrado")
-          .order("valor_principal", { ascending: false })
-          .limit(5),
-      ]);
-
-      if (!active) return;
-
-      // Se o resumo falhar (view ausente ou erro crítico), para tudo
-      if (resumoResult.status === "rejected") {
-        const err = resumoResult.reason as Error & { viewMissing?: boolean };
-        if (err.viewMissing) { setViewsMissing(true); } else { setError(err.message); }
-        setLoading(false);
-        return;
-      }
-
-      setResumo(resumoResult.value);
-      setEvolucao(evolucaoResult.status === "fulfilled" ? evolucaoResult.value : []);
-      setRankEntes(entesResult.status === "fulfilled" ? entesResult.value : []);
-      setRankCredores(credoresResult.status === "fulfilled" ? credoresResult.value : []);
-      setComposicao(composicaoResult.status === "fulfilled" ? composicaoResult.value : []);
-
-      type AlertasRes = { data: AlertaRow[] | null; error: unknown };
-      const alertasEntes: AlertaRow[] = alertasEntesResult.status === "fulfilled"
-        ? ((alertasEntesResult.value as unknown as AlertasRes).data ?? [])
-        : [];
-      const alertasCredores: AlertaRow[] = alertasCredoresResult.status === "fulfilled"
-        ? ((alertasCredoresResult.value as unknown as AlertasRes).data ?? [])
-        : [];
-
-      setAlertas([...alertasEntes, ...alertasCredores]);
-      setLoading(false);
-    }
-
-    load().catch((err: Error & { viewMissing?: boolean }) => {
-      if (!active) return;
-      if (err.viewMissing) { setViewsMissing(true); } else { setError(err.message); }
-      setLoading(false);
+  const { loading, error, viewsMissing, resumo, evolucao, rankEntes, rankCredores, composicao, alertas } =
+    useDespesaData({
+      anoInicio: paramAnoInicio,
+      anoFim: paramAnoFim,
+      ente: paramEnte,
+      entidade: paramEntidade,
     });
-
-    return () => { active = false; };
-  }, [paramAnoInicio, paramAnoFim, paramEnte, paramEntidade]);
 
   // --- KPIs (soma do resumo) ---
 
@@ -507,15 +283,6 @@ export default function PainelDespesaClient() {
 
   // --- Render: guards ---
 
-  if (!isSupabaseConfigured) {
-    return (
-      <div className="m-6 rounded-xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-800">
-        Supabase não configurado. Defina as variáveis de ambiente{" "}
-        <code>NEXT_PUBLIC_SUPABASE_URL</code> e <code>NEXT_PUBLIC_SUPABASE_ANON_KEY</code>.
-      </div>
-    );
-  }
-
   if (loading) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
@@ -530,13 +297,12 @@ export default function PainelDespesaClient() {
   if (viewsMissing) {
     return (
       <div className="m-6 rounded-xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-800">
-        <p className="mb-1 font-semibold">Views de performance não encontradas.</p>
+        <p className="mb-1 font-semibold">Tabelas mart não encontradas ou erro de conexão com o banco local.</p>
         <p>
-          Execute o arquivo{" "}
+          Execute os scripts de migração e carga:{" "}
           <code className="rounded bg-amber-100 px-1 py-0.5 font-mono">
-            etl/schema/views_despesa_performance.sql
-          </code>{" "}
-          no SQL Editor do Supabase para criar as views necessárias.
+            npm run postgres:migrate &amp;&amp; npm run mart:despesa
+          </code>
         </p>
       </div>
     );
@@ -554,7 +320,7 @@ export default function PainelDespesaClient() {
     return (
       <div className="m-6 rounded-xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-800">
         Nenhum dado de despesa disponível. Verifique a tabela{" "}
-        <code>fato_empenho</code> no Supabase.
+        <code>fato_empenho</code> no banco local.
       </div>
     );
   }

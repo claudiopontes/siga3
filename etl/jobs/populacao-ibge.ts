@@ -23,15 +23,14 @@
  */
 
 import "dotenv/config";
-import { getSupabase } from "../connectors/supabase";
+import { pgQuery, closePgPool } from "../connectors/postgres";
 
 // ─── Configuração ─────────────────────────────────────────────────────────────
 
 const MODULO  = "populacao_ibge";
-const supabase = getSupabase();
 
 const IBGE_UF = process.env.IBGE_UF_CODE || "12"; // 12 = Acre
-const SUPABASE_BATCH = toPositiveInt(Number(process.env.POPULACAO_IBGE_BATCH || "200"), 200);
+const PG_BATCH = toPositiveInt(Number(process.env.POPULACAO_IBGE_BATCH || "200"), 200);
 
 // cod_ibge do ente "Governo do Estado do Acre" — excluído da soma de população.
 // Defina via env se o código for diferente no seu ambiente.
@@ -67,13 +66,11 @@ function toOptionalInt(input: string | undefined): number | null {
 }
 
 async function gravarLog(status: "sucesso" | "erro", registros: number, duracao: number, mensagem?: string) {
-  await supabase.from("etl_log").insert({
-    modulo: MODULO,
-    status,
-    mensagem: mensagem ?? null,
-    registros,
-    duracao_ms: duracao,
-  });
+  await pgQuery(
+    `INSERT INTO audit.etl_log (modulo, status, registros, duracao_ms, mensagem)
+     VALUES ($1, $2, $3, $4, $5)`,
+    [MODULO, status, registros, duracao, mensagem ?? null],
+  );
 }
 
 // ─── Busca IBGE ───────────────────────────────────────────────────────────────
@@ -145,15 +142,19 @@ async function buscarSIDRA(
   return rows;
 }
 
-// ─── Upsert no Supabase ───────────────────────────────────────────────────────
+// ─── Upsert no PostgreSQL ─────────────────────────────────────────────────────
 
 async function upsertPopulacao(rows: PopRow[]): Promise<void> {
-  for (let i = 0; i < rows.length; i += SUPABASE_BATCH) {
-    const chunk = rows.slice(i, i + SUPABASE_BATCH);
-    const { error } = await supabase
-      .from("aux_populacao_ibge")
-      .upsert(chunk, { onConflict: "cod_ibge,ano" });
-    if (error) throw new Error(`Erro no upsert de aux_populacao_ibge: ${error.message}`);
+  for (let i = 0; i < rows.length; i += PG_BATCH) {
+    const chunk = rows.slice(i, i + PG_BATCH);
+    for (const r of chunk) {
+      await pgQuery(
+        `INSERT INTO public.aux_populacao_ibge (cod_ibge, ano, populacao, fonte, atualizado_em)
+         VALUES ($1,$2,$3,$4,$5)
+         ON CONFLICT (cod_ibge, ano) DO UPDATE SET populacao=$3, fonte=$4, atualizado_em=$5`,
+        [r.cod_ibge, r.ano, r.populacao, r.fonte, r.atualizado_em],
+      );
+    }
   }
 }
 
@@ -167,11 +168,9 @@ async function upsertPopulacao(rows: PopRow[]): Promise<void> {
  * é ignorado — sua população não é somável aos municípios.
  */
 async function atualizarDimEnte(historico: PopRow[]): Promise<number> {
-  const { data: entes, error } = await supabase
-    .from("dim_ente")
-    .select("id_ente, cod_ibgce, populacao");
-
-  if (error) throw new Error(`Erro ao buscar dim_ente: ${error.message}`);
+  const entes = await pgQuery<DimEnteRow>(
+    `SELECT id_ente, cod_ibge AS cod_ibgce, populacao FROM public.dim_ente`,
+  );
 
   const anoAtual = new Date().getFullYear();
 
@@ -193,7 +192,7 @@ async function atualizarDimEnte(historico: PopRow[]): Promise<number> {
   }
 
   let atualizados = 0;
-  for (const ente of (entes ?? []) as DimEnteRow[]) {
+  for (const ente of entes) {
     const codIbge = ente.cod_ibgce;
 
     // Pula ente sem código IBGE (ex: Governo do Estado sem mapeamento)
@@ -205,12 +204,10 @@ async function atualizarDimEnte(historico: PopRow[]): Promise<number> {
     if (pop === null) continue;
     if (pop === ente.populacao) continue; // sem mudança
 
-    const { error: updErr } = await supabase
-      .from("dim_ente")
-      .update({ populacao: pop })
-      .eq("id_ente", ente.id_ente);
-
-    if (updErr) throw new Error(`Erro ao atualizar dim_ente id=${ente.id_ente}: ${updErr.message}`);
+    await pgQuery(
+      `UPDATE public.dim_ente SET populacao = $1 WHERE id_ente = $2`,
+      [pop, ente.id_ente],
+    );
     atualizados++;
   }
 
@@ -222,7 +219,7 @@ async function atualizarDimEnte(historico: PopRow[]): Promise<number> {
 export async function executarETLPopulacaoIBGE(): Promise<void> {
   const inicio = Date.now();
   console.log(`[${new Date().toISOString()}] Iniciando ETL: ${MODULO}`);
-  console.log(`  -> UF IBGE: ${IBGE_UF} | Batch: ${SUPABASE_BATCH}`);
+  console.log(`  -> UF IBGE: ${IBGE_UF} | Batch: ${PG_BATCH}`);
 
   try {
     // 1. Descobre os códigos IBGE dos municípios da UF via API de localidades
@@ -279,5 +276,7 @@ export async function executarETLPopulacaoIBGE(): Promise<void> {
 }
 
 if (require.main === module) {
-  executarETLPopulacaoIBGE().catch(() => process.exit(1));
+  executarETLPopulacaoIBGE()
+    .catch(() => process.exit(1))
+    .finally(() => closePgPool());
 }

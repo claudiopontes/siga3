@@ -8,7 +8,7 @@
 
 import "dotenv/config";
 import { queryInDatabase } from "../connectors/sqlserver";
-import { getSupabase } from "../connectors/supabase";
+import { pgQuery, closePgPool } from "../connectors/postgres";
 
 type NaturezaRow = {
   id_natureza: number;
@@ -58,7 +58,7 @@ type FonteDestinacaoRow = {
 
 const MODULO = "dimensoes_receita_sqlserver";
 const SQL_DATABASE = process.env.SQLSERVER_APC_DATABASE || "APC";
-const SUPABASE_BATCH = toPositiveInt(Number(process.env.DIM_RECEITA_SUPABASE_BATCH || "500"), 500);
+const PG_BATCH = toPositiveInt(Number(process.env.DIM_RECEITA_SUPABASE_BATCH || "500"), 500);
 
 const TABELAS = {
   natureza: process.env.DIM_RECEITA_TB_NATUREZA || "aux_dim_natureza_receita_orcamentaria",
@@ -66,45 +66,92 @@ const TABELAS = {
   fonteDest: process.env.DIM_RECEITA_TB_FONTE_DESTINACAO || "aux_dim_fonte_destinacao_recurso",
 };
 
-const supabase = getSupabase();
-
 function toPositiveInt(input: number, fallback: number): number {
   if (!Number.isFinite(input) || input < 1) return fallback;
   return Math.trunc(input);
 }
 
 async function gravarLog(status: "sucesso" | "erro", registros: number, duracao: number, mensagem?: string) {
-  await supabase.from("etl_log").insert({
-    modulo: MODULO,
-    status,
-    mensagem: mensagem ?? null,
-    registros,
-    duracao_ms: duracao,
-  });
+  await pgQuery(
+    `INSERT INTO audit.etl_log (modulo, status, registros, duracao_ms, mensagem)
+     VALUES ($1, $2, $3, $4, $5)`,
+    [MODULO, status, registros, duracao, mensagem ?? null],
+  );
 }
 
-async function validarTabelaDestino(tabela: string): Promise<void> {
-  const { error } = await supabase.from(tabela).select("*").limit(1);
-  if (error) {
+async function validarTabelaDestino(schema: string, tabela: string): Promise<void> {
+  const rows = await pgQuery<{ existe: boolean }>(
+    `SELECT EXISTS (
+       SELECT 1 FROM information_schema.tables
+       WHERE table_schema = $1 AND table_name = $2
+     ) AS existe`,
+    [schema, tabela],
+  );
+  if (!rows[0]?.existe) {
     throw new Error(
-      `Tabela destino indisponivel no Supabase (${tabela}). ` +
-        "Aplique o schema em etl/schema/dimensoes_receita_sqlserver.sql. " +
-        `Detalhe: ${error.message}`,
+      `Tabela destino nao encontrada no PostgreSQL: ${schema}.${tabela}. ` +
+      `Execute: npm run postgres:migrate`,
     );
   }
 }
 
-async function limparTabela(tabela: string, pk: string): Promise<void> {
-  const { error } = await supabase.from(tabela).delete().neq(pk, -1);
-  if (error) throw new Error(`Erro ao limpar ${tabela}: ${error.message}`);
+async function limparTabela(tabela: string): Promise<void> {
+  await pgQuery(`DELETE FROM public.${tabela}`);
 }
 
-async function inserirEmLotes<T extends Record<string, unknown>>(tabela: string, rows: T[]): Promise<void> {
+async function inserirNaturezaEmLotes(rows: NaturezaRow[]): Promise<void> {
   if (rows.length === 0) return;
-  for (let i = 0; i < rows.length; i += SUPABASE_BATCH) {
-    const lote = rows.slice(i, i + SUPABASE_BATCH);
-    const { error } = await supabase.from(tabela).insert(lote);
-    if (error) throw new Error(`Erro ao inserir em ${tabela}: ${error.message}`);
+  for (let i = 0; i < rows.length; i += PG_BATCH) {
+    const lote = rows.slice(i, i + PG_BATCH);
+    for (const r of lote) {
+      await pgQuery(
+        `INSERT INTO public.aux_dim_natureza_receita_orcamentaria
+           (id_natureza, numero, data_criacao, codigo, descricao, nivel, nome, tipo, ativo, especificacao,
+            destinacao_legal, norma, amparo, ano_inicio, ano_fim, id_natureza_pai, extensao, rubrica, atualizado_em)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+         ON CONFLICT (id_natureza) DO UPDATE SET numero=$2, data_criacao=$3, codigo=$4, descricao=$5, nivel=$6, nome=$7,
+           tipo=$8, ativo=$9, especificacao=$10, destinacao_legal=$11, norma=$12, amparo=$13, ano_inicio=$14,
+           ano_fim=$15, id_natureza_pai=$16, extensao=$17, rubrica=$18, atualizado_em=$19`,
+        [r.id_natureza, r.numero, r.data_criacao, r.codigo, r.descricao, r.nivel, r.nome, r.tipo, r.ativo,
+         r.especificacao, r.destinacao_legal, r.norma, r.amparo, r.ano_inicio, r.ano_fim, r.id_natureza_pai,
+         r.extensao, r.rubrica, r.atualizado_em],
+      );
+    }
+  }
+}
+
+async function inserirGrupoFonteEmLotes(rows: GrupoFonteRow[]): Promise<void> {
+  if (rows.length === 0) return;
+  for (let i = 0; i < rows.length; i += PG_BATCH) {
+    const lote = rows.slice(i, i + PG_BATCH);
+    for (const r of lote) {
+      await pgQuery(
+        `INSERT INTO public.aux_dim_grupo_fonte_recurso (numero, data_criacao, codigo, nome, atualizado_em)
+         VALUES ($1,$2,$3,$4,$5)
+         ON CONFLICT (numero) DO UPDATE SET data_criacao=$2, codigo=$3, nome=$4, atualizado_em=$5`,
+        [r.numero, r.data_criacao, r.codigo, r.nome, r.atualizado_em],
+      );
+    }
+  }
+}
+
+async function inserirFonteDestEmLotes(rows: FonteDestinacaoRow[]): Promise<void> {
+  if (rows.length === 0) return;
+  for (let i = 0; i < rows.length; i += PG_BATCH) {
+    const lote = rows.slice(i, i + PG_BATCH);
+    for (const r of lote) {
+      await pgQuery(
+        `INSERT INTO public.aux_dim_fonte_destinacao_recurso
+           (id_fonte_destinacao_recurso, classificacao, codigo, data_criacao, descricao, nome,
+            numero, numero_grupo_fonte_recurso, ativo, ano_inicio, ano_fim, codigo_stn, atualizado_em)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+         ON CONFLICT (id_fonte_destinacao_recurso) DO UPDATE SET classificacao=$2, codigo=$3, data_criacao=$4,
+           descricao=$5, nome=$6, numero=$7, numero_grupo_fonte_recurso=$8, ativo=$9, ano_inicio=$10,
+           ano_fim=$11, codigo_stn=$12, atualizado_em=$13`,
+        [r.id_fonte_destinacao_recurso, r.classificacao, r.codigo, r.data_criacao, r.descricao, r.nome,
+         r.numero, r.numero_grupo_fonte_recurso, r.ativo, r.ano_inicio, r.ano_fim, r.codigo_stn, r.atualizado_em],
+      );
+    }
   }
 }
 
@@ -182,9 +229,9 @@ export async function executarCargaDimensoesReceitaSqlServer(): Promise<void> {
 
   try {
     await Promise.all([
-      validarTabelaDestino(TABELAS.natureza),
-      validarTabelaDestino(TABELAS.grupoFonte),
-      validarTabelaDestino(TABELAS.fonteDest),
+      validarTabelaDestino("public", TABELAS.natureza),
+      validarTabelaDestino("public", TABELAS.grupoFonte),
+      validarTabelaDestino("public", TABELAS.fonteDest),
     ]);
 
     const [naturezas, grupos, fontes] = await Promise.all([
@@ -197,15 +244,14 @@ export async function executarCargaDimensoesReceitaSqlServer(): Promise<void> {
       `  -> Registros fonte: natureza=${naturezas.length} | grupo_fonte=${grupos.length} | fonte_dest=${fontes.length}`,
     );
 
-    await Promise.all([
-      limparTabela(TABELAS.natureza, "id_natureza"),
-      limparTabela(TABELAS.grupoFonte, "numero"),
-      limparTabela(TABELAS.fonteDest, "id_fonte_destinacao_recurso"),
-    ]);
+    // Limpa na ordem inversa de FK e reinsere
+    await limparTabela(TABELAS.fonteDest);
+    await limparTabela(TABELAS.grupoFonte);
+    await limparTabela(TABELAS.natureza);
 
-    await inserirEmLotes(TABELAS.natureza, naturezas);
-    await inserirEmLotes(TABELAS.grupoFonte, grupos);
-    await inserirEmLotes(TABELAS.fonteDest, fontes);
+    await inserirNaturezaEmLotes(naturezas);
+    await inserirGrupoFonteEmLotes(grupos);
+    await inserirFonteDestEmLotes(fontes);
 
     const duracao = Date.now() - inicio;
     const total = naturezas.length + grupos.length + fontes.length;
@@ -221,6 +267,8 @@ export async function executarCargaDimensoesReceitaSqlServer(): Promise<void> {
 }
 
 if (require.main === module) {
-  executarCargaDimensoesReceitaSqlServer().catch(() => process.exit(1));
+  executarCargaDimensoesReceitaSqlServer()
+    .catch(() => process.exit(1))
+    .finally(() => closePgPool());
 }
 

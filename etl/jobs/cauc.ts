@@ -15,12 +15,11 @@
 
 import "dotenv/config";
 import { createHash } from "crypto";
-import { getSupabase } from "../connectors/supabase";
+import { pgQuery, closePgPool } from "../connectors/postgres";
 
 // ─── Configuração ─────────────────────────────────────────────────────────────
 
 const MODULO = "cauc";
-const supabase = getSupabase();
 
 const CSV_URL_PADRAO =
   "https://www.tesourotransparente.gov.br/ckan/dataset/72b5f371-0c35-4613-8076-c99c821a6410/resource/07af297a-5e59-494a-a88a-55ddfd2f4b01/download/relatorio-situacao-de-varios-entes---municipios---uf-todas---abrangencia-1.csv";
@@ -56,13 +55,11 @@ async function gravarLog(
   duracao: number,
   mensagem?: string,
 ) {
-  await supabase.from("etl_log").insert({
-    modulo: MODULO,
-    status,
-    mensagem: mensagem ?? null,
-    registros,
-    duracao_ms: duracao,
-  });
+  await pgQuery(
+    `INSERT INTO audit.etl_log (modulo, status, registros, duracao_ms, mensagem)
+     VALUES ($1, $2, $3, $4, $5)`,
+    [MODULO, status, registros, duracao, mensagem ?? null],
+  );
 }
 
 function normalizarHeader(s: string): string {
@@ -354,9 +351,30 @@ async function inserirLotes(registros: SituacaoRow[]): Promise<number> {
   let inseridos = 0;
   for (let i = 0; i < registros.length; i += SUPABASE_BATCH) {
     const chunk = registros.slice(i, i + SUPABASE_BATCH);
-    const { error } = await supabase.from("cauc_situacao_raw").insert(chunk);
-    if (error) throw new Error(`Erro ao inserir cauc_situacao_raw (lote ${i / SUPABASE_BATCH + 1}): ${error.message}`);
-    inseridos += chunk.length;
+    for (const row of chunk) {
+      await pgQuery(
+        `INSERT INTO public.cauc_situacao_raw
+           (carga_id, tipo_ente, uf, codigo_ibge, cnpj, nome_ente, item_codigo, item_descricao,
+            grupo, situacao, situacao_normalizada, dados, hash_registro)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+        [
+          row.carga_id,
+          row.tipo_ente,
+          row.uf,
+          row.codigo_ibge,
+          row.cnpj,
+          row.nome_ente,
+          row.item_codigo,
+          row.item_descricao,
+          row.grupo,
+          row.situacao,
+          row.situacao_normalizada,
+          row.dados ? JSON.stringify(row.dados) : null,
+          row.hash_registro,
+        ],
+      );
+      inseridos++;
+    }
   }
   return inseridos;
 }
@@ -375,20 +393,13 @@ export async function executarCargaCauc(): Promise<void> {
   try {
     // 1. Registra carga (somente fora do dry-run)
     if (!DRY_RUN) {
-      const { data: cargaData, error: cargaErr } = await supabase
-        .from("cauc_carga")
-        .insert({
-          fonte: "tesouro_transparente_ckan",
-          tipo_ente: "municipio",
-          url_origem: CAUC_MUNICIPIOS_CSV_URL,
-          data_referencia: dataReferencia,
-          status: "iniciada",
-        })
-        .select("id")
-        .single();
-
-      if (cargaErr) throw new Error(`Erro ao criar cauc_carga: ${cargaErr.message}`);
-      cargaId = (cargaData as { id: number }).id;
+      const rows = await pgQuery<{ id: number }>(
+        `INSERT INTO public.cauc_carga (fonte, tipo_ente, url_origem, data_referencia, status)
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING id`,
+        ["tesouro_transparente_ckan", "municipio", CAUC_MUNICIPIOS_CSV_URL, dataReferencia, "iniciada"],
+      );
+      cargaId = rows[0].id;
       console.log(`  -> Carga registrada: id=${cargaId}`);
     }
 
@@ -454,15 +465,12 @@ export async function executarCargaCauc(): Promise<void> {
     console.log(`     ${inseridos} registros inseridos`);
 
     // 9. Atualiza carga com sucesso
-    await supabase
-      .from("cauc_carga")
-      .update({
-        status: "sucesso",
-        finalizado_em: new Date().toISOString(),
-        registros: inseridos,
-        mensagem: null,
-      })
-      .eq("id", cargaId!);
+    await pgQuery(
+      `UPDATE public.cauc_carga
+       SET status = 'sucesso', finalizado_em = now(), registros = $1, mensagem = NULL
+       WHERE id = $2`,
+      [inseridos, cargaId!],
+    );
 
     const duracao = Date.now() - inicio;
     console.log(`  OK - ETL concluído em ${duracao}ms`);
@@ -473,15 +481,12 @@ export async function executarCargaCauc(): Promise<void> {
     console.error(`  ERRO - ${mensagem}`);
 
     if (cargaId !== null) {
-      await supabase
-        .from("cauc_carga")
-        .update({
-          status: "erro",
-          finalizado_em: new Date().toISOString(),
-          registros: inseridos,
-          mensagem,
-        })
-        .eq("id", cargaId);
+      await pgQuery(
+        `UPDATE public.cauc_carga
+         SET status = 'erro', finalizado_em = now(), registros = $1, mensagem = $2
+         WHERE id = $3`,
+        [inseridos, mensagem, cargaId],
+      );
     }
 
     await gravarLog("erro", inseridos, duracao, mensagem);
@@ -490,5 +495,7 @@ export async function executarCargaCauc(): Promise<void> {
 }
 
 if (require.main === module) {
-  executarCargaCauc().catch(() => process.exit(1));
+  executarCargaCauc()
+    .catch(() => process.exit(1))
+    .finally(() => closePgPool());
 }

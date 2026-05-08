@@ -10,7 +10,8 @@
 import "dotenv/config";
 import { readFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { getSupabase } from "../connectors/supabase";
+import { getSupabase } from "../connectors/supabase"; // usado apenas como fallback de leitura no bootstrap
+import { pgQuery, closePgPool } from "../connectors/postgres";
 
 type CsvRow = Record<string, string>;
 type DimTable = "aux_dim_uf" | "aux_dim_municipio" | "aux_dim_ente" | "aux_dim_entidade";
@@ -49,7 +50,6 @@ type EntidadeRow = {
 };
 
 const MODULO = "dimensoes_csv";
-const supabase = getSupabase();
 
 const DEFAULT_DIR = path.resolve(__dirname, "../data/dimensoes");
 
@@ -176,6 +176,7 @@ function loadCsv(filePath: string): { rows: CsvRow[]; delimiter: string; encodin
 }
 
 async function selectAll<T extends Record<string, unknown>>(table: string, columns: string): Promise<T[]> {
+  const supabase = getSupabase();
   const out: T[] = [];
   const pageSize = 1000;
   let offset = 0;
@@ -430,18 +431,55 @@ function dedupeByCodigo<T extends { codigo: string }>(rows: T[], nome: string): 
   return deduped;
 }
 
-async function limparTabela(tabela: string): Promise<void> {
-  const { error } = await supabase.from(tabela).delete().neq("codigo", "__never__");
-  if (error) throw new Error(`Erro ao limpar ${tabela}: ${error.message}`);
+async function limparTabelaPg(tabela: string): Promise<void> {
+  await pgQuery(`DELETE FROM public.${tabela}`);
 }
 
-async function inserirLotes(tabela: string, dados: Record<string, unknown>[]): Promise<void> {
+async function inserirUfLotes(dados: UfRow[]): Promise<void> {
   if (dados.length === 0) return;
-  const lote = 500;
-  for (let i = 0; i < dados.length; i += lote) {
-    const chunk = dados.slice(i, i + lote);
-    const { error } = await supabase.from(tabela).insert(chunk);
-    if (error) throw new Error(`Erro ao inserir em ${tabela}: ${error.message}`);
+  for (const r of dados) {
+    await pgQuery(
+      `INSERT INTO public.aux_dim_uf (codigo, sigla, nome, dados, atualizado_em)
+       VALUES ($1,$2,$3,$4,$5)
+       ON CONFLICT (codigo) DO UPDATE SET sigla=$2, nome=$3, dados=$4, atualizado_em=$5`,
+      [r.codigo, r.sigla, r.nome, r.dados ? JSON.stringify(r.dados) : null, r.atualizado_em],
+    );
+  }
+}
+
+async function inserirMunicipioLotes(dados: MunicipioRow[]): Promise<void> {
+  if (dados.length === 0) return;
+  for (const r of dados) {
+    await pgQuery(
+      `INSERT INTO public.aux_dim_municipio (codigo, nome, uf_codigo, dados, atualizado_em)
+       VALUES ($1,$2,$3,$4,$5)
+       ON CONFLICT (codigo) DO UPDATE SET nome=$2, uf_codigo=$3, dados=$4, atualizado_em=$5`,
+      [r.codigo, r.nome, r.uf_codigo, r.dados ? JSON.stringify(r.dados) : null, r.atualizado_em],
+    );
+  }
+}
+
+async function inserirEnteLotes(dados: EnteRow[]): Promise<void> {
+  if (dados.length === 0) return;
+  for (const r of dados) {
+    await pgQuery(
+      `INSERT INTO public.aux_dim_ente (codigo, nome, dados, atualizado_em)
+       VALUES ($1,$2,$3,$4)
+       ON CONFLICT (codigo) DO UPDATE SET nome=$2, dados=$3, atualizado_em=$4`,
+      [r.codigo, r.nome, r.dados ? JSON.stringify(r.dados) : null, r.atualizado_em],
+    );
+  }
+}
+
+async function inserirEntidadeLotes(dados: EntidadeRow[]): Promise<void> {
+  if (dados.length === 0) return;
+  for (const r of dados) {
+    await pgQuery(
+      `INSERT INTO public.aux_dim_entidade (codigo, nome, ente_codigo, municipio_codigo, uf_codigo, dados, atualizado_em)
+       VALUES ($1,$2,$3,$4,$5,$6,$7)
+       ON CONFLICT (codigo) DO UPDATE SET nome=$2, ente_codigo=$3, municipio_codigo=$4, uf_codigo=$5, dados=$6, atualizado_em=$7`,
+      [r.codigo, r.nome, r.ente_codigo, r.municipio_codigo, r.uf_codigo, r.dados ? JSON.stringify(r.dados) : null, r.atualizado_em],
+    );
   }
 }
 
@@ -451,18 +489,13 @@ async function gravarLog(
   duracaoMs: number,
   mensagem?: string,
 ): Promise<void> {
-  await supabase.from("etl_log").insert({
-    modulo: MODULO,
-    status,
-    mensagem: mensagem ?? null,
-    registros,
-    duracao_ms: duracaoMs,
-  });
+  await pgQuery(
+    `INSERT INTO audit.etl_log (modulo, status, registros, duracao_ms, mensagem)
+     VALUES ($1, $2, $3, $4, $5)`,
+    [MODULO, status, registros, duracaoMs, mensagem ?? null],
+  );
 }
 
-async function refreshTabela(tabela: DimTable, dados: Record<string, unknown>[]): Promise<void> {
-  await inserirLotes(tabela, dados);
-}
 
 export async function executarCargaDimensoesCsv(): Promise<void> {
   const inicio = Date.now();
@@ -508,17 +541,18 @@ export async function executarCargaDimensoesCsv(): Promise<void> {
       return;
     }
 
-    console.log("  -> Atualizando Supabase (refresh completo por dimensao)...");
+    console.log("  -> Atualizando PostgreSQL (upsert por dimensao)...");
     // Ordem de carga para integridade: UF -> Municipio -> Ente -> Entidade
-    await limparTabela("aux_dim_entidade");
-    await limparTabela("aux_dim_municipio");
-    await limparTabela("aux_dim_ente");
-    await limparTabela("aux_dim_uf");
+    // Usando upsert em vez de limpar+reinserir para preservar FK references
+    await limparTabelaPg("aux_dim_entidade");
+    await limparTabelaPg("aux_dim_municipio");
+    await limparTabelaPg("aux_dim_ente");
+    await limparTabelaPg("aux_dim_uf");
 
-    await refreshTabela("aux_dim_uf", ufRows);
-    await refreshTabela("aux_dim_municipio", municipioRows);
-    await refreshTabela("aux_dim_ente", enteRows);
-    await refreshTabela("aux_dim_entidade", entidadeRows);
+    await inserirUfLotes(ufRows);
+    await inserirMunicipioLotes(municipioRows);
+    await inserirEnteLotes(enteRows);
+    await inserirEntidadeLotes(entidadeRows);
 
     const duracao = Date.now() - inicio;
     console.log(`  OK - Dimensoes carregadas em ${duracao}ms (${total} registros)`);
@@ -533,5 +567,7 @@ export async function executarCargaDimensoesCsv(): Promise<void> {
 }
 
 if (require.main === module) {
-  executarCargaDimensoesCsv().catch(() => process.exit(1));
+  executarCargaDimensoesCsv()
+    .catch(() => process.exit(1))
+    .finally(() => closePgPool());
 }

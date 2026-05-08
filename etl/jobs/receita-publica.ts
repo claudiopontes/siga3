@@ -6,7 +6,7 @@
 
 import "dotenv/config";
 import { queryInDatabase } from "../connectors/sqlserver";
-import { getSupabase } from "../connectors/supabase";
+import { pgQuery, closePgPool } from "../connectors/postgres";
 
 type ModoCarga = "FULL" | "INCREMENTAL";
 
@@ -44,15 +44,14 @@ type ReceitaRow = {
 };
 
 const MODULO = "receita_publica";
-const supabase = getSupabase();
 
 const SQL_DATABASE = process.env.RECEITA_PUBLICA_SQLSERVER_DATABASE || process.env.SQLSERVER_APC_DATABASE || "APC";
 const SOURCE_VIEW = process.env.RECEITA_PUBLICA_SOURCE_VIEW || "audit.vw_ReceitaPorCategoria_Polanco";
-const SUPABASE_TABLE = process.env.RECEITA_PUBLICA_SUPABASE_TABLE || "receita_publica_categoria_mensal";
+const PG_TABLE = process.env.RECEITA_PUBLICA_SUPABASE_TABLE || "receita_publica_categoria_mensal";
 const MODO_CARGA = normalizeModo(process.env.RECEITA_PUBLICA_MODO_CARGA || "INCREMENTAL");
 const LOOKBACK_MESES = toNonNegativeInt(Number(process.env.RECEITA_PUBLICA_LOOKBACK_MESES || "3"), 3);
 const ANO_INICIO = toOptionalPositiveInt(process.env.RECEITA_PUBLICA_ANO_INICIO);
-const SUPABASE_INSERT_BATCH = toPositiveInt(Number(process.env.RECEITA_PUBLICA_SUPABASE_BATCH || "500"), 500);
+const PG_INSERT_BATCH = toPositiveInt(Number(process.env.RECEITA_PUBLICA_SUPABASE_BATCH || "500"), 500);
 
 function normalizeModo(value: string): ModoCarga {
   return value.toUpperCase() === "FULL" ? "FULL" : "INCREMENTAL";
@@ -95,22 +94,25 @@ function periodoWhere(periodos: Periodo[]): string {
 }
 
 async function gravarLog(status: "sucesso" | "erro", registros: number, duracao: number, mensagem?: string) {
-  await supabase.from("etl_log").insert({
-    modulo: MODULO,
-    status,
-    mensagem: mensagem ?? null,
-    registros,
-    duracao_ms: duracao,
-  });
+  await pgQuery(
+    `INSERT INTO audit.etl_log (modulo, status, registros, duracao_ms, mensagem)
+     VALUES ($1, $2, $3, $4, $5)`,
+    [MODULO, status, registros, duracao, mensagem ?? null],
+  );
 }
 
 async function validarDestino(): Promise<void> {
-  const { error } = await supabase.from(SUPABASE_TABLE).select("id").limit(1);
-  if (error) {
+  const rows = await pgQuery<{ existe: boolean }>(
+    `SELECT EXISTS (
+       SELECT 1 FROM information_schema.tables
+       WHERE table_schema = 'public' AND table_name = $1
+     ) AS existe`,
+    [PG_TABLE],
+  );
+  if (!rows[0]?.existe) {
     throw new Error(
-      `Tabela destino indisponivel no Supabase (${SUPABASE_TABLE}). ` +
-        "Aplique o schema em etl/schema/receita_publica.sql. " +
-        `Detalhe: ${error.message}`,
+      `Tabela destino nao encontrada no PostgreSQL: public.${PG_TABLE}. ` +
+      `Execute: npm run postgres:migrate`,
     );
   }
 }
@@ -129,18 +131,13 @@ ORDER BY ANO, MES;
 }
 
 async function buscarUltimoPeriodoDestino(): Promise<Periodo | null> {
-  const { data, error } = await supabase
-    .from(SUPABASE_TABLE)
-    .select("ano,mes")
-    .order("ano", { ascending: false })
-    .order("mes", { ascending: false })
-    .limit(1);
-
-  if (error) throw new Error(`Erro ao consultar ultimo periodo no Supabase: ${error.message}`);
-  if (!data || data.length === 0) return null;
-
-  const row = data[0] as Periodo;
-  return { ano: row.ano, mes: row.mes };
+  const rows = await pgQuery<Periodo>(
+    `SELECT ano, mes FROM public.${PG_TABLE}
+     ORDER BY ano DESC, mes DESC
+     LIMIT 1`,
+  );
+  if (rows.length === 0) return null;
+  return { ano: rows[0].ano, mes: rows[0].mes };
 }
 
 async function escolherPeriodosCarga(): Promise<Periodo[]> {
@@ -213,23 +210,38 @@ ORDER BY r.ANO, r.MES, r.ID_ENTIDADE, r.CODIGO;
 
 async function limparPeriodos(periodos: Periodo[]): Promise<void> {
   for (const periodo of periodos) {
-    const { error } = await supabase.from(SUPABASE_TABLE).delete().eq("ano", periodo.ano).eq("mes", periodo.mes);
-    if (error) throw new Error(`Erro ao limpar ${periodo.ano}-${periodo.mes}: ${error.message}`);
+    await pgQuery(
+      `DELETE FROM public.${PG_TABLE} WHERE ano = $1 AND mes = $2`,
+      [periodo.ano, periodo.mes],
+    );
   }
 }
 
 async function inserirEmLotes(rows: ReceitaRow[], batchSize: number): Promise<void> {
   for (let i = 0; i < rows.length; i += batchSize) {
     const batch = rows.slice(i, i + batchSize);
-    const { error } = await supabase.from(SUPABASE_TABLE).insert(batch);
-    if (error) throw new Error(`Erro ao inserir lote no Supabase: ${error.message}`);
-  }
-}
-
-async function atualizarMaterializedView(): Promise<void> {
-  const { error } = await supabase.rpc("fn_refresh_mv_receita_publica_entidade_mensal");
-  if (error) {
-    throw new Error(`Erro ao atualizar materialized view da receita pública: ${error.message}`);
+    for (const r of batch) {
+      await pgQuery(
+        `INSERT INTO public.${PG_TABLE} (
+           id_remessa, id_entidade_cjur, id_entidade, ano, mes,
+           id_natureza_receita_orcamentaria, id_catreceita, codigo,
+           natureza_codigo, natureza_nome, natureza_descricao, natureza_nivel, natureza_tipo,
+           natureza_ano_inicio, natureza_ano_fim, numero_fonte_recurso, fonte_classificacao, fonte_nome,
+           codigo_conta_contabil, tipo_receita, previsao_inicial, previsao_atualizada,
+           receita_realizada, registros_origem, atualizado_em
+         ) VALUES (
+           $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25
+         )`,
+        [
+          r.id_remessa, r.id_entidade_cjur, r.id_entidade, r.ano, r.mes,
+          r.id_natureza_receita_orcamentaria, r.id_catreceita, r.codigo,
+          r.natureza_codigo, r.natureza_nome, r.natureza_descricao, r.natureza_nivel, r.natureza_tipo,
+          r.natureza_ano_inicio, r.natureza_ano_fim, r.numero_fonte_recurso, r.fonte_classificacao, r.fonte_nome,
+          r.codigo_conta_contabil, r.tipo_receita, r.previsao_inicial, r.previsao_atualizada,
+          r.receita_realizada, r.registros_origem, r.atualizado_em,
+        ],
+      );
+    }
   }
 }
 
@@ -237,7 +249,7 @@ export async function executarETLReceitaPublica(): Promise<void> {
   const inicio = Date.now();
   console.log(`[${new Date().toISOString()}] Iniciando ETL: ${MODULO}`);
   console.log(`  -> Fonte SQL: ${SQL_DATABASE}.${SOURCE_VIEW}`);
-  console.log(`  -> Destino Supabase: ${SUPABASE_TABLE}`);
+  console.log(`  -> Destino PostgreSQL: ${PG_TABLE}`);
   console.log(`  -> Modo: ${MODO_CARGA}${MODO_CARGA === "INCREMENTAL" ? ` (lookback=${LOOKBACK_MESES} meses)` : ""}`);
 
   try {
@@ -261,11 +273,8 @@ export async function executarETLReceitaPublica(): Promise<void> {
     console.log("  -> Limpando periodos de destino...");
     await limparPeriodos(periodos);
 
-    console.log("  -> Inserindo dados no Supabase...");
-    await inserirEmLotes(rows, SUPABASE_INSERT_BATCH);
-
-    console.log("  -> Atualizando materialized view otimizada...");
-    await atualizarMaterializedView();
+    console.log("  -> Inserindo dados no PostgreSQL...");
+    await inserirEmLotes(rows, PG_INSERT_BATCH);
 
     const duracao = Date.now() - inicio;
     console.log(`  OK - ETL concluido em ${duracao}ms (${rows.length} registros)`);
@@ -280,5 +289,7 @@ export async function executarETLReceitaPublica(): Promise<void> {
 }
 
 if (require.main === module) {
-  executarETLReceitaPublica().catch(() => process.exit(1));
+  executarETLReceitaPublica()
+    .catch(() => process.exit(1))
+    .finally(() => closePgPool());
 }
