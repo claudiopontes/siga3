@@ -39,7 +39,7 @@ const NOME_EXIBICAO_EXPR = `
 // Main
 // -------------------------------------------------------
 
-async function main() {
+export async function executarMartCredorDespesa(): Promise<void> {
   const inicio = Date.now();
   console.log("[mart:credor-despesa] Iniciando refresh das marts de credores...");
 
@@ -303,10 +303,12 @@ async function main() {
   `, [duracao]);
 }
 
-main()
-  .then(() => closePgPool())
-  .catch((err) => {
-    console.error("[mart:credor-despesa] Erro:", (err as Error).message);
-    closePgPool().catch(() => void 0);
-    process.exit(1);
-  });
+if (require.main === module) {
+  executarMartCredorDespesa()
+    .then(() => closePgPool())
+    .catch((err) => {
+      console.error("[mart:credor-despesa] Erro:", (err as Error).message);
+      closePgPool().catch(() => void 0);
+      process.exit(1);
+    });
+}

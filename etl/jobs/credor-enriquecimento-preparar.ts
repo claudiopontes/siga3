@@ -54,7 +54,7 @@ function statusInicial(tipo: string, temNome: boolean): string {
 // Main
 // -------------------------------------------------------
 
-async function main() {
+export async function executarCredorEnriquecimentoPreparar(): Promise<void> {
   const inicio = Date.now();
   console.log("[credor:preparar] Iniciando preparação de credores...");
 
@@ -144,10 +144,12 @@ async function main() {
   `, [inseridos + atualizados, duracao]);
 }
 
-main()
-  .then(() => closePgPool())
-  .catch((err) => {
-    console.error("[credor:preparar] Erro:", (err as Error).message);
-    closePgPool().catch(() => void 0);
-    process.exit(1);
-  });
+if (require.main === module) {
+  executarCredorEnriquecimentoPreparar()
+    .then(() => closePgPool())
+    .catch((err) => {
+      console.error("[credor:preparar] Erro:", (err as Error).message);
+      closePgPool().catch(() => void 0);
+      process.exit(1);
+    });
+}

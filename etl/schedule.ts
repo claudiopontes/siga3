@@ -16,6 +16,10 @@ import { executarCargaDimensoesEmpenhoSqlServer } from "./jobs/dimensoes-empenho
 import { executarETLFatoEmpenho } from "./jobs/fato-empenho";
 import { executarCargaCauc } from "./jobs/cauc";
 import { executarCargaProcessosGabinete } from "./jobs/processos-gabinete";
+import { executarCredorEnriquecimentoPreparar } from "./jobs/credor-enriquecimento-preparar";
+import { executarCredorEnriquecerInterno } from "./jobs/credor-enriquecer-interno";
+import { executarCredorEnriquecerCnpj } from "./jobs/credor-enriquecer-cnpj";
+import { executarMartCredorDespesa } from "./jobs/refresh-mart-credor-despesa";
 
 const TIMEZONE = process.env.ETL_TIMEZONE || "America/Rio_Branco";
 const FACT_ETL_CRON = process.env.FACT_ETL_CRON || "0 1 * * *"; // 01:00 daily
@@ -34,6 +38,8 @@ const RUN_FATO_EMPENHO_NIGHTLY = (process.env.RUN_FATO_EMPENHO_NIGHTLY ?? "true"
 const RUN_CAUC_NIGHTLY = (process.env.RUN_CAUC_NIGHTLY ?? "true").toLowerCase() !== "false";
 const RUN_PROCESSOS_GABINETE_NIGHTLY =
   (process.env.RUN_PROCESSOS_GABINETE_NIGHTLY ?? "true").toLowerCase() !== "false";
+const RUN_CREDOR_ENRIQUECIMENTO_NIGHTLY =
+  (process.env.RUN_CREDOR_ENRIQUECIMENTO_NIGHTLY ?? "true").toLowerCase() !== "false";
 
 console.log("ETL scheduler started - Varadouro Digital");
 console.log(`Nightly pipeline: cron="${FACT_ETL_CRON}" timezone="${TIMEZONE}"`);
@@ -143,10 +149,34 @@ cron.schedule(
       console.log("[CRON] Step 10/11: fato empenho skipped by RUN_FATO_EMPENHO_NIGHTLY=false");
     }
 
-    console.log("[CRON] Step 11/11: combustivel (NFE/SQL Server)");
+    console.log("[CRON] Step 11/15: combustivel (NFE/SQL Server)");
     await executarETLCombustivel().catch((error) => {
       console.error("[CRON] combustivel failed:", error);
     });
+
+    if (RUN_CREDOR_ENRIQUECIMENTO_NIGHTLY) {
+      console.log("[CRON] Step 12/15: credor preparar (novos credores -> dim_credor_enriquecido)");
+      await executarCredorEnriquecimentoPreparar().catch((error) => {
+        console.error("[CRON] credor preparar failed:", error);
+      });
+
+      console.log("[CRON] Step 13/15: credor enriquecer interno (SQL Server -> nomes CPF/CNPJ)");
+      await executarCredorEnriquecerInterno().catch((error) => {
+        console.error("[CRON] credor enriquecer interno failed:", error);
+      });
+
+      console.log("[CRON] Step 14/15: credor enriquecer CNPJ (BrasilAPI — somente PENDENTE_CNPJ)");
+      await executarCredorEnriquecerCnpj().catch((error) => {
+        console.error("[CRON] credor enriquecer cnpj failed:", error);
+      });
+
+      console.log("[CRON] Step 15/15: mart credor despesa (reconstrução das mart tables)");
+      await executarMartCredorDespesa().catch((error) => {
+        console.error("[CRON] mart credor despesa failed:", error);
+      });
+    } else {
+      console.log("[CRON] Steps 12-15: credor enriquecimento skipped by RUN_CREDOR_ENRIQUECIMENTO_NIGHTLY=false");
+    }
 
     console.log("[CRON] Nightly pipeline finished.");
   },

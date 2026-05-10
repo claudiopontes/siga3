@@ -46,7 +46,7 @@ function tipoDocumento(digits: string): "CPF" | "CNPJ" | "DESCONHECIDO" {
 // Main
 // -------------------------------------------------------
 
-async function main() {
+export async function executarCredorEnriquecerInterno(): Promise<void> {
   if (!TABELA || !COL_DOC || !COL_NOME) {
     console.log("[credor:enriquecer:interno] CREDOR_INTERNO_TABLE, CREDOR_INTERNO_DOCUMENTO_COLUMN");
     console.log("  e CREDOR_INTERNO_NOME_COLUMN não estão configurados no .env.");
@@ -189,10 +189,12 @@ async function main() {
   `, [enriquecidos, duracao]);
 }
 
-main()
-  .then(() => closePgPool())
-  .catch((err) => {
-    console.error("[credor:enriquecer:interno] Erro:", (err as Error).message);
-    closePgPool().catch(() => void 0);
-    process.exit(1);
-  });
+if (require.main === module) {
+  executarCredorEnriquecerInterno()
+    .then(() => closePgPool())
+    .catch((err) => {
+      console.error("[credor:enriquecer:interno] Erro:", (err as Error).message);
+      closePgPool().catch(() => void 0);
+      process.exit(1);
+    });
+}

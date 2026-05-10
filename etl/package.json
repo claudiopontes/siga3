@@ -33,7 +33,15 @@
     "credor:enriquecer:cnpj": "ts-node jobs/credor-enriquecer-cnpj.ts",
     "mart:credor-despesa": "ts-node jobs/refresh-mart-credor-despesa.ts",
     "credor:enriquecimento": "npm run credor:enriquecimento:preparar && npm run credor:enriquecer:interno && npm run credor:enriquecer:cnpj && npm run mart:credor-despesa",
-    "carga-full:postgres": "npm run dimensoes:postgres && npm run despesa:full:postgres && npm run mart:despesa && npm run credor:enriquecimento:preparar && npm run mart:credor-despesa"
+    "siops:inspecionar": "ts-node jobs/siops-inspecionar.ts",
+    "siops:full:postgres": "ts-node jobs/siops-full-postgres.ts",
+    "mart:siops": "ts-node jobs/refresh-mart-siops.ts",
+    "carga-siops:postgres": "npm run siops:full:postgres && npm run mart:siops",
+    "siconfi-rreo:inspecionar": "ts-node jobs/siconfi-rreo-inspecionar.ts",
+    "siconfi-rreo:full:postgres": "ts-node jobs/siconfi-rreo-full-postgres.ts",
+    "mart:siconfi-rreo": "ts-node jobs/refresh-mart-siconfi-rreo.ts",
+    "carga-siconfi-rreo:postgres": "npm run siconfi-rreo:full:postgres && npm run mart:siconfi-rreo",
+    "carga-full:postgres": "npm run dimensoes:postgres && npm run despesa:full:postgres && npm run mart:despesa && npm run credor:enriquecimento"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.8",

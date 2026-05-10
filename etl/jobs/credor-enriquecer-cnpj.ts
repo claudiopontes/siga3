@@ -122,7 +122,7 @@ async function consultar(cnpj: string): Promise<CnpjDados> {
 // Main
 // -------------------------------------------------------
 
-async function main() {
+export async function executarCredorEnriquecerCnpj(): Promise<void> {
   if (PROVIDER === "none") {
     console.log("[credor:enriquecer:cnpj] CNPJ_ENRICH_PROVIDER=none — enriquecimento via API desativado.");
     console.log("  Para ativar: CNPJ_ENRICH_PROVIDER=brasilapi ou CNPJ_ENRICH_PROVIDER=receitaws");
@@ -234,10 +234,12 @@ async function main() {
   `, [`provider=${PROVIDER}`, enriquecidos, duracao]);
 }
 
-main()
-  .then(() => closePgPool())
-  .catch((err) => {
-    console.error("[credor:enriquecer:cnpj] Erro:", (err as Error).message);
-    closePgPool().catch(() => void 0);
-    process.exit(1);
-  });
+if (require.main === module) {
+  executarCredorEnriquecerCnpj()
+    .then(() => closePgPool())
+    .catch((err) => {
+      console.error("[credor:enriquecer:cnpj] Erro:", (err as Error).message);
+      closePgPool().catch(() => void 0);
+      process.exit(1);
+    });
+}

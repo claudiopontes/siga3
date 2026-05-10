@@ -245,6 +245,148 @@ na sequência de carga. O enriquecimento interno e CNPJ são opcionais e executa
 
 ---
 
+## SIOPS — Saúde
+
+**Finalidade:** Monitorar o cumprimento do mínimo constitucional de aplicação em saúde pelos municípios do Acre, detectar atrasos de transmissão e variações atípicas de despesa, com base no SIOPS (Sistema de Informações sobre Orçamentos Públicos em Saúde).
+
+**Periodicidade:** Bimestral (6 bimestres por ano).
+
+**Fonte:** API pública do Ministério da Saúde — configurável via `SIOPS_API_BASE_URL`.
+
+### Tabelas geradas
+
+| Tabela | Descrição |
+|---|---|
+| `raw.siops_indicadores_raw` | Payload bruto por município/período (auditoria e reprocessamento) |
+| `stage.siops_indicadores_stg` | Dados normalizados antes da promoção ao DW |
+| `dw.fato_siops_indicador` | Fatos por município/período/indicador |
+| `mart.siops_resumo_municipio` | Resumo rápido por município e período |
+| `mart.siops_alertas` | Histórico completo de alertas (todos os períodos, todos os níveis) |
+| `mart.siops_alertas_home` | Alertas recentes e acionáveis — **usar para a home** (apenas CRITICO/ALTO, período mais recente, máx 30) |
+| `mart.siops_resumo_home` | Contador agregado para o card da home (total, críticos, altos, municípios afetados) |
+
+> **Regra de uso:** `siops_alertas` contém o histórico completo para análise. `siops_alertas_home` é o subconjunto filtrado para exibição na tela principal — sem ruído histórico.
+
+### Comandos
+
+```bash
+cd etl
+
+# Aplicar schema (apenas na primeira vez ou após atualizar)
+npm run postgres:migrate
+
+# Inspecionar endpoints e formato da API SIOPS
+npm run siops:inspecionar
+
+# Carga completa (todos os anos configurados, todos os municípios do Acre)
+npm run carga-siops:postgres
+
+# Ou separadamente:
+npm run siops:full:postgres   # carrega raw + stage + dw
+npm run mart:siops            # gera resumo e alertas
+```
+
+### Alertas gerados inicialmente
+
+| Tipo | Nível | Aparece na home? | Regra |
+|---|---|---|---|
+| `siops_aplicacao_saude_baixa` | CRITICO | ✓ | Percentual aplicado < 15% (mínimo municipal — indicador 3.2) |
+| `siops_sem_dado_recente` | ALTO | ✓ | Município sem informação no período mais recente carregado |
+| `siops_variacao_atipica` | MEDIO/ALTO | Apenas se ALTO | Variação de despesa total em saúde ≥ 50% em relação ao período anterior |
+| `siops_dado_incompleto` | MEDIO | ✗ | Menos de 50% da mediana de indicadores dos demais municípios |
+
+### APIs disponíveis
+
+| Endpoint | Lê de | Descrição |
+|---|---|---|
+| `GET /api/alertas/siops/resumo` | `mart.siops_resumo_home` | Card resumido: totais, críticos, altos, municípios afetados |
+| `GET /api/alertas/siops/detalhes` | `mart.siops_alertas_home` | Lista de alertas acionáveis (filtros: `?nivel=CRITICO&municipio=120040`) |
+
+### Configuração no `.env`
+
+```env
+SIOPS_API_BASE_URL=https://siops-consulta-publica-api.saude.gov.br
+SIOPS_UF=AC
+SIOPS_ANO_INICIO=2024
+SIOPS_ANO_FIM=2026
+SIOPS_TIMEOUT_MS=30000
+SIOPS_RATE_LIMIT_MS=500
+```
+
+### Limitações conhecidas
+
+- Os nomes dos campos do JSON retornado pela API podem divergir dos mapeados em `siops-full-postgres.ts`. Execute `npm run siops:inspecionar` para verificar o formato real e ajuste a função `normalizarPayload` se necessário.
+- Se a API retornar 401/403, pode haver necessidade de autenticação futura. Verificar portal OpenDataSUS e adicionar `SIOPS_API_TOKEN` no `.env`.
+- CNPJs de municípios pequenos podem não ter todos os bimestres preenchidos — 404 é tratado silenciosamente como "sem dado nesse período".
+
+---
+
+## SICONFI/RREO — Execução Orçamentária Municipal
+
+**Finalidade:** Monitorar a entrega do Relatório Resumido da Execução Orçamentária (RREO) pelos municípios do Acre ao SICONFI (Tesouro Nacional), detectar municípios sem dado recente, envios incompletos e variações atípicas de despesa.
+
+**Fonte:** API DataLake Tesouro Nacional — `https://apidatalake.tesouro.gov.br/ords/siconfi/tt/rreo`
+
+### Tabelas
+
+| Tabela | Esquema | Descrição |
+|---|---|---|
+| `siconfi_rreo_raw` | `raw` | Payload bruto por município/período |
+| `siconfi_rreo_stg` | `stage` | Dados normalizados (staging) |
+| `fato_siconfi_rreo` | `dw` | Fatos RREO: uma linha por município/período/conta/coluna |
+| `siconfi_rreo_resumo_municipio` | `mart` | Resumo agregado por município/período |
+| `siconfi_rreo_alertas` | `mart` | Todos os alertas gerados |
+| `siconfi_rreo_alertas_home` | `mart` | Até 30 alertas CRITICO/ALTO do período mais recente |
+| `siconfi_rreo_resumo_home` | `mart` | Uma linha: totais para o card da home |
+
+### Comandos
+
+```bash
+# Inspecionar endpoints e formato real da API SICONFI
+npm run siconfi-rreo:inspecionar
+
+# Carga completa (RREO todos os municípios do Acre)
+npm run siconfi-rreo:full:postgres
+
+# Reconstruir marts (alertas, home)
+npm run mart:siconfi-rreo
+
+# Carga completa + mart em sequência
+npm run carga-siconfi-rreo:postgres
+```
+
+### Tipos de alerta
+
+| Tipo | Nível | Aparece na home? | Descrição |
+|---|---|---|---|
+| `rreo_sem_dado_recente` | ALTO | Sim | Município sem entrega no período mais recente |
+| `rreo_dado_incompleto` | MEDIO | Não | Envio com <10 registros |
+| `rreo_variacao_atipica` | MEDIO/ALTO | Se ALTO | Variação >50% nas despesas vs. período anterior |
+
+### Variáveis de ambiente
+
+```env
+SICONFI_API_BASE_URL=https://apidatalake.tesouro.gov.br/ords/siconfi/tt
+SICONFI_CO_IBGE_UF=12
+SICONFI_ANO_INICIO=2021
+SICONFI_ANO_FIM=2026
+SICONFI_PERIODOS=1,2,3,4,5,6
+SICONFI_RATE_LIMIT_MS=1000
+```
+
+### APIs server-side
+
+- `GET /api/alertas/siconfi-rreo/resumo` — resumo do período mais recente (uma linha)
+- `GET /api/alertas/siconfi-rreo/detalhes?nivel=ALTO&municipio=Xapuri` — alertas da home com filtros opcionais
+
+### Limitações conhecidas
+
+- A API DataLake pode apresentar rate limiting (HTTP 429) em horários de pico. O job aguarda 60s automaticamente e retenta.
+- O RREO é entregue por bimestre; municípios pequenos podem não ter todos os períodos preenchidos.
+- Os períodos disponíveis variam por exercício (bimestral a partir de 2015 aproximadamente).
+
+---
+
 ## Remessas obrigatórias de prestação de contas
 
 Fonte principal: `APC.dbo.REMESSA` (SQL Server)
