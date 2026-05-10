@@ -32,18 +32,24 @@ function sleep(ms: number) {
 }
 
 interface CnpjDados {
-  razao_social?: string;
-  nome_fantasia?: string;
-  situacao_cadastral?: string;
-  natureza_juridica?: string;
-  cnae_fiscal_descricao?: string;
-  municipio?: string;
-  uf?: string;
-  logradouro?: string;
-  bairro?: string;
-  cep?: string;
-  ddd_telefone_1?: string;
-  email?: string;
+  razao_social?: unknown;
+  nome_fantasia?: unknown;
+  situacao_cadastral?: unknown;
+  natureza_juridica?: unknown;
+  cnae_fiscal_descricao?: unknown;
+  municipio?: unknown;
+  uf?: unknown;
+  logradouro?: unknown;
+  bairro?: unknown;
+  cep?: unknown;
+  ddd_telefone_1?: unknown;
+  email?: unknown;
+}
+
+function toStr(v: unknown): string | null {
+  if (v == null) return null;
+  const s = String(v).trim();
+  return s.length > 0 ? s : null;
 }
 
 // -------------------------------------------------------
@@ -57,7 +63,26 @@ async function consultarBrasilAPI(cnpj: string): Promise<CnpjDados> {
     signal: AbortSignal.timeout(15000),
   });
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-  return resp.json() as Promise<CnpjDados>;
+  const raw = await resp.json() as Record<string, unknown>;
+  // BrasilAPI retorna situacao_cadastral como número; normaliza para string legível
+  const situacaoMap: Record<number, string> = { 1: "NULA", 2: "ATIVA", 3: "SUSPENSA", 4: "INAPTA", 8: "BAIXADA" };
+  const situacaoNum = Number(raw.situacao_cadastral);
+  const situacao = situacaoMap[situacaoNum] ?? toStr(raw.situacao_cadastral);
+  // cnae_fiscal_descricao pode vir como cnae_fiscal_descricao ou dentro de cnaes_secundarios
+  return {
+    razao_social:          raw.razao_social,
+    nome_fantasia:         raw.nome_fantasia,
+    situacao_cadastral:    situacao,
+    natureza_juridica:     (raw.natureza_juridica as Record<string, unknown> | undefined)?.descricao ?? raw.natureza_juridica,
+    cnae_fiscal_descricao: raw.cnae_fiscal_descricao,
+    municipio:             raw.municipio,
+    uf:                    raw.uf,
+    logradouro:            raw.logradouro ? `${raw.logradouro}, ${raw.numero ?? ""}`.trim() : raw.logradouro,
+    bairro:                raw.bairro,
+    cep:                   raw.cep,
+    ddd_telefone_1:        raw.ddd_telefone_1,
+    email:                 raw.email,
+  };
 }
 
 async function consultarReceitaWS(cnpj: string): Promise<CnpjDados> {
@@ -127,7 +152,7 @@ async function main() {
 
     try {
       const dados = await consultar(cnpj);
-      const nomeEnriquecido = (dados.razao_social || dados.nome_fantasia || "").trim();
+      const nomeEnriquecido = toStr(dados.razao_social) || toStr(dados.nome_fantasia) || "";
 
       await withPgTransaction(async (client) => {
         await client.query(`
@@ -153,16 +178,16 @@ async function main() {
         `, [
           nomeEnriquecido || null,
           PROVIDER.toUpperCase(),
-          dados.situacao_cadastral?.trim()    || null,
-          dados.natureza_juridica?.trim()     || null,
-          dados.cnae_fiscal_descricao?.trim() || null,
-          dados.municipio?.trim()             || null,
-          dados.uf?.trim()                    || null,
-          dados.logradouro?.trim()            || null,
-          dados.bairro?.trim()                || null,
-          dados.cep?.replace(/\D/g, "") || null,
-          dados.ddd_telefone_1?.trim()        || null,
-          dados.email?.trim()                 || null,
+          toStr(dados.situacao_cadastral),
+          toStr(dados.natureza_juridica),
+          toStr(dados.cnae_fiscal_descricao),
+          toStr(dados.municipio),
+          toStr(dados.uf),
+          toStr(dados.logradouro),
+          toStr(dados.bairro),
+          toStr(dados.cep)?.replace(/\D/g, "") || null,
+          toStr(dados.ddd_telefone_1),
+          toStr(dados.email),
           cnpj,
         ]);
 

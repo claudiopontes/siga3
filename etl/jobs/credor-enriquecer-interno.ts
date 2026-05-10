@@ -69,8 +69,8 @@ async function main() {
   console.log(`[credor:enriquecer:interno] ${pendentes.length} credores pendentes.`);
   if (pendentes.length === 0) { return; }
 
-  // 2. Monta lista de documentos para consulta
-  const docList = pendentes.map(p => p.cpf_cnpj);
+  // 2. Conjunto de pendentes para match em memória
+  const pendentesSet = new Set(pendentes.map(p => p.cpf_cnpj));
 
   // 3. Monta SELECT dinâmico com colunas opcionais
   const colsSelect = [
@@ -88,8 +88,10 @@ async function main() {
     ? TABELA.split(".").map((p) => `[${p.replace(/[\[\]]/g, "")}]`).join(".")
     : `[${TABELA}]`;
 
-  // Consulta em lotes de 500
-  const BATCH = 500;
+  // Carrega a tabela inteira de uma vez e faz o match em memória
+  // (mais rápido do que lotes com REPLACE na cláusula WHERE sem índice)
+  console.log(`[credor:enriquecer:interno] Carregando fonte ${tableRef} do banco ${DB}...`);
+
   interface FonteRow {
     doc_raw: string;
     nome: string;
@@ -101,29 +103,31 @@ async function main() {
   }
   const fonteMap = new Map<string, FonteRow>();
 
-  for (let i = 0; i < docList.length; i += BATCH) {
-    const lote = docList.slice(i, i + BATCH);
-    const placeholders = lote.map(d => `'${d}'`).join(",");
-    try {
-      const rows = await queryInDatabase<FonteRow>(DB, `
-        SELECT ${colsSelect}
-        FROM ${tableRef}
-        WHERE REPLACE(REPLACE(REPLACE(CAST([${COL_DOC}] AS varchar(20)), '.',''), '-',''), '/','')
-          IN (${placeholders})
-          AND [${COL_NOME}] IS NOT NULL
-          AND LEN(TRIM(CAST([${COL_NOME}] AS varchar(300)))) > 0
-      `);
-      for (const r of rows) {
-        const digits = normalizar(r.doc_raw);
-        if (!digits) continue;
-        // Prioriza registro com nome preenchido; não sobrescreve se já mapeado
-        if (!fonteMap.has(digits) || !fonteMap.get(digits)!.nome) {
-          fonteMap.set(digits, r);
-        }
+  try {
+    const rows = await queryInDatabase<FonteRow>(DB, `
+      SELECT ${colsSelect}
+      FROM ${tableRef}
+      WHERE [${COL_NOME}] IS NOT NULL
+        AND LEN(TRIM(CAST([${COL_NOME}] AS varchar(300)))) > 0
+        AND [${COL_DOC}] IS NOT NULL
+    `);
+    console.log(`[credor:enriquecer:interno] ${rows.length} registros carregados da fonte. Fazendo match...`);
+    for (const r of rows) {
+      const digits = normalizar(r.doc_raw);
+      if (!digits || !pendentesSet.has(digits)) continue;
+      const nomeLimpo = r.nome?.trim() ?? "";
+      // Filtra nomes placeholder (todos iguais, ex: XXXXXXX)
+      if (!nomeLimpo || nomeLimpo.length < 3) continue;
+      if (new Set(nomeLimpo.replace(/\s/g, "")).size === 1) continue;
+      // Prioriza nome mais longo quando há duplicatas
+      const existente = fonteMap.get(digits);
+      if (!existente || nomeLimpo.length > (existente.nome?.length ?? 0)) {
+        fonteMap.set(digits, { ...r, nome: nomeLimpo });
       }
-    } catch (err) {
-      console.warn(`[credor:enriquecer:interno] Aviso no lote ${i}-${i + BATCH}: ${(err as Error).message}`);
     }
+  } catch (err) {
+    console.error(`[credor:enriquecer:interno] Erro ao carregar fonte: ${(err as Error).message}`);
+    throw err;
   }
 
   console.log(`[credor:enriquecer:interno] ${fonteMap.size} correspondências encontradas na fonte interna.`);
