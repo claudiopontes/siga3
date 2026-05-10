@@ -88,47 +88,48 @@ async function main() {
     `);
     console.log("[mart-despesa] ✓ despesa_ranking_credores");
 
-    // despesa_composicao
+    // despesa_composicao — garante coluna valor_liquidado
+    await client.query(`ALTER TABLE mart.despesa_composicao ADD COLUMN IF NOT EXISTS valor_liquidado numeric(19,2) NOT NULL DEFAULT 0`);
     await client.query(`TRUNCATE mart.despesa_composicao`);
     await client.query(`
       INSERT INTO mart.despesa_composicao
-        (ano_remessa, id_entidade, tipo_composicao, codigo, rotulo, valor_empenhado_liquido, valor_pago)
+        (ano_remessa, id_entidade, tipo_composicao, codigo, rotulo, valor_empenhado_liquido, valor_liquidado, valor_pago)
       SELECT ano_remessa, id_entidade, tipo_composicao, codigo, rotulo,
-             SUM(valor_empenhado_liquido), SUM(valor_pago)
+             SUM(valor_empenhado_liquido), SUM(valor_liquidado), SUM(valor_pago)
       FROM (
         SELECT fe.ano_remessa, fe.id_entidade,
           'categoria_economica' AS tipo_composicao,
           fe.numero_categoria_economica::text AS codigo,
           'Categoria ' || fe.numero_categoria_economica::text AS rotulo,
-          fe.valor_empenhado_liquido, fe.valor_pago
+          fe.valor_empenhado_liquido, fe.valor_liquidado, fe.valor_pago
         FROM public.fato_empenho fe WHERE fe.numero_categoria_economica IS NOT NULL
         UNION ALL
         SELECT fe.ano_remessa, fe.id_entidade,
           'grupo_natureza',
           fe.numero_grupo_natureza_despesa::text,
           'Grupo ' || fe.numero_grupo_natureza_despesa::text,
-          fe.valor_empenhado_liquido, fe.valor_pago
+          fe.valor_empenhado_liquido, fe.valor_liquidado, fe.valor_pago
         FROM public.fato_empenho fe WHERE fe.numero_grupo_natureza_despesa IS NOT NULL
         UNION ALL
         SELECT fe.ano_remessa, fe.id_entidade,
           'elemento_despesa',
           fe.numero_elemento_despesa::text,
           'Elemento ' || fe.numero_elemento_despesa::text,
-          fe.valor_empenhado_liquido, fe.valor_pago
+          fe.valor_empenhado_liquido, fe.valor_liquidado, fe.valor_pago
         FROM public.fato_empenho fe WHERE fe.numero_elemento_despesa IS NOT NULL
         UNION ALL
         SELECT fe.ano_remessa, fe.id_entidade,
           'funcao',
           fe.numero_funcao::text,
           'Função ' || fe.numero_funcao::text,
-          fe.valor_empenhado_liquido, fe.valor_pago
+          fe.valor_empenhado_liquido, fe.valor_liquidado, fe.valor_pago
         FROM public.fato_empenho fe WHERE fe.numero_funcao IS NOT NULL
         UNION ALL
         SELECT fe.ano_remessa, fe.id_entidade,
           'subfuncao',
           fe.numero_subfuncao::text,
           'Subfunção ' || fe.numero_subfuncao::text,
-          fe.valor_empenhado_liquido, fe.valor_pago
+          fe.valor_empenhado_liquido, fe.valor_liquidado, fe.valor_pago
         FROM public.fato_empenho fe WHERE fe.numero_subfuncao IS NOT NULL
       ) sub
       GROUP BY ano_remessa, id_entidade, tipo_composicao, codigo, rotulo

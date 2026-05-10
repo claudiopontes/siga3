@@ -32,13 +32,19 @@ export async function GET(req: NextRequest) {
       dte.id_ente,
       c.tipo_composicao,
       c.codigo,
-      c.rotulo,
+      CASE
+        WHEN c.tipo_composicao = 'elemento_despesa'
+          THEN COALESCE(ae.nome, c.rotulo)
+        ELSE c.rotulo
+      END AS rotulo,
       c.valor_empenhado_liquido,
+      c.valor_liquidado,
       c.valor_pago
     FROM mart.despesa_composicao c
     LEFT JOIN public.dim_entidade dte ON dte.id_entidade = c.id_entidade
+    LEFT JOIN public.aux_elemento_despesa ae ON ae.codigo = LPAD(c.codigo, 2, '0')
     WHERE c.ano_remessa BETWEEN $1 AND $2
-      AND c.tipo_composicao IN ('categoria_economica', 'grupo_natureza')
+      AND c.tipo_composicao IN ('categoria_economica', 'elemento_despesa')
     ${filtroExtra}
   `;
 

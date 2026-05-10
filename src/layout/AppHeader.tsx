@@ -4,6 +4,7 @@ import CombustivelHeaderFilters from "@/components/combustivel/CombustivelHeader
 import EmpenhoHeaderFilters from "@/components/combustivel/EmpenhoHeaderFilters";
 import ReceitaPublicaHeaderFilters from "@/components/receita-publica/ReceitaPublicaHeaderFilters";
 import DespesaHeaderFilters from "@/components/despesa/DespesaHeaderFilters";
+import DespesaSubtitle from "@/components/despesa/DespesaSubtitle";
 import { ThemeToggleButton } from "@/components/common/ThemeToggleButton";
 import NotificationDropdown from "@/components/header/NotificationDropdown";
 import UserDropdown from "@/components/header/UserDropdown";
@@ -66,9 +67,16 @@ const AppHeader: React.FC = () => {
             )}
           </button>
 
-          <span className="hidden min-w-0 truncate text-sm font-semibold text-gray-700 dark:text-gray-200 lg:block">
-            Gabinete do Cons. Ronald Polanco Ribeiro
-          </span>
+          <div className="hidden min-w-0 flex-col lg:flex">
+            <span className="truncate text-sm font-semibold text-gray-700 dark:text-gray-200">
+              Gabinete do Cons. Ronald Polanco Ribeiro
+            </span>
+            {isDespesaPage && (
+              <Suspense fallback={null}>
+                <DespesaSubtitle />
+              </Suspense>
+            )}
+          </div>
 
           <Link href="/" className="lg:hidden">
             <Image width={123} height={32} className="dark:hidden" src="./images/logo/logo.svg" alt="Logo" />

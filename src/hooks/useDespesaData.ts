@@ -59,6 +59,7 @@ export type ComposicaoRow = {
   codigo: string;
   rotulo: string;
   valor_empenhado_liquido: number;
+  valor_liquidado: number;
   valor_pago: number;
 };
 

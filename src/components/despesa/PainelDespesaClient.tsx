@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useMemo, useRef } from "react";
-import { useSearchParams } from "next/navigation";
+import React, { useEffect, useMemo, useRef } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import type { ApexOptions } from "apexcharts";
 import { Eye, SlidersHorizontal, Printer, AlertTriangle } from "lucide-react";
@@ -12,7 +12,6 @@ const Chart = dynamic(() => import("react-apexcharts"), { ssr: false });
 // --- Re-export de tipos para uso local ---
 type ResumoRow = import("@/hooks/useDespesaData").ResumoRow;
 type EvolucaoRow = import("@/hooks/useDespesaData").EvolucaoRow;
-type RankingEnteRow = import("@/hooks/useDespesaData").RankingEnteRow;
 type RankingCredorRow = import("@/hooks/useDespesaData").RankingCredorRow;
 type ComposicaoRow = import("@/hooks/useDespesaData").ComposicaoRow;
 type AlertaRow = import("@/hooks/useDespesaData").AlertaRow;
@@ -59,14 +58,35 @@ function fmtNum(v: number): string {
 export default function PainelDespesaClient() {
   "use no memo";
 
+  const router = useRouter();
   const searchParams = useSearchParams();
   const paramAnoInicio  = searchParams.get("anoInicio");
   const paramAnoFim     = searchParams.get("anoFim");
-  const paramEnte       = searchParams.get("ente");       // dim_ente.id_ente
-  const paramEntidade   = searchParams.get("entidade");   // dim_entidade.id_entidade
+  const paramEnte       = searchParams.get("ente");
+  const paramEntidade   = searchParams.get("entidade");
+
+  // Pré-seleciona Estado do Acre se não houver filtro de ente/entidade na URL
+  useEffect(() => {
+    fetch("/api/despesa/entes")
+      .then((r) => r.json())
+      .then((data: { id_ente: number; nome_ente: string }[]) => {
+        if (!Array.isArray(data)) return;
+        const spAtual = new URLSearchParams(window.location.search);
+        if (spAtual.get("ente") || spAtual.get("entidade")) return;
+        const estadoAcre =
+          data.find((e) => e.nome_ente.toUpperCase() === "ESTADO DO ACRE") ??
+          data.find((e) => e.nome_ente.toUpperCase().includes("ESTADO DO ACRE")) ??
+          data.find((e) => e.nome_ente.toUpperCase().includes("ESTADO") && e.nome_ente.toUpperCase().includes("ACRE"));
+        if (estadoAcre) {
+          spAtual.set("ente", String(estadoAcre.id_ente));
+          router.replace(`?${spAtual.toString()}`);
+        }
+      })
+      .catch(() => void 0);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const evolucaoRef   = useRef<HTMLDivElement | null>(null);
-  const entesRef      = useRef<HTMLDivElement | null>(null);
   const credoresRef   = useRef<HTMLDivElement | null>(null);
   const composicaoRef = useRef<HTMLDivElement | null>(null);
 
@@ -151,27 +171,6 @@ export default function PainelDespesaClient() {
     [evolucaoMensal],
   );
 
-  // --- Ranking entes (agrega por ente ao cruzar vários anos) ---
-
-  const rankingEntes = useMemo(() => {
-    const acc = new Map<number, RankingEnteRow>();
-    rankEntes.forEach((r) => {
-      const key = r.id_ente;
-      if (!acc.has(key)) {
-        acc.set(key, { ...r,
-          valor_empenhado_liquido: 0, valor_liquidado: 0,
-          valor_pago: 0, valor_a_pagar: 0, qtd_empenhos: 0 });
-      }
-      const e = acc.get(key)!;
-      e.valor_empenhado_liquido += toNum(r.valor_empenhado_liquido);
-      e.valor_liquidado         += toNum(r.valor_liquidado);
-      e.valor_pago              += toNum(r.valor_pago);
-      e.valor_a_pagar           += toNum(r.valor_a_pagar);
-      e.qtd_empenhos            += toNum(r.qtd_empenhos);
-    });
-    return [...acc.values()].sort((a, b) => b.valor_empenhado_liquido - a.valor_empenhado_liquido).slice(0, 10);
-  }, [rankEntes]);
-
   // --- Ranking credores (agrega por credor ao cruzar vários anos) ---
 
   const rankingCredores = useMemo(() => {
@@ -204,14 +203,17 @@ export default function PainelDespesaClient() {
     return [...acc.values()].filter((v) => v.valor > 0).sort((a, b) => b.valor - a.valor);
   }, [composicao]);
 
-  const composicaoGrupo = useMemo(() => {
-    const acc = new Map<string, { rotulo: string; valor: number }>();
+  const composicaoElemento = useMemo(() => {
+    const acc = new Map<string, { codigo: string; rotulo: string; valor: number; liquidado: number; pago: number }>();
     composicao
-      .filter((r) => r.tipo_composicao === "grupo_natureza")
+      .filter((r) => r.tipo_composicao === "elemento_despesa")
       .forEach((r) => {
         const key = r.codigo;
-        if (!acc.has(key)) acc.set(key, { rotulo: r.rotulo, valor: 0 });
-        acc.get(key)!.valor += toNum(r.valor_empenhado_liquido);
+        if (!acc.has(key)) acc.set(key, { codigo: r.codigo, rotulo: r.rotulo, valor: 0, liquidado: 0, pago: 0 });
+        const e = acc.get(key)!;
+        e.valor     += toNum(r.valor_empenhado_liquido);
+        e.liquidado += toNum(r.valor_liquidado);
+        e.pago      += toNum(r.valor_pago);
       });
     return [...acc.values()].filter((v) => v.valor > 0).sort((a, b) => b.valor - a.valor);
   }, [composicao]);
@@ -385,61 +387,9 @@ export default function PainelDespesaClient() {
         )}
       </div>
 
-      {/* Ranking entes + credores */}
-      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-
-        {/* Ranking entes */}
-        <div ref={entesRef} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800">
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <div>
-              <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Top 10 — Entes por Despesa</h3>
-              <p className="text-xs text-slate-400 dark:text-slate-500">Ordenado por Empenhado Líquido</p>
-            </div>
-            <details className="relative">
-              <ActionSummary />
-              <div className="absolute right-0 z-20 mt-1 w-40 rounded-lg border border-gray-200 bg-white p-1 shadow-lg dark:border-gray-700 dark:bg-gray-800">
-                <button type="button" className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-xs text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700" onClick={(e) => { closeActionsMenu(e); onFullscreenElement(entesRef.current); }}>
-                  <Eye className="h-3.5 w-3.5" /> Visualizar
-                </button>
-                <button type="button" className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-xs text-gray-700 hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-700" onClick={(e) => { closeActionsMenu(e); window.print(); }}>
-                  <Printer className="h-3.5 w-3.5" /> Imprimir
-                </button>
-              </div>
-            </details>
-          </div>
-          <div className="max-h-[420px] overflow-auto rounded-xl border border-slate-200 dark:border-slate-700">
-            <table className="w-full text-sm">
-              <thead className="sticky top-0 bg-slate-100 text-slate-600 dark:bg-slate-900 dark:text-slate-300">
-                <tr>
-                  <th className="px-3 py-2 text-left">#</th>
-                  <th className="px-3 py-2 text-left">Ente</th>
-                  <th className="px-3 py-2 text-right">Empenhado</th>
-                  <th className="px-3 py-2 text-right">Liquidado</th>
-                  <th className="px-3 py-2 text-right">Pago</th>
-                  <th className="px-3 py-2 text-right">A Pagar</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rankingEntes.map((ente, i) => (
-                  <tr key={`ente-${i}`} className={`border-t border-slate-100 dark:border-slate-700/50 ${i % 2 !== 0 ? "bg-slate-50 dark:bg-slate-800/40" : ""}`}>
-                    <td className="px-3 py-2 text-xs text-slate-400">{i + 1}</td>
-                    <td className="max-w-40 truncate px-3 py-2 font-medium text-slate-700 dark:text-slate-200">{ente.nome_ente}</td>
-                    <td className="px-3 py-2 text-right text-slate-600 dark:text-slate-300">{fmtCompacto(ente.valor_empenhado_liquido)}</td>
-                    <td className="px-3 py-2 text-right text-blue-600 dark:text-blue-400">{fmtCompacto(ente.valor_liquidado)}</td>
-                    <td className="px-3 py-2 text-right text-green-600 dark:text-green-400">{fmtCompacto(ente.valor_pago)}</td>
-                    <td className={`px-3 py-2 text-right ${ente.valor_a_pagar > 0 ? "font-semibold text-red-600 dark:text-red-400" : "text-slate-400"}`}>{fmtCompacto(ente.valor_a_pagar)}</td>
-                  </tr>
-                ))}
-                {rankingEntes.length === 0 && (
-                  <tr><td colSpan={6} className="px-3 py-6 text-center text-sm text-slate-400">Sem dados</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {/* Ranking credores */}
-        <div ref={credoresRef} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800">
+      {/* Ranking credores — largura total */}
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800">
+        <div ref={credoresRef}>
           <div className="mb-3 flex items-center justify-between gap-3">
             <div>
               <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Top 10 — Credores por Pagamento</h3>
@@ -505,40 +455,48 @@ export default function PainelDespesaClient() {
           )}
         </div>
 
-        {/* Tabela — grupo de natureza da despesa */}
+        {/* Tabela — elemento de despesa */}
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800">
           <div className="mb-3">
-            <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Composição por Grupo de Natureza da Despesa</h3>
-            <p className="text-xs text-slate-400 dark:text-slate-500">Empenhado Líquido por grupo</p>
+            <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Composição por Elemento de Despesa</h3>
+            <p className="text-xs text-slate-400 dark:text-slate-500">Empenhado Líquido por elemento</p>
           </div>
           <div className="max-h-80 overflow-auto rounded-xl border border-slate-200 dark:border-slate-700">
             <table className="w-full text-sm">
               <thead className="sticky top-0 bg-slate-100 text-slate-600 dark:bg-slate-900 dark:text-slate-300">
                 <tr>
-                  <th className="px-3 py-2 text-left">Grupo</th>
+                  <th className="px-3 py-2 text-left w-10">Cód.</th>
+                  <th className="px-3 py-2 text-left">Elemento</th>
                   <th className="px-3 py-2 text-right">Empenhado</th>
+                  <th className="px-3 py-2 text-right">Liquidado</th>
+                  <th className="px-3 py-2 text-right">Pago</th>
                   <th className="px-3 py-2 text-right">Part. %</th>
                 </tr>
               </thead>
               <tbody>
-                {composicaoGrupo.map((item, i) => (
+                {composicaoElemento.map((item, i) => (
                   <tr key={item.rotulo} className={`border-t border-slate-100 dark:border-slate-700/50 ${i % 2 !== 0 ? "bg-slate-50 dark:bg-slate-800/40" : ""}`}>
+                    <td className="px-3 py-2 text-xs text-slate-400 font-mono">{item.codigo}</td>
                     <td className="px-3 py-2 font-medium text-slate-700 dark:text-slate-200">{item.rotulo}</td>
                     <td className="px-3 py-2 text-right text-slate-600 dark:text-slate-300">{fmtMoeda(item.valor)}</td>
+                    <td className="px-3 py-2 text-right text-slate-600 dark:text-slate-300">{fmtMoeda(item.liquidado)}</td>
+                    <td className="px-3 py-2 text-right text-slate-600 dark:text-slate-300">{fmtMoeda(item.pago)}</td>
                     <td className="px-3 py-2 text-right text-slate-500 dark:text-slate-400">
                       {composicaoTotal > 0 ? `${((item.valor / composicaoTotal) * 100).toFixed(1)}%` : "-"}
                     </td>
                   </tr>
                 ))}
-                {composicaoGrupo.length === 0 && (
-                  <tr><td colSpan={3} className="px-3 py-6 text-center text-sm text-slate-400">Sem dados</td></tr>
+                {composicaoElemento.length === 0 && (
+                  <tr><td colSpan={6} className="px-3 py-6 text-center text-sm text-slate-400">Sem dados</td></tr>
                 )}
               </tbody>
               {composicaoTotal > 0 && (
                 <tfoot className="sticky bottom-0 border-t-2 border-slate-300 bg-slate-100 dark:border-slate-600 dark:bg-slate-900">
                   <tr>
-                    <td className="px-3 py-2 font-semibold text-slate-800 dark:text-slate-100">Total</td>
+                    <td className="px-3 py-2 font-semibold text-slate-800 dark:text-slate-100" colSpan={2}>Total</td>
                     <td className="px-3 py-2 text-right font-semibold text-slate-800 dark:text-slate-100">{fmtMoeda(composicaoTotal)}</td>
+                    <td className="px-3 py-2 text-right font-semibold text-slate-800 dark:text-slate-100">{fmtMoeda(composicaoElemento.reduce((s, r) => s + r.liquidado, 0))}</td>
+                    <td className="px-3 py-2 text-right font-semibold text-slate-800 dark:text-slate-100">{fmtMoeda(composicaoElemento.reduce((s, r) => s + r.pago, 0))}</td>
                     <td className="px-3 py-2 text-right font-semibold text-slate-800 dark:text-slate-100">100,0%</td>
                   </tr>
                 </tfoot>

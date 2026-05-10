@@ -26,7 +26,8 @@
     "remessas:full:postgres": "ts-node jobs/remessas-contabeis-full-postgres.ts",
     "remessas:dimensoes:postgres": "ts-node jobs/remessas-dimensoes-postgres.ts",
     "mart:remessas": "ts-node jobs/refresh-mart-remessas.ts",
-    "carga-remessas:postgres": "npm run remessas:full:postgres && npm run remessas:dimensoes:postgres && npm run mart:remessas"
+    "carga-remessas:postgres": "npm run remessas:full:postgres && npm run remessas:dimensoes:postgres && npm run mart:remessas",
+    "aux:elemento-despesa": "ts-node jobs/aux-elemento-despesa-postgres.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.8",

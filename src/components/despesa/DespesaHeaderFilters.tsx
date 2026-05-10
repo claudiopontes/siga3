@@ -1,13 +1,10 @@
 "use client";
 
-import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
-type SelectOption = {
-  value: string;
-  label: string;
-};
+type SelectOption = { value: string; label: string };
+type EntidadeOption = SelectOption & { idEnte: string };
 
 // --- FilterDropdown ---
 
@@ -51,16 +48,7 @@ function FilterDropdown({
             : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800"
         }`}
       >
-        <svg
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
         </svg>
         <span>Filtros</span>
@@ -70,29 +58,11 @@ function FilterDropdown({
           </span>
         )}
         {loading && (
-          <svg
-            className="animate-spin"
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-          >
+          <svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M21 12a9 9 0 1 1-6.219-8.56" />
           </svg>
         )}
-        <svg
-          width="14"
-          height="14"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className={`ml-auto transition-transform duration-200 ${open ? "rotate-180" : ""}`}
-        >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`ml-auto transition-transform duration-200 ${open ? "rotate-180" : ""}`}>
           <polyline points="6 9 12 15 18 9" />
         </svg>
       </button>
@@ -213,10 +183,7 @@ function FilterDialog({
           <div className="max-h-[55vh] overflow-auto rounded-lg border border-gray-200 p-1 dark:border-gray-700">
             <button
               type="button"
-              onClick={() => {
-                onSelect("all");
-                onClose();
-              }}
+              onClick={() => { onSelect("all"); onClose(); }}
               className={`block w-full rounded-md px-3 py-2 text-left text-sm ${
                 value === "all"
                   ? "bg-blue-50 font-semibold text-blue-700 dark:bg-blue-900/20 dark:text-blue-300"
@@ -229,10 +196,7 @@ function FilterDialog({
               <button
                 key={opt.value}
                 type="button"
-                onClick={() => {
-                  onSelect(opt.value);
-                  onClose();
-                }}
+                onClick={() => { onSelect(opt.value); onClose(); }}
                 className={`block w-full rounded-md px-3 py-2 text-left text-sm ${
                   opt.value === value
                     ? "bg-blue-50 font-semibold text-blue-700 dark:bg-blue-900/20 dark:text-blue-300"
@@ -261,8 +225,6 @@ export default function DespesaHeaderFilters() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  type EntidadeOption = SelectOption & { idEnte: string };
-
   const [loading, setLoading] = useState(true);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [anosDisponiveis, setAnosDisponiveis] = useState<number[]>([]);
@@ -276,72 +238,34 @@ export default function DespesaHeaderFilters() {
   const selectedEntidade  = searchParams.get("entidade")  ?? "all";
   const periodoManual     = searchParams.get("periodoManual") === "1";
 
-  // Carrega anos disponíveis, entes e entidades
   useEffect(() => {
     let active = true;
 
     async function load() {
       setLoading(true);
-      if (!isSupabaseConfigured || !supabase) {
-        if (active) { setLoading(false); setHasLoadedOnce(true); }
-        return;
-      }
-
       try {
-        const [anoMaxRes, anoMinRes, entesRes, entidadesRes] = await Promise.all([
-          supabase
-            .from("fato_empenho")
-            .select("ano_remessa")
-            .not("ano_remessa", "is", null)
-            .order("ano_remessa", { ascending: false })
-            .limit(1)
-            .maybeSingle(),
-          supabase
-            .from("fato_empenho")
-            .select("ano_remessa")
-            .not("ano_remessa", "is", null)
-            .order("ano_remessa", { ascending: true })
-            .limit(1)
-            .maybeSingle(),
-          supabase
-            .from("dim_ente")
-            .select("id_ente,nome")
-            .order("nome", { ascending: true })
-            .range(0, 9999),
-          supabase
-            .from("dim_entidade")
-            .select("id_entidade,id_ente,nome")
-            .eq("inativo", 0)
-            .order("nome", { ascending: true })
-            .range(0, 9999),
+        const [anosRes, entesRes, entidadesRes] = await Promise.all([
+          fetch("/api/despesa/anos").then((r) => r.json()),
+          fetch("/api/despesa/entes").then((r) => r.json()),
+          fetch("/api/despesa/entidades").then((r) => r.json()),
         ]);
 
         if (!active) return;
 
-        const anoMax = Number((anoMaxRes.data as { ano_remessa?: number | null } | null)?.ano_remessa);
-        const anoMin = Number((anoMinRes.data as { ano_remessa?: number | null } | null)?.ano_remessa);
-        const anos =
-          Number.isFinite(anoMax) && Number.isFinite(anoMin) && anoMax >= anoMin
-            ? Array.from({ length: anoMax - anoMin + 1 }, (_, index) => anoMax - index)
-            : [];
-
-        // value = dim_ente.id_ente (chave usada nas materialized views)
-        const entes = (entesRes.data ?? [])
-          .filter((e: { id_ente: number | null; nome: string | null }) => e.id_ente != null && e.nome)
-          .map((e: { id_ente: number; nome: string }) => ({
-            value: String(e.id_ente),
-            label: e.nome,
-          }));
-
-        // value = dim_entidade.id_entidade; idEnte = dim_entidade.id_ente para cascata
-        const entidades = (entidadesRes.data ?? [])
-          .filter((e: { id_entidade: number | null; id_ente: number | null; nome: string | null }) =>
-            e.id_entidade != null && e.id_ente != null && e.nome)
-          .map((e: { id_entidade: number; id_ente: number; nome: string }) => ({
-            value: String(e.id_entidade),
-            label: e.nome,
-            idEnte: String(e.id_ente),
-          }));
+        const anos: number[] = Array.isArray(anosRes) ? anosRes : [];
+        const entes: SelectOption[] = Array.isArray(entesRes)
+          ? entesRes.map((e: { id_ente: number; nome_ente: string }) => ({
+              value: String(e.id_ente),
+              label: e.nome_ente,
+            }))
+          : [];
+        const entidades: EntidadeOption[] = Array.isArray(entidadesRes)
+          ? entidadesRes.map((e: { id_entidade: number; id_ente: number; nome: string }) => ({
+              value: String(e.id_entidade),
+              label: e.nome,
+              idEnte: String(e.id_ente),
+            }))
+          : [];
 
         setAnosDisponiveis(anos);
         setEntesOptions(entes);
@@ -357,7 +281,6 @@ export default function DespesaHeaderFilters() {
     return () => { active = false; };
   }, []);
 
-  // Defaults: ano mais recente como anoFim, anterior como anoInicio
   const defaultAnoFim = useMemo(() => {
     if (anosDisponiveis.length === 0) return String(new Date().getFullYear());
     return String(anosDisponiveis[0]);
@@ -369,47 +292,25 @@ export default function DespesaHeaderFilters() {
     return String(anosDisponiveis[1]);
   }, [anosDisponiveis]);
 
-  // Aplica defaults na URL após carregar, se ainda não definidos
   useEffect(() => {
     if (!hasLoadedOnce) return;
     if (selectedAnoInicio || selectedAnoFim) return;
-
     const next = new URLSearchParams(searchParams.toString());
     next.set("anoInicio", defaultAnoInicio);
     next.set("anoFim", defaultAnoFim);
     router.replace(`${pathname}?${next.toString()}`, { scroll: false });
-  }, [
-    hasLoadedOnce,
-    selectedAnoInicio,
-    selectedAnoFim,
-    defaultAnoInicio,
-    defaultAnoFim,
-    searchParams,
-    pathname,
-    router,
-  ]);
+  }, [hasLoadedOnce, selectedAnoInicio, selectedAnoFim, defaultAnoInicio, defaultAnoFim, searchParams, pathname, router]);
 
   useEffect(() => {
     if (!hasLoadedOnce || periodoManual) return;
     if (defaultAnoInicio === defaultAnoFim) return;
     if (selectedAnoInicio !== selectedAnoFim) return;
     if (selectedAnoFim !== defaultAnoFim) return;
-
     const next = new URLSearchParams(searchParams.toString());
     next.set("anoInicio", defaultAnoInicio);
     next.set("anoFim", defaultAnoFim);
     router.replace(`${pathname}?${next.toString()}`, { scroll: false });
-  }, [
-    hasLoadedOnce,
-    periodoManual,
-    selectedAnoInicio,
-    selectedAnoFim,
-    defaultAnoInicio,
-    defaultAnoFim,
-    searchParams,
-    pathname,
-    router,
-  ]);
+  }, [hasLoadedOnce, periodoManual, selectedAnoInicio, selectedAnoFim, defaultAnoInicio, defaultAnoFim, searchParams, pathname, router]);
 
   const displayedAnoInicio = selectedAnoInicio || defaultAnoInicio;
   const displayedAnoFim    = selectedAnoFim    || defaultAnoFim;
@@ -419,7 +320,6 @@ export default function DespesaHeaderFilters() {
     if (value === "all" || value === "") next.delete(key);
     else next.set(key, value);
     if (key === "anoInicio" || key === "anoFim") next.set("periodoManual", "1");
-    // Ao trocar ente, limpa entidade (cascata)
     if (key === "ente") next.delete("entidade");
     router.replace(`${pathname}?${next.toString()}`, { scroll: false });
   };
@@ -439,7 +339,6 @@ export default function DespesaHeaderFilters() {
     [anosDisponiveis],
   );
 
-  // Entidades filtradas pelo ente selecionado (cascata)
   const entidadesFiltradas = useMemo(
     () =>
       selectedEnte === "all"
@@ -466,7 +365,6 @@ export default function DespesaHeaderFilters() {
     <>
       <div className="flex w-full flex-wrap items-center gap-2 pb-1">
         <FilterDropdown activeCount={activeFilterCount} loading={loading && !hasLoadedOnce}>
-          {/* Período — mesmo layout da Receita */}
           <div className="flex h-11 items-center gap-1 rounded-lg border border-gray-200 bg-transparent px-2 shadow-theme-xs dark:border-gray-700">
             <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Período</span>
             <button

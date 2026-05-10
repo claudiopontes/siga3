@@ -15,40 +15,68 @@ export async function GET(req: NextRequest) {
   }
 
   const params: unknown[] = [Number(anoInicio), Number(anoFim)];
-  let filtroExtra = "";
+
+  // Quando há filtro por ente/entidade, consulta fato_empenho diretamente para garantir
+  // que apenas os credores daquela entidade/ente sejam retornados.
+  let sql: string;
 
   if (entidade && entidade !== "all") {
     params.push(Number(entidade));
-    filtroExtra = `AND EXISTS (
-      SELECT 1 FROM mart.despesa_resumo dr
-      LEFT JOIN public.dim_entidade dte2 ON dte2.id_entidade = dr.id_entidade
-      WHERE dr.ano_remessa BETWEEN $1 AND $2
-        AND dte2.id_entidade = $${params.length}
-    )`;
+    sql = `
+      SELECT
+        fe.ano_remessa,
+        fe.id_entidade,
+        fe.cpf_cnpj_credor,
+        COALESCE(dc.nome, fe.cpf_cnpj_credor) AS nome_credor,
+        SUM(fe.valor_empenhado_liquido)::numeric(19,2) AS valor_empenhado_liquido,
+        SUM(fe.valor_pago)::numeric(19,2)             AS valor_pago,
+        COUNT(*)::integer                              AS qtd_empenhos
+      FROM public.fato_empenho fe
+      LEFT JOIN public.dim_credor dc ON dc.cnpj_cpf = fe.cpf_cnpj_credor
+      WHERE fe.ano_remessa BETWEEN $1 AND $2
+        AND fe.id_entidade = $3
+        AND fe.cpf_cnpj_credor IS NOT NULL
+      GROUP BY fe.ano_remessa, fe.id_entidade, fe.cpf_cnpj_credor, dc.nome
+      ORDER BY valor_pago DESC
+      LIMIT 10
+    `;
   } else if (ente && ente !== "all") {
     params.push(Number(ente));
-    filtroExtra = `AND EXISTS (
-      SELECT 1 FROM mart.despesa_resumo dr
-      LEFT JOIN public.dim_entidade dte2 ON dte2.id_entidade = dr.id_entidade
-      WHERE dr.ano_remessa BETWEEN $1 AND $2
-        AND dte2.id_ente = $${params.length}
-    )`;
+    sql = `
+      SELECT
+        fe.ano_remessa,
+        de.id_ente,
+        fe.cpf_cnpj_credor,
+        COALESCE(dc.nome, fe.cpf_cnpj_credor) AS nome_credor,
+        SUM(fe.valor_empenhado_liquido)::numeric(19,2) AS valor_empenhado_liquido,
+        SUM(fe.valor_pago)::numeric(19,2)             AS valor_pago,
+        COUNT(*)::integer                              AS qtd_empenhos
+      FROM public.fato_empenho fe
+      LEFT JOIN public.dim_credor dc    ON dc.cnpj_cpf  = fe.cpf_cnpj_credor
+      LEFT JOIN public.dim_entidade de  ON de.id_entidade = fe.id_entidade::bigint
+      WHERE fe.ano_remessa BETWEEN $1 AND $2
+        AND de.id_ente = $3
+        AND fe.cpf_cnpj_credor IS NOT NULL
+      GROUP BY fe.ano_remessa, de.id_ente, fe.cpf_cnpj_credor, dc.nome
+      ORDER BY valor_pago DESC
+      LIMIT 10
+    `;
+  } else {
+    // Sem filtro — usa mart já agregado (global)
+    sql = `
+      SELECT
+        r.ano_remessa,
+        r.cpf_cnpj_credor,
+        r.nome_credor,
+        r.valor_empenhado_liquido,
+        r.valor_pago,
+        r.qtd_empenhos
+      FROM mart.despesa_ranking_credores r
+      WHERE r.ano_remessa BETWEEN $1 AND $2
+      ORDER BY r.valor_pago DESC
+      LIMIT 10
+    `;
   }
-
-  const sql = `
-    SELECT
-      r.ano_remessa,
-      r.cpf_cnpj_credor,
-      r.nome_credor,
-      r.valor_empenhado_liquido,
-      r.valor_pago,
-      r.qtd_empenhos
-    FROM mart.despesa_ranking_credores r
-    WHERE r.ano_remessa BETWEEN $1 AND $2
-    ${filtroExtra}
-    ORDER BY r.valor_pago DESC
-    LIMIT 10
-  `;
 
   try {
     const rows = await dbQuery(sql, params);
