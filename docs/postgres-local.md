@@ -166,6 +166,85 @@ O frontend Next.js (Painel de Despesa e demais painéis) continua usando o Supab
 
 ---
 
+## Enriquecimento cadastral e marts de credores
+
+O módulo de credores enriquece os documentos (CPF/CNPJ) presentes em `fato_empenho`
+com dados cadastrais de fontes internas (SQL Server) e opcionalmente APIs públicas de CNPJ.
+
+### Tabelas geradas
+
+| Tabela | Descrição |
+|---|---|
+| `dw.dim_credor_enriquecido` | Cadastro enriquecido com nome, município, situação cadastral etc. |
+| `audit.credor_enriquecimento_log` | Log de cada operação de enriquecimento |
+| `mart.credor_resumo` | Totais por credor (empenhado, pago, qtd entidades...) |
+| `mart.credor_evolucao_mensal` | Evolução mês a mês por credor |
+| `mart.credor_entidades` | Quais entidades cada credor atendeu |
+| `mart.credor_empenhos_relevantes` | Top 500 empenhos por credor |
+| `mart.credor_pesquisa` | Tabela desnormalizada com `termo_pesquisa` para busca full-text |
+
+### Fluxo completo de enriquecimento
+
+```bash
+cd etl
+
+# 1. Migra schema (cria as tabelas novas)
+npm run postgres:migrate
+
+# 2. Prepara lista de credores únicos e identifica tipo (CPF/CNPJ)
+npm run credor:enriquecimento:preparar
+
+# 3. (Opcional) Descobre fontes internas no SQL Server
+npm run credor:fontes:inspecionar
+
+# 4. (Opcional) Enriquece com base interna — requer CREDOR_INTERNO_TABLE no .env
+npm run credor:enriquecer:interno
+
+# 5. (Opcional) Enriquece CNPJs via API pública — requer CNPJ_ENRICH_PROVIDER != none
+npm run credor:enriquecer:cnpj
+
+# 6. Reconstrói as marts de credores
+npm run mart:credor-despesa
+
+# Ou tudo junto:
+npm run credor:enriquecimento
+```
+
+### Configurar enriquecimento interno
+
+1. Execute `npm run credor:fontes:inspecionar` para ver as tabelas candidatas.
+2. Copie os valores sugeridos para o `.env`:
+
+```env
+CREDOR_INTERNO_DATABASE=APC
+CREDOR_INTERNO_TABLE=referencias.FORNECEDORES      # exemplo
+CREDOR_INTERNO_DOCUMENTO_COLUMN=CPF_CNPJ
+CREDOR_INTERNO_NOME_COLUMN=NOME_RAZAO
+CREDOR_INTERNO_CIDADE_COLUMN=MUNICIPIO             # opcional
+CREDOR_INTERNO_UF_COLUMN=UF                        # opcional
+```
+
+3. Execute `npm run credor:enriquecer:interno`.
+
+### Configurar enriquecimento de CNPJ via API
+
+O padrão é `CNPJ_ENRICH_PROVIDER=none` (desativado). Para ativar:
+
+```env
+CNPJ_ENRICH_PROVIDER=brasilapi   # ou receitaws
+CNPJ_ENRICH_RATE_LIMIT_MS=1000   # intervalo entre requisições (ms)
+CNPJ_ENRICH_MAX_PER_RUN=100      # máximo de CNPJs por execução
+```
+
+Execute `npm run credor:enriquecer:cnpj`. CPFs nunca são consultados via API.
+
+### Integração com carga-full
+
+O comando `carga-full:postgres` já inclui `credor:enriquecimento:preparar` e `mart:credor-despesa`
+na sequência de carga. O enriquecimento interno e CNPJ são opcionais e executados separadamente.
+
+---
+
 ## Remessas obrigatórias de prestação de contas
 
 Fonte principal: `APC.dbo.REMESSA` (SQL Server)
