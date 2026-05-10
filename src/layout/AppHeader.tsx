@@ -33,6 +33,7 @@ const AppHeader: React.FC = () => {
     "/pesquisa-credores": { crumbs: [{ label: "Home", href: "/" }, { label: "Pesquisa de Credores" }] },
     "/painel-cobertura-florestal": { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "Cobertura Florestal" }] },
     "/painel-cauc": { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "CAUC Municípios" }] },
+    "/painel-saude": { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "Saúde Pública" }] },
     "/gabinete-digital/mapa": { crumbs: [{ label: "Home", href: "/" }, { label: "Mapa IDEB" }] },
     "/calendar": { crumbs: [{ label: "Home", href: "/" }, { label: "Agenda" }] },
     "/profile": { crumbs: [{ label: "Home", href: "/" }, { label: "Perfil" }] },

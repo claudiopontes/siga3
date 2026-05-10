@@ -75,20 +75,6 @@ async function get(path: string): Promise<ApiResponse | null> {
   }
 }
 
-async function contarTotal(endpoint: string): Promise<number> {
-  let total = 0;
-  let offset = 0;
-  const limit = 200;
-  while (true) {
-    const r = await get(`${endpoint}&limit=${limit}&offset=${offset}`);
-    if (!r || r.estabelecimentos.length === 0) break;
-    total += r.estabelecimentos.length;
-    if (r.estabelecimentos.length < limit) break;
-    offset += limit;
-  }
-  return total;
-}
-
 async function main() {
   console.log("[cnes-ubs:inspecionar] API CNES/DATASUS — Inspeção de endpoints e formatos");
   console.log(`  Base URL : ${BASE_URL}`);

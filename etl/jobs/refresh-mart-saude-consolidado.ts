@@ -105,8 +105,9 @@ export async function executarMartSaudeConsolidado(): Promise<void> {
   console.log("[mart:saude-consolidado] Iniciando refresh consolidado do Painel da Saúde...");
 
   // ── 1. Carrega fontes ──
+  // Período mais recente por município (evita duplicatas de períodos anteriores)
   const siopsResumos = await pgQuery<SiopsResumoRow>(`
-    SELECT
+    SELECT DISTINCT ON (codigo_municipio_ibge)
       codigo_municipio_ibge,
       nome_municipio,
       ano,
@@ -117,6 +118,7 @@ export async function executarMartSaudeConsolidado(): Promise<void> {
       total_indicadores,
       situacao_envio
     FROM mart.siops_resumo_municipio
+    ORDER BY codigo_municipio_ibge, ano DESC, periodo DESC
   `);
 
   const cnesResumos = await pgQuery<CnesResumoRow>(`

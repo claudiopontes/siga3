@@ -34,6 +34,7 @@ const baseNavItems: NavItem[] = [
       { name: "Cobertura Florestal", path: "/painel-cobertura-florestal" },
       { name: "CAUC Municípios", path: "/painel-cauc" },
       { name: "IDEB Acre", path: "/gabinete-digital/mapa" },
+      { name: "Saúde Pública", path: "/painel-saude" },
     ],
   },
   {

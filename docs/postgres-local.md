@@ -321,6 +321,63 @@ SIOPS_RATE_LIMIT_MS=500
 
 ---
 
+## Painel da Saúde — camada consolidada
+
+**Finalidade:** Une SIOPS (orçamento/aplicação em saúde) com CNES/UBS (estrutura da rede) em uma visão consolidada por município, com score de risco e alertas unificados. É a base para o futuro Painel da Saúde.
+
+- **SIOPS** = indicadores de orçamento e aplicação do mínimo constitucional em saúde (LC 141/2012)
+- **CNES/UBS** = estrutura física da rede de saúde: estabelecimentos, UBS ativas, inativos
+
+### Tabelas
+
+| Tabela | Esquema | Descrição |
+|---|---|---|
+| `saude_resumo_municipio` | `mart` | Uma linha por município — SIOPS + CNES/UBS + score_risco |
+| `saude_alertas` | `mart` | Todos os alertas consolidados (SIOPS + CNES_UBS) |
+| `saude_alertas_home` | `mart` | Até 30 alertas CRITICO/ALTO para a home |
+| `saude_resumo_home` | `mart` | Totais + municípios por nível de risco |
+
+### Score de risco
+
+| Nível | Pontos | nivel_risco |
+|---|---|---|
+| CRITICO | 5 pts | CRITICO se score ≥ 10 |
+| ALTO | 3 pts | ALTO se score ≥ 5 |
+| MEDIO | 1 pt | MEDIO se score ≥ 1 |
+| — | 0 | BAIXO |
+
+### Comandos
+
+```bash
+# Apenas mart consolidada (requer SIOPS e CNES já carregados)
+npm run mart:saude-consolidado
+
+# Carga completa de saúde: SIOPS + CNES/UBS + mart consolidada
+npm run carga-saude:postgres
+
+# Migração dos schemas
+npm run postgres:migrate
+```
+
+### APIs server-side
+
+| Rota | Descrição |
+|---|---|
+| `GET /api/saude/resumo` | Totais do `mart.saude_resumo_home` |
+| `GET /api/saude/municipios` | Lista `mart.saude_resumo_municipio` com filtros e ordenação |
+| `GET /api/saude/alertas` | Alertas (param `home=1` para versão home, filtros: `nivel`, `fonte`, `municipio`, `tipo_alerta`) |
+
+Filtros de `/api/saude/municipios`: `nivelRisco`, `municipio`, `orderBy` (score_risco|nome_municipio|total_alertas|percentual_aplicado_saude|total_ubs_ativas), `orderDir`, `pageSize`.
+
+### Resultados da carga inicial (Acre)
+
+- **22** municípios consolidados
+- **583** alertas totais (277 CRITICO · 88 ALTO · 218 MEDIO)
+- **30** alertas na home
+- **21** municípios com score CRITICO · **1** ALTO
+
+---
+
 ## CNES/UBS — Estrutura da rede de saúde
 
 **Finalidade:** Monitorar a estrutura da rede de saúde dos municípios do Acre com base no CNES (Cadastro Nacional de Estabelecimentos de Saúde) e UBS (tipo 02 = Centro de Saúde / Unidade Básica de Saúde). Detectar municípios sem UBS ativa, baixa cobertura, estabelecimentos inativos e sem atualização cadastral.
