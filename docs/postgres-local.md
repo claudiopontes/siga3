@@ -321,6 +321,85 @@ SIOPS_RATE_LIMIT_MS=500
 
 ---
 
+## CNES/UBS — Estrutura da rede de saúde
+
+**Finalidade:** Monitorar a estrutura da rede de saúde dos municípios do Acre com base no CNES (Cadastro Nacional de Estabelecimentos de Saúde) e UBS (tipo 02 = Centro de Saúde / Unidade Básica de Saúde). Detectar municípios sem UBS ativa, baixa cobertura, estabelecimentos inativos e sem atualização cadastral.
+
+**Fonte:** API REST pública — `https://apidadosabertos.saude.gov.br/cnes`
+- CNES: `/estabelecimentos?codigo_uf=12&limit=20&offset={n}` (paginação 20/página)
+- UBS: `/estabelecimentos?codigo_uf=12&codigo_tipo_unidade=02&limit=20&offset={n}`
+- Atualização diária pelo DATASUS.
+
+### Tabelas
+
+| Tabela | Esquema | Descrição |
+|---|---|---|
+| `cnes_estabelecimentos_raw` | `raw` | Payload bruto da API (por carga) |
+| `ubs_raw` | `raw` | Payload bruto UBS |
+| `cnes_estabelecimentos_stg` | `stage` | Dados normalizados para staging |
+| `ubs_stg` | `stage` | Dados UBS normalizados |
+| `dim_estabelecimento_saude` | `dw` | Dimensão: todos os estabelecimentos |
+| `dim_ubs` | `dw` | Dimensão: apenas UBS (tipo 02) |
+| `saude_estrutura_municipio` | `mart` | Resumo por município |
+| `saude_estrutura_alertas` | `mart` | Todos os alertas gerados |
+| `saude_estrutura_alertas_home` | `mart` | Até 30 alertas CRITICO/ALTO para a home |
+| `saude_estrutura_resumo_home` | `mart` | Totais para o card da home |
+
+### Comandos
+
+```bash
+# Inspecionar API e salvar amostras
+npm run cnes-ubs:inspecionar
+
+# Carga completa CNES + UBS
+npm run cnes-ubs:full:postgres
+
+# Reconstruir marts (alertas, home)
+npm run mart:saude-estrutura
+
+# Carga + mart em sequência
+npm run carga-cnes-ubs:postgres
+```
+
+### Tipos de alerta
+
+| Tipo | Nível | Aparece na home? | Descrição |
+|---|---|---|---|
+| `municipio_sem_ubs_ativa` | CRITICO | Sim | Nenhuma UBS ativa no município |
+| `baixa_quantidade_ubs` | ALTO | Sim | Apenas 1 UBS ativa |
+| `estabelecimentos_inativos` | MEDIO | Não | Estabelecimentos com motivo de desabilitação |
+| `estabelecimentos_sem_atualizacao_recente` | MEDIO | Não | Data de atualização >180 dias |
+
+### Variáveis de ambiente
+
+```env
+CNES_API_BASE_URL=https://apidadosabertos.saude.gov.br/cnes
+CNES_UF=12
+CNES_TIMEOUT_MS=30000
+CNES_RATE_LIMIT_MS=500
+```
+
+### APIs server-side
+
+- `GET /api/alertas/saude-estrutura/resumo` — totais para o card da home
+- `GET /api/alertas/saude-estrutura/detalhes?nivel=CRITICO&municipio=Rio+Branco&tipo_alerta=municipio_sem_ubs_ativa` — alertas com filtros opcionais
+
+### Resultados da carga inicial (Acre)
+
+- **2.044** estabelecimentos de saúde carregados
+- **284** UBS (tipo 02) carregadas
+- **22** municípios com dados
+- **64** alertas gerados (22 CRITICO, 0 ALTO, 42 MEDIO)
+
+### Limitações conhecidas
+
+- A API limita a **20 registros por página** — carga completa requer muitas requisições (~103 páginas para CNES).
+- O campo `nome_municipio` não é retornado pela API — o nome é derivado do `codigo_municipio` (6 dígitos) via cruzamento futuro com `dim_ente`.
+- UBS tipo 02 é a classificação CNES para "Centro de Saúde / Unidade Básica de Saúde". Outros subtipos de UBS podem estar em tipos diferentes (ex: 40 = Unidade Odontológica Móvel).
+- Alertas de `municipio_sem_ubs_ativa` para toda a lista do Acre são gerados somente se a tabela `dim_ubs` tiver dados.
+
+---
+
 ## SICONFI/RREO — Execução Orçamentária Municipal
 
 **Finalidade:** Monitorar a entrega do Relatório Resumido da Execução Orçamentária (RREO) pelos municípios do Acre ao SICONFI (Tesouro Nacional), detectar municípios sem dado recente, envios incompletos e variações atípicas de despesa.

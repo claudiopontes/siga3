@@ -2,22 +2,28 @@
  * cnes-ubs-full-postgres.ts
  *
  * Carga de estabelecimentos CNES e UBS do Acre para PostgreSQL local.
- * Fonte: API CKAN do OpenDataSUS — https://opendatasus.saude.gov.br/api/3/action
+ * Fonte: API CNES/DATASUS — https://apidadosabertos.saude.gov.br/cnes
  *
- * Endpoint CKAN: /datastore_search?resource_id={id}&filters={...}&limit={n}&offset={n}
- * Filtro por UF: campo identificado na inspeção (ex: "CO_UF", "UF", "SG_UF").
+ * Endpoint: GET /estabelecimentos?codigo_uf={uf}&limit={n}&offset={n}
+ * UBS: adicionar &codigo_tipo_unidade=02
+ *
+ * Campos principais da API:
+ *   codigo_cnes, nome_razao_social, nome_fantasia, codigo_uf, codigo_municipio,
+ *   codigo_tipo_unidade, codigo_cep_estabelecimento, endereco_estabelecimento,
+ *   numero_estabelecimento, bairro_estabelecimento, numero_telefone_estabelecimento,
+ *   latitude_estabelecimento_decimo_grau, longitude_estabelecimento_decimo_grau,
+ *   estabelecimento_faz_atendimento_ambulatorial_sus, descricao_esfera_administrativa,
+ *   data_atualizacao
  *
  * Estratégia idempotente:
  *   - TRUNCATE stage; INSERT normalizado
  *   - UPSERT em dw por cnes (PK)
  *
  * Variáveis de ambiente:
- *   CNES_API_BASE_URL   — base da API CKAN
- *   CNES_RESOURCE_ID    — resource_id do dataset CNES
- *   UBS_RESOURCE_ID     — resource_id do dataset UBS
- *   CNES_UF             — UF para filtrar (padrão: AC)
- *   CNES_TIMEOUT_MS     — timeout por requisição
- *   CNES_RATE_LIMIT_MS  — intervalo entre páginas
+ *   CNES_API_BASE_URL   — base da API (padrão: https://apidadosabertos.saude.gov.br/cnes)
+ *   CNES_UF             — código numérico da UF (padrão: 12 = Acre)
+ *   CNES_TIMEOUT_MS     — timeout por requisição (padrão: 30000)
+ *   CNES_RATE_LIMIT_MS  — intervalo entre páginas (padrão: 500)
  *
  * Uso: cd etl && npm run cnes-ubs:full:postgres
  */
@@ -29,29 +35,45 @@ import { pgQuery, withPgTransaction, closePgPool } from "../connectors/postgres"
 // Configuração
 // ---------------------------------------------------------------------------
 
-const BASE_URL      = (process.env.CNES_API_BASE_URL || "https://opendatasus.saude.gov.br/api/3/action").replace(/\/$/, "");
-const CNES_UF       = process.env.CNES_UF || "AC";
-const TIMEOUT_MS    = parseInt(process.env.CNES_TIMEOUT_MS    || "30000", 10);
-const RATE_LIMIT    = parseInt(process.env.CNES_RATE_LIMIT_MS || "500",   10);
-const CNES_RES_ID   = process.env.CNES_RESOURCE_ID || "";
-const UBS_RES_ID    = process.env.UBS_RESOURCE_ID  || "";
-const PAGE_SIZE     = 1000;
-
-// Código IBGE de 6 dígitos dos municípios do Acre — para filtro local quando API não suportar UF
-const IBGE_AC_PREFIXO = "12";
+const MODULO      = "cnes_ubs_full";
+const BASE_URL    = (process.env.CNES_API_BASE_URL || "https://apidadosabertos.saude.gov.br/cnes").replace(/\/$/, "");
+const CNES_UF     = process.env.CNES_UF || "12"; // código IBGE numérico (Acre=12)
+const TIMEOUT_MS  = parseInt(process.env.CNES_TIMEOUT_MS    || "30000", 10);
+const RATE_LIMIT  = parseInt(process.env.CNES_RATE_LIMIT_MS || "500",   10);
+const PAGE_SIZE   = 20; // API limita a 20 registros por página
 
 // ---------------------------------------------------------------------------
 // Tipos
 // ---------------------------------------------------------------------------
 
-interface DatastorePage {
-  success: boolean;
-  result?: {
-    total:   number;
-    fields:  Array<{ id: string; type: string }>;
-    records: Record<string, unknown>[];
-  };
-  error?: { message: string };
+interface EstabItem {
+  codigo_cnes:                                       number | string | null;
+  nome_razao_social?:                                string | null;
+  nome_fantasia?:                                    string | null;
+  numero_cnpj_entidade?:                             string | null;
+  natureza_organizacao_entidade?:                    string | null;
+  tipo_gestao?:                                      string | null;
+  descricao_nivel_hierarquia?:                       string | null;
+  descricao_esfera_administrativa?:                  string | null;
+  codigo_tipo_unidade?:                              number | string | null;
+  codigo_cep_estabelecimento?:                       string | null;
+  endereco_estabelecimento?:                         string | null;
+  numero_estabelecimento?:                           string | null;
+  bairro_estabelecimento?:                           string | null;
+  numero_telefone_estabelecimento?:                  string | null;
+  latitude_estabelecimento_decimo_grau?:             number | null;
+  longitude_estabelecimento_decimo_grau?:            number | null;
+  estabelecimento_faz_atendimento_ambulatorial_sus?: string | null;
+  codigo_uf?:                                        number | string | null;
+  codigo_municipio?:                                 number | string | null;
+  descricao_natureza_juridica_estabelecimento?:      string | null;
+  codigo_motivo_desabilitacao_estabelecimento?:      string | null;
+  data_atualizacao?:                                 string | null;
+  [key: string]: unknown;
+}
+
+interface ApiResponse {
+  estabelecimentos: EstabItem[];
 }
 
 // ---------------------------------------------------------------------------
@@ -62,93 +84,87 @@ function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-async function fetchPage(resourceId: string, offset: number, ufFilter?: string): Promise<DatastorePage | null> {
-  let url = `${BASE_URL}/datastore_search?resource_id=${resourceId}&limit=${PAGE_SIZE}&offset=${offset}`;
-  if (ufFilter) {
-    // tenta filtrar por UF no CKAN (campo mais comum: SG_UF ou CO_UF)
-    // será verificado na primeira página; se não funcionar, filtra localmente
-    url += `&q=${encodeURIComponent(ufFilter)}`;
-  }
-
+async function fetchPage(endpoint: string, offset: number): Promise<EstabItem[] | null> {
+  const url = `${BASE_URL}${endpoint}&limit=${PAGE_SIZE}&offset=${offset}`;
   try {
     const resp = await fetch(url, {
       headers: { "Accept": "application/json", "User-Agent": "Varadouro-Digital-ETL/1.0 (interno TCE-AC)" },
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
     if (!resp.ok) {
-      console.error(`  ✗ HTTP ${resp.status} em ${url}`);
+      console.error(`  ✗ HTTP ${resp.status} — ${url}`);
       return null;
     }
-    return await resp.json() as DatastorePage;
+    const json = await resp.json() as ApiResponse;
+    return json.estabelecimentos ?? [];
   } catch (err) {
     console.error(`  ✗ Erro de rede: ${(err as Error).message}`);
     return null;
   }
 }
 
-// Detecta o nome do campo UF nos registros retornados
-function detectarCampoUf(fields: Array<{ id: string }>): string | null {
-  const candidatos = ["SG_UF", "CO_ESTADO_GESTOR", "sg_uf", "UF", "uf", "CO_UF", "co_uf", "SG_UF_GEOGRAFICA"];
-  for (const c of candidatos) {
-    if (fields.some(f => f.id === c)) return c;
-  }
-  return null;
-}
+async function carregarTodos(endpoint: string, label: string): Promise<EstabItem[]> {
+  const todos: EstabItem[] = [];
+  let offset = 0;
+  console.log(`\n[cnes-ubs:full] Carregando ${label}...`);
 
-function detectarCampoCnes(fields: Array<{ id: string }>): string | null {
-  const candidatos = ["CO_CNES", "co_cnes", "CNES", "cnes", "CO_UNIDADE", "co_unidade"];
-  for (const c of candidatos) {
-    if (fields.some(f => f.id === c)) return c;
-  }
-  return null;
-}
+  while (true) {
+    const page = await fetchPage(endpoint, offset);
+    if (page === null) {
+      console.error(`  ✗ Falha na página offset=${offset}`);
+      break;
+    }
+    if (page.length === 0) break;
 
-function detectarCampoIbge(fields: Array<{ id: string }>): string | null {
-  const candidatos = ["CO_MUNICIPIO_GESTOR", "CO_MUNICIPIO", "co_municipio", "CO_IBGE", "co_ibge", "MUNICIPIO_IBGE"];
-  for (const c of candidatos) {
-    if (fields.some(f => f.id === c)) return c;
+    todos.push(...page);
+    process.stdout.write(`\r  Carregados: ${todos.length}    `);
+
+    if (page.length < PAGE_SIZE) break;
+    offset += page.length;
+    await sleep(RATE_LIMIT);
   }
-  return null;
+
+  console.log(`\n  ✓ Total: ${todos.length} registros de ${label}`);
+  return todos;
 }
 
 function str(v: unknown): string | null {
-  if (v === null || v === undefined || v === "") return null;
-  return String(v).trim() || null;
-}
-
-function num(v: unknown): number | null {
-  if (v === null || v === undefined || v === "") return null;
-  const n = parseFloat(String(v).replace(",", "."));
-  return isNaN(n) ? null : n;
-}
-
-function dateParse(v: unknown): string | null {
-  if (!v) return null;
+  if (v === null || v === undefined) return null;
   const s = String(v).trim();
-  // formatos: YYYYMMDD, YYYY-MM-DD, DD/MM/YYYY
-  if (/^\d{8}$/.test(s)) return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
-  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
-  if (/^\d{2}\/\d{2}\/\d{4}/.test(s)) return `${s.slice(6, 10)}-${s.slice(3, 5)}-${s.slice(0, 2)}`;
-  return null;
+  return s === "" ? null : s;
+}
+
+function numOrNull(v: unknown): number | null {
+  if (v === null || v === undefined) return null;
+  if (typeof v === "number") return isNaN(v) ? null : v;
+  const n = parseFloat(String(v));
+  return isNaN(n) ? null : n;
 }
 
 function boolSus(v: unknown): boolean | null {
   if (v === null || v === undefined) return null;
   const s = String(v).trim().toUpperCase();
-  if (s === "S" || s === "SIM" || s === "1" || s === "TRUE") return true;
-  if (s === "N" || s === "NAO" || s === "NÃO" || s === "0" || s === "FALSE") return false;
+  if (s === "SIM" || s === "S" || s === "1") return true;
+  if (s === "NAO" || s === "NÃO" || s === "N" || s === "0") return false;
   return null;
 }
 
+// Código IBGE: a API retorna 6 dígitos sem dígito verificador.
+// Exemplos: 120040 = Rio Branco (IBGE 7 dígitos: 1200401)
+function ibge6para7(cod: string): string {
+  // Mantemos o código de 6 dígitos como recebido — o sistema usa 6 dígitos no SIOPS
+  return cod.padStart(6, "0");
+}
+
 // ---------------------------------------------------------------------------
-// Normalização CNES
+// Normalização
 // ---------------------------------------------------------------------------
 
-interface EstabNormalizado {
-  cnes:                  string | null;
+interface Normalizado {
+  cnes:                  string;
   nome_estabelecimento:  string | null;
   codigo_municipio_ibge: string | null;
-  nome_municipio:        string | null;
+  nome_municipio:        null; // não disponível diretamente na API
   uf:                    string | null;
   tipo_estabelecimento:  string | null;
   natureza_juridica:     string | null;
@@ -165,98 +181,36 @@ interface EstabNormalizado {
   telefone:              string | null;
 }
 
-function normalizarEstab(rec: Record<string, unknown>): EstabNormalizado {
-  // mapeamento defensivo — campos variam conforme versão do dataset
+function normalizar(e: EstabItem): Normalizado | null {
+  const cnes = str(e.codigo_cnes);
+  if (!cnes) return null;
+
+  const motivo = str(e.codigo_motivo_desabilitacao_estabelecimento);
+  const situacao = motivo ? "INATIVO" : "ATIVO";
+
+  const ibge = e.codigo_municipio ? ibge6para7(String(e.codigo_municipio)) : null;
+
   return {
-    cnes:                  str(rec.CO_CNES ?? rec.co_cnes ?? rec.CNES ?? rec.cnes ?? rec.CO_UNIDADE ?? rec.co_unidade),
-    nome_estabelecimento:  str(rec.NO_FANTASIA ?? rec.no_fantasia ?? rec.NO_RAZAO_SOCIAL ?? rec.no_razao_social ?? rec.NOME ?? rec.nome),
-    codigo_municipio_ibge: str(rec.CO_MUNICIPIO_GESTOR ?? rec.CO_MUNICIPIO ?? rec.co_municipio ?? rec.CO_IBGE ?? rec.co_ibge),
-    nome_municipio:        str(rec.NO_MUNICIPIO ?? rec.no_municipio ?? rec.MUNICIPIO ?? rec.municipio),
-    uf:                    str(rec.SG_UF_GEOGRAFICA ?? rec.SG_UF ?? rec.sg_uf ?? rec.UF ?? rec.uf ?? rec.CO_ESTADO_GESTOR ?? rec.co_estado_gestor),
-    tipo_estabelecimento:  str(rec.DS_TIPO_UNIDADE ?? rec.ds_tipo_unidade ?? rec.TP_UNIDADE ?? rec.tp_unidade ?? rec.TIPO ?? rec.tipo),
-    natureza_juridica:     str(rec.DS_NATUREZA_JUR ?? rec.ds_natureza_jur ?? rec.NATUREZA_JURIDICA ?? rec.natureza_juridica),
-    gestao:                str(rec.DS_GESTAO ?? rec.ds_gestao ?? rec.GESTAO ?? rec.gestao),
-    esfera_administrativa: str(rec.DS_ESFERA_ADM ?? rec.ds_esfera_adm ?? rec.ESFERA_ADM ?? rec.esfera_adm),
-    atende_sus:            boolSus(rec.ST_ADESAO_FILANTROP ?? rec.CO_NIVEL_HIER ?? rec.SUS ?? rec.sus ?? rec.ATENDE_SUS),
-    situacao:              str(rec.TP_UNIDADE_SITUACAO ?? rec.DS_SITUACAO ?? rec.SITUACAO ?? rec.situacao),
-    data_atualizacao:      dateParse(rec.DT_ATUALIZACAO ?? rec.DATA_ATUALIZACAO ?? rec.data_atualizacao),
-    latitude:              num(rec.NU_LATITUDE ?? rec.LATITUDE ?? rec.latitude),
-    longitude:             num(rec.NU_LONGITUDE ?? rec.LONGITUDE ?? rec.longitude),
-    endereco:              str(rec.DS_LOGRADOURO ?? rec.ENDERECO ?? rec.endereco),
-    bairro:                str(rec.NO_BAIRRO ?? rec.BAIRRO ?? rec.bairro),
-    cep:                   str(rec.CO_CEP ?? rec.CEP ?? rec.cep),
-    telefone:              str(rec.NU_TELEFONE ?? rec.TELEFONE ?? rec.telefone),
+    cnes,
+    nome_estabelecimento: str(e.nome_fantasia) ?? str(e.nome_razao_social),
+    codigo_municipio_ibge: ibge,
+    nome_municipio: null,
+    uf: e.codigo_uf ? String(e.codigo_uf).padStart(2, "0") : null,
+    tipo_estabelecimento: e.codigo_tipo_unidade ? String(e.codigo_tipo_unidade) : null,
+    natureza_juridica: str(e.descricao_natureza_juridica_estabelecimento),
+    gestao: str(e.tipo_gestao),
+    esfera_administrativa: str(e.descricao_esfera_administrativa),
+    atende_sus: boolSus(e.estabelecimento_faz_atendimento_ambulatorial_sus),
+    situacao,
+    data_atualizacao: str(e.data_atualizacao),
+    latitude: numOrNull(e.latitude_estabelecimento_decimo_grau),
+    longitude: numOrNull(e.longitude_estabelecimento_decimo_grau),
+    endereco: [str(e.endereco_estabelecimento), str(e.numero_estabelecimento)]
+      .filter(Boolean).join(", ") || null,
+    bairro: str(e.bairro_estabelecimento),
+    cep: str(e.codigo_cep_estabelecimento),
+    telefone: str(e.numero_telefone_estabelecimento),
   };
-}
-
-// ---------------------------------------------------------------------------
-// Carga genérica por resource_id
-// ---------------------------------------------------------------------------
-
-async function carregarResource(
-  resourceId: string,
-  label: string,
-): Promise<Array<{ rec: Record<string, unknown>; norm: EstabNormalizado }>> {
-  const todos: Array<{ rec: Record<string, unknown>; norm: EstabNormalizado }> = [];
-
-  console.log(`\n[cnes-ubs:full] Carregando ${label} (resource_id=${resourceId})...`);
-
-  let offset = 0;
-  let total = 0;
-  let campoUf: string | null = null;
-  let campoIbge: string | null = null;
-  let filtrarLocalmente = false;
-
-  while (true) {
-    const page = await fetchPage(resourceId, offset);
-    if (!page || !page.success || !page.result) {
-      console.error(`  ✗ Falha ao buscar página offset=${offset}: ${page?.error?.message ?? "sem resposta"}`);
-      break;
-    }
-
-    // Detecta campos na primeira página
-    if (offset === 0) {
-      total = page.result.total;
-      console.log(`  Total de registros no dataset: ${total}`);
-      campoUf   = detectarCampoUf(page.result.fields);
-      campoIbge = detectarCampoIbge(page.result.fields);
-      const campoCnes = detectarCampoCnes(page.result.fields);
-      console.log(`  Campos detectados — UF: ${campoUf ?? "n/d"}, IBGE: ${campoIbge ?? "n/d"}, CNES: ${campoCnes ?? "n/d"}`);
-      console.log(`  Todos os campos: ${page.result.fields.map(f => f.id).join(", ")}`);
-      filtrarLocalmente = !campoUf; // se não encontrou campo UF, filtra localmente
-    }
-
-    const records = page.result.records;
-    if (records.length === 0) break;
-
-    for (const rec of records) {
-      // Filtra por UF localmente
-      const ufRec = campoUf ? str(rec[campoUf]) : null;
-      const ibgeRec = campoIbge ? str(rec[campoIbge]) : null;
-
-      const isAcre = ufRec === CNES_UF ||
-        (ibgeRec && ibgeRec.startsWith(IBGE_AC_PREFIXO)) ||
-        (!filtrarLocalmente && !campoUf);
-
-      if (!isAcre && filtrarLocalmente) continue;
-      if (!isAcre && campoUf) continue;
-
-      const norm = normalizarEstab(rec);
-      // Confirma UF via ibge se campo UF não encontrado
-      if (!norm.uf && ibgeRec?.startsWith(IBGE_AC_PREFIXO)) norm.uf = CNES_UF;
-
-      todos.push({ rec, norm });
-    }
-
-    offset += records.length;
-    process.stdout.write(`\r  Lidos: ${offset}/${total} — do Acre: ${todos.length}    `);
-
-    if (offset >= total || records.length < PAGE_SIZE) break;
-    await sleep(RATE_LIMIT);
-  }
-
-  console.log(`\n  ✓ ${todos.length} registros do Acre carregados de ${label}`);
-  return todos;
 }
 
 // ---------------------------------------------------------------------------
@@ -266,169 +220,167 @@ async function carregarResource(
 export async function executarCnesUbsFullPostgres(): Promise<void> {
   const inicio = Date.now();
   console.log("[cnes-ubs:full] Iniciando carga CNES/UBS...");
+  console.log(`[cnes-ubs:full] UF: ${CNES_UF}, API: ${BASE_URL}`);
 
-  if (!CNES_RES_ID && !UBS_RES_ID) {
-    console.warn("[cnes-ubs:full] ATENÇÃO: CNES_RESOURCE_ID e UBS_RESOURCE_ID não configurados.");
-    console.warn("  Execute: npm run cnes-ubs:inspecionar");
-    console.warn("  Depois configure os IDs no etl/.env e rode novamente.");
+  // ── CNES: todos os estabelecimentos da UF ──
+  const endpointCnes = `/estabelecimentos?codigo_uf=${CNES_UF}`;
+  const cnesDados = await carregarTodos(endpointCnes, "CNES Estabelecimentos");
+
+  // ── UBS: apenas tipo_unidade=02 ──
+  const endpointUbs = `/estabelecimentos?codigo_uf=${CNES_UF}&codigo_tipo_unidade=02`;
+  const ubsDados = await carregarTodos(endpointUbs, "UBS (tipo 02)");
+
+  // ── Salva raw ──
+  if (cnesDados.length > 0) {
+    await pgQuery(`
+      INSERT INTO raw.cnes_estabelecimentos_raw (uf, endpoint, payload)
+      VALUES ($1, $2, $3)
+    `, [CNES_UF, endpointCnes, JSON.stringify(cnesDados)]);
+  }
+  if (ubsDados.length > 0) {
+    await pgQuery(`
+      INSERT INTO raw.ubs_raw (uf, endpoint, payload)
+      VALUES ($1, $2, $3)
+    `, [CNES_UF, endpointUbs, JSON.stringify(ubsDados)]);
   }
 
-  let totalCnes = 0;
-  let totalUbs  = 0;
-
-  // ── CNES ──
-  if (CNES_RES_ID) {
-    const dados = await carregarResource(CNES_RES_ID, "CNES Estabelecimentos");
-
-    if (dados.length > 0) {
-      // Salva raw em lote (uma linha por página/municipio não tem muito sentido aqui;
-      // salva uma linha agregada por UF para não explodir a tabela)
-      await pgQuery(`
-        INSERT INTO raw.cnes_estabelecimentos_raw (uf, endpoint, payload)
-        VALUES ($1, $2, $3)
-      `, [CNES_UF, `/datastore_search?resource_id=${CNES_RES_ID}`, JSON.stringify(dados.map(d => d.rec))]);
-
-      // Stage: TRUNCATE + INSERT
-      await pgQuery(`TRUNCATE stage.cnes_estabelecimentos_stg`);
-      await withPgTransaction(async (client) => {
-        for (const { rec, norm } of dados) {
-          await client.query(`
-            INSERT INTO stage.cnes_estabelecimentos_stg
-              (cnes, nome_estabelecimento, codigo_municipio_ibge, nome_municipio, uf,
-               tipo_estabelecimento, natureza_juridica, gestao, esfera_administrativa,
-               atende_sus, situacao, data_atualizacao, latitude, longitude,
-               endereco, bairro, cep, telefone, payload)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
-          `, [
-            norm.cnes, norm.nome_estabelecimento, norm.codigo_municipio_ibge, norm.nome_municipio, norm.uf,
-            norm.tipo_estabelecimento, norm.natureza_juridica, norm.gestao, norm.esfera_administrativa,
-            norm.atende_sus, norm.situacao, norm.data_atualizacao, norm.latitude, norm.longitude,
-            norm.endereco, norm.bairro, norm.cep, norm.telefone, JSON.stringify(rec),
-          ]);
-        }
-      });
-
-      // DW: UPSERT por cnes
-      await withPgTransaction(async (client) => {
-        for (const { rec, norm } of dados) {
-          if (!norm.cnes) continue;
-          await client.query(`
-            INSERT INTO dw.dim_estabelecimento_saude
-              (cnes, nome_estabelecimento, codigo_municipio_ibge, nome_municipio, uf,
-               tipo_estabelecimento, natureza_juridica, gestao, esfera_administrativa,
-               atende_sus, situacao, data_atualizacao, latitude, longitude,
-               endereco, bairro, cep, telefone, payload, atualizado_em)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,now())
-            ON CONFLICT (cnes) DO UPDATE SET
-              nome_estabelecimento   = EXCLUDED.nome_estabelecimento,
-              codigo_municipio_ibge  = EXCLUDED.codigo_municipio_ibge,
-              nome_municipio         = EXCLUDED.nome_municipio,
-              uf                     = EXCLUDED.uf,
-              tipo_estabelecimento   = EXCLUDED.tipo_estabelecimento,
-              natureza_juridica      = EXCLUDED.natureza_juridica,
-              gestao                 = EXCLUDED.gestao,
-              esfera_administrativa  = EXCLUDED.esfera_administrativa,
-              atende_sus             = EXCLUDED.atende_sus,
-              situacao               = EXCLUDED.situacao,
-              data_atualizacao       = EXCLUDED.data_atualizacao,
-              latitude               = EXCLUDED.latitude,
-              longitude              = EXCLUDED.longitude,
-              endereco               = EXCLUDED.endereco,
-              bairro                 = EXCLUDED.bairro,
-              cep                    = EXCLUDED.cep,
-              telefone               = EXCLUDED.telefone,
-              payload                = EXCLUDED.payload,
-              atualizado_em          = now()
-          `, [
-            norm.cnes, norm.nome_estabelecimento, norm.codigo_municipio_ibge, norm.nome_municipio, norm.uf,
-            norm.tipo_estabelecimento, norm.natureza_juridica, norm.gestao, norm.esfera_administrativa,
-            norm.atende_sus, norm.situacao, norm.data_atualizacao, norm.latitude, norm.longitude,
-            norm.endereco, norm.bairro, norm.cep, norm.telefone, JSON.stringify(rec),
-          ]);
-        }
-      });
-
-      totalCnes = dados.length;
-      console.log(`[cnes-ubs:full] ✓ CNES: ${totalCnes} estabelecimentos carregados.`);
-    }
-  } else {
-    console.log("[cnes-ubs:full] CNES_RESOURCE_ID não configurado — pulando CNES.");
+  // ── Stage CNES ──
+  if (cnesDados.length > 0) {
+    await pgQuery(`TRUNCATE stage.cnes_estabelecimentos_stg`);
+    await withPgTransaction(async (client) => {
+      for (const e of cnesDados) {
+        const n = normalizar(e);
+        if (!n) continue;
+        await client.query(`
+          INSERT INTO stage.cnes_estabelecimentos_stg
+            (cnes, nome_estabelecimento, codigo_municipio_ibge, nome_municipio, uf,
+             tipo_estabelecimento, natureza_juridica, gestao, esfera_administrativa,
+             atende_sus, situacao, data_atualizacao, latitude, longitude,
+             endereco, bairro, cep, telefone, payload)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+        `, [
+          n.cnes, n.nome_estabelecimento, n.codigo_municipio_ibge, n.nome_municipio, n.uf,
+          n.tipo_estabelecimento, n.natureza_juridica, n.gestao, n.esfera_administrativa,
+          n.atende_sus, n.situacao, n.data_atualizacao, n.latitude, n.longitude,
+          n.endereco, n.bairro, n.cep, n.telefone, JSON.stringify(e),
+        ]);
+      }
+    });
+    console.log(`[cnes-ubs:full] ✓ stage.cnes_estabelecimentos_stg — ${cnesDados.length} registros`);
   }
 
-  // ── UBS ──
-  if (UBS_RES_ID) {
-    const dados = await carregarResource(UBS_RES_ID, "UBS");
+  // ── Stage UBS ──
+  if (ubsDados.length > 0) {
+    await pgQuery(`TRUNCATE stage.ubs_stg`);
+    await withPgTransaction(async (client) => {
+      for (const e of ubsDados) {
+        const n = normalizar(e);
+        if (!n) continue;
+        await client.query(`
+          INSERT INTO stage.ubs_stg
+            (cnes, nome_estabelecimento, codigo_municipio_ibge, nome_municipio, uf,
+             tipo_estabelecimento, situacao, data_atualizacao, latitude, longitude,
+             endereco, bairro, cep, telefone, payload)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+        `, [
+          n.cnes, n.nome_estabelecimento, n.codigo_municipio_ibge, n.nome_municipio, n.uf,
+          n.tipo_estabelecimento, n.situacao, n.data_atualizacao, n.latitude, n.longitude,
+          n.endereco, n.bairro, n.cep, n.telefone, JSON.stringify(e),
+        ]);
+      }
+    });
+    console.log(`[cnes-ubs:full] ✓ stage.ubs_stg — ${ubsDados.length} registros`);
+  }
 
-    if (dados.length > 0) {
-      await pgQuery(`
-        INSERT INTO raw.ubs_raw (uf, endpoint, payload)
-        VALUES ($1, $2, $3)
-      `, [CNES_UF, `/datastore_search?resource_id=${UBS_RES_ID}`, JSON.stringify(dados.map(d => d.rec))]);
+  // ── DW dim_estabelecimento_saude ──
+  if (cnesDados.length > 0) {
+    await withPgTransaction(async (client) => {
+      for (const e of cnesDados) {
+        const n = normalizar(e);
+        if (!n) continue;
+        await client.query(`
+          INSERT INTO dw.dim_estabelecimento_saude
+            (cnes, nome_estabelecimento, codigo_municipio_ibge, nome_municipio, uf,
+             tipo_estabelecimento, natureza_juridica, gestao, esfera_administrativa,
+             atende_sus, situacao, data_atualizacao, latitude, longitude,
+             endereco, bairro, cep, telefone, payload, atualizado_em)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,now())
+          ON CONFLICT (cnes) DO UPDATE SET
+            nome_estabelecimento   = EXCLUDED.nome_estabelecimento,
+            codigo_municipio_ibge  = EXCLUDED.codigo_municipio_ibge,
+            nome_municipio         = EXCLUDED.nome_municipio,
+            uf                     = EXCLUDED.uf,
+            tipo_estabelecimento   = EXCLUDED.tipo_estabelecimento,
+            natureza_juridica      = EXCLUDED.natureza_juridica,
+            gestao                 = EXCLUDED.gestao,
+            esfera_administrativa  = EXCLUDED.esfera_administrativa,
+            atende_sus             = EXCLUDED.atende_sus,
+            situacao               = EXCLUDED.situacao,
+            data_atualizacao       = EXCLUDED.data_atualizacao,
+            latitude               = EXCLUDED.latitude,
+            longitude              = EXCLUDED.longitude,
+            endereco               = EXCLUDED.endereco,
+            bairro                 = EXCLUDED.bairro,
+            cep                    = EXCLUDED.cep,
+            telefone               = EXCLUDED.telefone,
+            payload                = EXCLUDED.payload,
+            atualizado_em          = now()
+        `, [
+          n.cnes, n.nome_estabelecimento, n.codigo_municipio_ibge, n.nome_municipio, n.uf,
+          n.tipo_estabelecimento, n.natureza_juridica, n.gestao, n.esfera_administrativa,
+          n.atende_sus, n.situacao, n.data_atualizacao, n.latitude, n.longitude,
+          n.endereco, n.bairro, n.cep, n.telefone, JSON.stringify(e),
+        ]);
+      }
+    });
+    console.log(`[cnes-ubs:full] ✓ dw.dim_estabelecimento_saude — ${cnesDados.length} upserts`);
+  }
 
-      await pgQuery(`TRUNCATE stage.ubs_stg`);
-      await withPgTransaction(async (client) => {
-        for (const { rec, norm } of dados) {
-          await client.query(`
-            INSERT INTO stage.ubs_stg
-              (cnes, nome_estabelecimento, codigo_municipio_ibge, nome_municipio, uf,
-               tipo_estabelecimento, situacao, data_atualizacao, latitude, longitude,
-               endereco, bairro, cep, telefone, payload)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
-          `, [
-            norm.cnes, norm.nome_estabelecimento, norm.codigo_municipio_ibge, norm.nome_municipio, norm.uf,
-            norm.tipo_estabelecimento, norm.situacao, norm.data_atualizacao, norm.latitude, norm.longitude,
-            norm.endereco, norm.bairro, norm.cep, norm.telefone, JSON.stringify(rec),
-          ]);
-        }
-      });
-
-      await withPgTransaction(async (client) => {
-        for (const { rec, norm } of dados) {
-          if (!norm.cnes) continue;
-          await client.query(`
-            INSERT INTO dw.dim_ubs
-              (cnes, nome_estabelecimento, codigo_municipio_ibge, nome_municipio, uf,
-               tipo_estabelecimento, situacao, data_atualizacao, latitude, longitude,
-               endereco, bairro, cep, telefone, payload, atualizado_em)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,now())
-            ON CONFLICT (cnes) DO UPDATE SET
-              nome_estabelecimento  = EXCLUDED.nome_estabelecimento,
-              codigo_municipio_ibge = EXCLUDED.codigo_municipio_ibge,
-              nome_municipio        = EXCLUDED.nome_municipio,
-              uf                    = EXCLUDED.uf,
-              tipo_estabelecimento  = EXCLUDED.tipo_estabelecimento,
-              situacao              = EXCLUDED.situacao,
-              data_atualizacao      = EXCLUDED.data_atualizacao,
-              latitude              = EXCLUDED.latitude,
-              longitude             = EXCLUDED.longitude,
-              endereco              = EXCLUDED.endereco,
-              bairro                = EXCLUDED.bairro,
-              cep                   = EXCLUDED.cep,
-              telefone              = EXCLUDED.telefone,
-              payload               = EXCLUDED.payload,
-              atualizado_em         = now()
-          `, [
-            norm.cnes, norm.nome_estabelecimento, norm.codigo_municipio_ibge, norm.nome_municipio, norm.uf,
-            norm.tipo_estabelecimento, norm.situacao, norm.data_atualizacao, norm.latitude, norm.longitude,
-            norm.endereco, norm.bairro, norm.cep, norm.telefone, JSON.stringify(rec),
-          ]);
-        }
-      });
-
-      totalUbs = dados.length;
-      console.log(`[cnes-ubs:full] ✓ UBS: ${totalUbs} unidades carregadas.`);
-    }
-  } else {
-    console.log("[cnes-ubs:full] UBS_RESOURCE_ID não configurado — pulando UBS.");
+  // ── DW dim_ubs ──
+  if (ubsDados.length > 0) {
+    await withPgTransaction(async (client) => {
+      for (const e of ubsDados) {
+        const n = normalizar(e);
+        if (!n) continue;
+        await client.query(`
+          INSERT INTO dw.dim_ubs
+            (cnes, nome_estabelecimento, codigo_municipio_ibge, nome_municipio, uf,
+             tipo_estabelecimento, situacao, data_atualizacao, latitude, longitude,
+             endereco, bairro, cep, telefone, payload, atualizado_em)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,now())
+          ON CONFLICT (cnes) DO UPDATE SET
+            nome_estabelecimento  = EXCLUDED.nome_estabelecimento,
+            codigo_municipio_ibge = EXCLUDED.codigo_municipio_ibge,
+            nome_municipio        = EXCLUDED.nome_municipio,
+            uf                    = EXCLUDED.uf,
+            tipo_estabelecimento  = EXCLUDED.tipo_estabelecimento,
+            situacao              = EXCLUDED.situacao,
+            data_atualizacao      = EXCLUDED.data_atualizacao,
+            latitude              = EXCLUDED.latitude,
+            longitude             = EXCLUDED.longitude,
+            endereco              = EXCLUDED.endereco,
+            bairro                = EXCLUDED.bairro,
+            cep                   = EXCLUDED.cep,
+            telefone              = EXCLUDED.telefone,
+            payload               = EXCLUDED.payload,
+            atualizado_em         = now()
+        `, [
+          n.cnes, n.nome_estabelecimento, n.codigo_municipio_ibge, n.nome_municipio, n.uf,
+          n.tipo_estabelecimento, n.situacao, n.data_atualizacao, n.latitude, n.longitude,
+          n.endereco, n.bairro, n.cep, n.telefone, JSON.stringify(e),
+        ]);
+      }
+    });
+    console.log(`[cnes-ubs:full] ✓ dw.dim_ubs — ${ubsDados.length} upserts`);
   }
 
   const duracao = Date.now() - inicio;
-  console.log(`\n[cnes-ubs:full] Concluído em ${duracao}ms — CNES: ${totalCnes}, UBS: ${totalUbs}`);
+  console.log(`\n[cnes-ubs:full] Concluído em ${duracao}ms — CNES: ${cnesDados.length}, UBS: ${ubsDados.length}`);
 
   await pgQuery(`
     INSERT INTO audit.etl_log (modulo, status, mensagem, registros, duracao_ms)
-    VALUES ('cnes_ubs_full', 'OK', 'Carga CNES/UBS concluída', $1, $2)
-  `, [totalCnes + totalUbs, duracao]);
+    VALUES ($1, 'OK', 'Carga CNES/UBS concluída', $2, $3)
+  `, [MODULO, cnesDados.length + ubsDados.length, duracao]);
 }
 
 if (require.main === module) {
