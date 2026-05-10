@@ -576,36 +576,34 @@ export default function AlertasGabineteClient() {
         {carregando ? (
           <CardSkeleton />
         ) : (
-          <div className="rounded-xl border border-blue-200 bg-white p-4 dark:border-blue-800/40 dark:bg-gray-800">
+          <div className={`rounded-xl border bg-white p-4 transition hover:border-gray-300 dark:bg-gray-800 dark:hover:border-gray-600 ${
+            maiorNivel === "alto" ? "border-red-200 dark:border-red-800/50" : "border-gray-200 dark:border-gray-700"
+          }`}>
             <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-blue-500 dark:text-blue-400">
-                  Regularidade CAUC
-                </p>
-                <p className="mt-1.5 text-2xl font-bold text-gray-900 dark:text-white">
-                  {comPendencia.length}
-                  <span className="ml-1 text-sm font-normal text-gray-400">
-                    de {alertas.length} municípios com pendência CAUC
-                  </span>
-                </p>
-              </div>
-              <span className="rounded-full bg-blue-50 p-1.5 text-blue-500 dark:bg-blue-900/20">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <span className={`rounded-full p-1.5 ${
+                maiorNivel === "alto"
+                  ? "bg-red-50 text-red-500 dark:bg-red-900/20 dark:text-red-400"
+                  : "bg-blue-50 text-blue-500 dark:bg-blue-900/20 dark:text-blue-400"
+              }`}>
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
                 </svg>
               </span>
+              {maiorNivel ? <NivelBadge nivel={maiorNivel} /> : null}
             </div>
-
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <span className="text-sm font-bold text-red-600 dark:text-red-400">{totalPendencias}</span>
-              <span className="text-xs text-gray-400">pendências totais</span>
-              {maiorNivel && <NivelBadge nivel={maiorNivel} />}
-            </div>
-
-            <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-              O detalhamento por município e item fica no painel próprio do CAUC.
+            <p className="mt-3 text-sm font-bold text-gray-900 dark:text-white">Regularidade CAUC</p>
+            <p className="mt-1 text-2xl font-bold text-gray-900 dark:text-white">
+              {comPendencia.length}
+              <span className="ml-1 text-sm font-normal text-gray-400">
+                de {alertas.length} municípios
+              </span>
             </p>
-
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {totalPendencias} pendências totais. Detalhamento por município e item no painel CAUC.
+            </p>
+            <p className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
+              Regularidade fiscal
+            </p>
             <Link
               href="/painel-cauc"
               className="mt-3 inline-flex items-center gap-1 rounded-lg bg-blue-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"

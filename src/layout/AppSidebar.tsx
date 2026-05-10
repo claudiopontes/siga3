@@ -12,7 +12,7 @@ import {
   HorizontaLDots,
   UserCircleIcon,
 } from "../icons/index";
-import { ShieldCheck } from "lucide-react";
+import { ShieldCheck, FileStack } from "lucide-react";
 
 
 type NavItem = {
@@ -33,6 +33,13 @@ const baseNavItems: NavItem[] = [
       { name: "Cobertura Florestal", path: "/painel-cobertura-florestal" },
       { name: "CAUC Municípios", path: "/painel-cauc" },
       { name: "IDEB Acre", path: "/gabinete-digital/mapa" },
+    ],
+  },
+  {
+    icon: <FileStack className="h-5 w-5" />,
+    name: "Remessas",
+    subItems: [
+      { name: "Calendário de Envios", path: "/remessas/calendario" },
     ],
   },
   {

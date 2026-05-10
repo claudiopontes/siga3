@@ -755,3 +755,9 @@ span.flatpickr-weekday,
 .leaflet-container path {
   outline: none;
 }
+
+@media print {
+  header, nav, aside, footer { display: none !important; }
+  body { background: white !important; }
+  main { padding: 0 !important; margin: 0 !important; }
+}
