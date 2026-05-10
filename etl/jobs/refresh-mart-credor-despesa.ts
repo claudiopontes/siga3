@@ -18,18 +18,6 @@ import "dotenv/config";
 import { withPgTransaction, pgQuery, closePgPool } from "../connectors/postgres";
 
 // -------------------------------------------------------
-// Helpers
-// -------------------------------------------------------
-
-function formatarCPF(d: string): string {
-  return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`;
-}
-
-function formatarCNPJ(d: string): string {
-  return `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}/${d.slice(8, 12)}-${d.slice(12)}`;
-}
-
-// -------------------------------------------------------
 // SQL de suporte: expressão nome_exibicao
 // -------------------------------------------------------
 // Prioridade: enriquecido > dim_credor > CPF/CNPJ formatado

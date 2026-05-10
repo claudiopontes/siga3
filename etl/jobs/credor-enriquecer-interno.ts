@@ -83,6 +83,11 @@ async function main() {
     COL_TEL    ? `CAST([${COL_TEL}]    AS varchar(50))  AS telefone`  : "NULL AS telefone",
   ].join(",\n    ");
 
+  // Monta referência da tabela com colchetes corretos: [schema].[tabela] ou [tabela]
+  const tableRef = TABELA.includes(".")
+    ? TABELA.split(".").map((p) => `[${p.replace(/[\[\]]/g, "")}]`).join(".")
+    : `[${TABELA}]`;
+
   // Consulta em lotes de 500
   const BATCH = 500;
   interface FonteRow {
@@ -102,7 +107,7 @@ async function main() {
     try {
       const rows = await queryInDatabase<FonteRow>(DB, `
         SELECT ${colsSelect}
-        FROM [${TABELA}]
+        FROM ${tableRef}
         WHERE REPLACE(REPLACE(REPLACE(CAST([${COL_DOC}] AS varchar(20)), '.',''), '-',''), '/','')
           IN (${placeholders})
           AND [${COL_NOME}] IS NOT NULL

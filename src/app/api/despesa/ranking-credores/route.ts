@@ -27,16 +27,17 @@ export async function GET(req: NextRequest) {
         fe.ano_remessa,
         fe.id_entidade,
         fe.cpf_cnpj_credor,
-        COALESCE(dc.nome, fe.cpf_cnpj_credor) AS nome_credor,
+        COALESCE(cp.nome_exibicao, dc.nome, fe.cpf_cnpj_credor) AS nome_credor,
         SUM(fe.valor_empenhado_liquido)::numeric(19,2) AS valor_empenhado_liquido,
         SUM(fe.valor_pago)::numeric(19,2)             AS valor_pago,
         COUNT(*)::integer                              AS qtd_empenhos
       FROM public.fato_empenho fe
-      LEFT JOIN public.dim_credor dc ON dc.cnpj_cpf = fe.cpf_cnpj_credor
+      LEFT JOIN public.dim_credor      dc ON dc.cnpj_cpf         = fe.cpf_cnpj_credor
+      LEFT JOIN mart.credor_pesquisa   cp ON cp.cpf_cnpj_credor  = fe.cpf_cnpj_credor
       WHERE fe.ano_remessa BETWEEN $1 AND $2
         AND fe.id_entidade = $3
         AND fe.cpf_cnpj_credor IS NOT NULL
-      GROUP BY fe.ano_remessa, fe.id_entidade, fe.cpf_cnpj_credor, dc.nome
+      GROUP BY fe.ano_remessa, fe.id_entidade, fe.cpf_cnpj_credor, cp.nome_exibicao, dc.nome
       ORDER BY valor_pago DESC
       LIMIT 10
     `;
@@ -47,17 +48,18 @@ export async function GET(req: NextRequest) {
         fe.ano_remessa,
         de.id_ente,
         fe.cpf_cnpj_credor,
-        COALESCE(dc.nome, fe.cpf_cnpj_credor) AS nome_credor,
+        COALESCE(cp.nome_exibicao, dc.nome, fe.cpf_cnpj_credor) AS nome_credor,
         SUM(fe.valor_empenhado_liquido)::numeric(19,2) AS valor_empenhado_liquido,
         SUM(fe.valor_pago)::numeric(19,2)             AS valor_pago,
         COUNT(*)::integer                              AS qtd_empenhos
       FROM public.fato_empenho fe
-      LEFT JOIN public.dim_credor dc    ON dc.cnpj_cpf  = fe.cpf_cnpj_credor
-      LEFT JOIN public.dim_entidade de  ON de.id_entidade = fe.id_entidade::bigint
+      LEFT JOIN public.dim_credor      dc  ON dc.cnpj_cpf         = fe.cpf_cnpj_credor
+      LEFT JOIN public.dim_entidade    de  ON de.id_entidade       = fe.id_entidade::bigint
+      LEFT JOIN mart.credor_pesquisa   cp  ON cp.cpf_cnpj_credor   = fe.cpf_cnpj_credor
       WHERE fe.ano_remessa BETWEEN $1 AND $2
         AND de.id_ente = $3
         AND fe.cpf_cnpj_credor IS NOT NULL
-      GROUP BY fe.ano_remessa, de.id_ente, fe.cpf_cnpj_credor, dc.nome
+      GROUP BY fe.ano_remessa, de.id_ente, fe.cpf_cnpj_credor, cp.nome_exibicao, dc.nome
       ORDER BY valor_pago DESC
       LIMIT 10
     `;
@@ -67,11 +69,12 @@ export async function GET(req: NextRequest) {
       SELECT
         r.ano_remessa,
         r.cpf_cnpj_credor,
-        r.nome_credor,
+        COALESCE(cp.nome_exibicao, r.nome_credor) AS nome_credor,
         r.valor_empenhado_liquido,
         r.valor_pago,
         r.qtd_empenhos
       FROM mart.despesa_ranking_credores r
+      LEFT JOIN mart.credor_pesquisa cp ON cp.cpf_cnpj_credor = r.cpf_cnpj_credor
       WHERE r.ano_remessa BETWEEN $1 AND $2
       ORDER BY r.valor_pago DESC
       LIMIT 10

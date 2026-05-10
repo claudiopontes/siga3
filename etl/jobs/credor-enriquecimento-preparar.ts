@@ -84,7 +84,7 @@ async function main() {
   let inseridos = 0;
   let atualizados = 0;
   let invalidos = 0;
-  let logEntries: Array<{ cpf_cnpj: string; tipo: string; status: string; mensagem: string }> = [];
+  const logEntries: Array<{ cpf_cnpj: string; tipo: string; status: string; mensagem: string }> = [];
 
   await withPgTransaction(async (client) => {
     for (const row of docRows) {

@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import type { ApexOptions } from "apexcharts";
+import Link from "next/link";
 import { Eye, SlidersHorizontal, Printer, AlertTriangle } from "lucide-react";
 import { useDespesaData } from "@/hooks/useDespesaData";
 
@@ -422,7 +423,18 @@ export default function PainelDespesaClient() {
                 {rankingCredores.map((credor, i) => (
                   <tr key={`credor-${i}`} className={`border-t border-slate-100 dark:border-slate-700/50 ${i % 2 !== 0 ? "bg-slate-50 dark:bg-slate-800/40" : ""}`}>
                     <td className="px-3 py-2 text-xs text-slate-400">{i + 1}</td>
-                    <td className="max-w-[180px] truncate px-3 py-2 font-medium text-slate-700 dark:text-slate-200" title={credor.cpf_cnpj_credor}>{credor.nome_credor}</td>
+                    <td className="max-w-[180px] truncate px-3 py-2 font-medium text-slate-700 dark:text-slate-200" title={credor.cpf_cnpj_credor}>
+                      {credor.cpf_cnpj_credor ? (
+                        <Link
+                          href={`/painel-despesa/credor/${credor.cpf_cnpj_credor}`}
+                          className="hover:underline hover:text-teal-700 dark:hover:text-teal-400"
+                        >
+                          {credor.nome_credor || credor.cpf_cnpj_credor}
+                        </Link>
+                      ) : (
+                        credor.nome_credor || "—"
+                      )}
+                    </td>
                     <td className="px-3 py-2 text-right text-slate-600 dark:text-slate-300">{fmtCompacto(credor.valor_empenhado_liquido)}</td>
                     <td className="px-3 py-2 text-right text-green-600 dark:text-green-400">{fmtCompacto(credor.valor_pago)}</td>
                     <td className="px-3 py-2 text-right text-slate-500 dark:text-slate-400">{fmtNum(credor.qtd_empenhos)}</td>

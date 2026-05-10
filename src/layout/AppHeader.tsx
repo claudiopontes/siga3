@@ -30,6 +30,7 @@ const AppHeader: React.FC = () => {
     "/painel-combustivel-empenhos": { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "Combustível Empenhos" }] },
     "/painel-receita-publica": { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "Receita Pública" }] },
     "/painel-despesa": { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "Despesa Pública" }] },
+    "/pesquisa-credores": { crumbs: [{ label: "Home", href: "/" }, { label: "Pesquisa de Credores" }] },
     "/painel-cobertura-florestal": { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "Cobertura Florestal" }] },
     "/painel-cauc": { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "CAUC Municípios" }] },
     "/gabinete-digital/mapa": { crumbs: [{ label: "Home", href: "/" }, { label: "Mapa IDEB" }] },
@@ -38,7 +39,19 @@ const AppHeader: React.FC = () => {
     "/seguranca/usuarios": { crumbs: [{ label: "Home", href: "/" }, { label: "Segurança" }, { label: "Usuários e perfis" }] },
   };
 
-  const currentCrumbs = breadcrumbs[pathname]?.crumbs ?? [{ label: "Home", href: "/" }, { label: pathname.replace(/\//g, " ").trim() }];
+  const currentCrumbs = (() => {
+    if (breadcrumbs[pathname]) return breadcrumbs[pathname].crumbs;
+    if (pathname.startsWith("/painel-despesa/credor/")) {
+      const doc = pathname.split("/").pop() ?? "";
+      return [
+        { label: "Home", href: "/" },
+        { label: "Painéis" },
+        { label: "Despesa Pública", href: "/painel-despesa" },
+        { label: doc ? `Credor ${doc}` : "Detalhe do Credor" },
+      ];
+    }
+    return [{ label: "Home", href: "/" }, { label: pathname.replace(/\//g, " ").trim() }];
+  })();
 
   const handleToggle = () => {
     if (window.innerWidth >= 1024) toggleSidebar();
