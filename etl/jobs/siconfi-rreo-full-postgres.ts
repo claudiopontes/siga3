@@ -109,7 +109,12 @@ async function fetchRreo(
   nr_periodo: number,
   id_municipio: number,
   offset = 0,
+  retries = 0,
 ): Promise<RreoResponse | null> {
+  if (retries >= 3) {
+    console.log(`    [429] Limite de retries atingido — pulando ${an_exercicio}/${nr_periodo}/${id_municipio}`);
+    return null;
+  }
   const url = `${BASE_URL}/rreo?an_exercicio=${an_exercicio}&nr_periodo=${nr_periodo}&id_municipio=${id_municipio}&limit=200&offset=${offset}`;
   try {
     const resp = await fetch(url, {
@@ -117,9 +122,10 @@ async function fetchRreo(
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
     if (resp.status === 429) {
-      console.log(`    [429] Rate limit — aguardando 60s...`);
-      await sleep(60000);
-      return fetchRreo(an_exercicio, nr_periodo, id_municipio, offset);
+      const wait = 30000 * (retries + 1);
+      console.log(`    [429] Rate limit — aguardando ${wait / 1000}s... (tentativa ${retries + 1}/3)`);
+      await sleep(wait);
+      return fetchRreo(an_exercicio, nr_periodo, id_municipio, offset, retries + 1);
     }
     if (!resp.ok) return null;
     const json = await resp.json() as RreoResponse;
