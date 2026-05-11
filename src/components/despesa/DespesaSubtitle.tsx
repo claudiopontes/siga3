@@ -28,9 +28,5 @@ export default function DespesaSubtitle() {
   const periodo = anoFim && anoFim !== anoInicio ? `${anoInicio}–${anoFim}` : (anoInicio ?? "");
   const enteNome = ente ? (entesMap.get(ente) ?? "...") : "Todos os entes";
 
-  return (
-    <span className="truncate text-xs text-gray-400 dark:text-gray-500">
-      {periodo} · {enteNome}
-    </span>
-  );
+  return <>{periodo} · {enteNome}</>;
 }

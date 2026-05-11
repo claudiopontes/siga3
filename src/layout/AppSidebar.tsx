@@ -41,7 +41,7 @@ const baseNavItems: NavItem[] = [
     icon: <FileStack className="h-5 w-5" />,
     name: "Remessas",
     subItems: [
-      { name: "Calendário de Envios", path: "/remessas/calendario" },
+      { name: "Envio Contabilidade", path: "/remessas/calendario" },
     ],
   },
   {

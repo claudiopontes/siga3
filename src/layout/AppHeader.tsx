@@ -30,6 +30,7 @@ const AppHeader: React.FC = () => {
   const isCalendarPage       = pathname === "/calendar";
   const isProfilePage        = pathname === "/profile";
   const isUsuariosPage       = pathname === "/seguranca/usuarios";
+  const isRemessasPage       = pathname.startsWith("/remessas");
 
   const breadcrumbs: Record<string, { crumbs: { label: string; href?: string }[] }> = {
     "/": { crumbs: [{ label: "Home" }] },
@@ -45,6 +46,7 @@ const AppHeader: React.FC = () => {
     "/painel-saude/vigilancia": { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "Saúde Pública", href: "/painel-saude" }, { label: "Vigilância Epidemiológica" }] },
     "/painel-saude/orcamento": { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "Saúde Pública", href: "/painel-saude" }, { label: "Orçamento e Aplicação" }] },
     "/gabinete-digital/mapa": { crumbs: [{ label: "Home", href: "/" }, { label: "Mapa IDEB" }] },
+    "/remessas/calendario": { crumbs: [{ label: "Home", href: "/" }, { label: "Remessas" }, { label: "Envio Contabilidade" }] },
     "/calendar": { crumbs: [{ label: "Home", href: "/" }, { label: "Agenda" }] },
     "/profile": { crumbs: [{ label: "Home", href: "/" }, { label: "Perfil" }] },
     "/seguranca/usuarios": { crumbs: [{ label: "Home", href: "/" }, { label: "Segurança" }, { label: "Usuários e perfis" }] },
@@ -92,10 +94,132 @@ const AppHeader: React.FC = () => {
           </button>
 
           <div className="hidden min-w-0 flex-col lg:flex">
+            {isCombustivelPage && (
+              <div className="flex flex-col">
+                <span className="truncate text-sm text-gray-600 dark:text-gray-300">
+                  Notas fiscais de abastecimento de combustível dos municípios acreanos.
+                </span>
+                <span className="text-xs text-gray-400 dark:text-gray-500">
+                  <span className="font-medium text-orange-600 dark:text-orange-400">NF-e</span>
+                  {" · "}SEFAZ/AC
+                </span>
+              </div>
+            )}
+            {isEmpenhoPage && (
+              <div className="flex flex-col">
+                <span className="truncate text-sm text-gray-600 dark:text-gray-300">
+                  Empenhos orçamentários de combustível por órgão e fornecedor.
+                </span>
+                <span className="text-xs text-gray-400 dark:text-gray-500">
+                  <span className="font-medium text-orange-600 dark:text-orange-400">SIPAC</span>
+                  {" · "}TCE-AC
+                </span>
+              </div>
+            )}
+            {isReceitaPage && (
+              <div className="flex flex-col">
+                <span className="truncate text-sm text-gray-600 dark:text-gray-300">
+                  Arrecadação e evolução da receita pública municipal do Acre.
+                </span>
+                <span className="text-xs text-gray-400 dark:text-gray-500">
+                  <span className="font-medium text-emerald-600 dark:text-emerald-400">SIPAC</span>
+                  {" · "}TCE/AC
+                </span>
+              </div>
+            )}
             {isDespesaPage && (
-              <Suspense fallback={null}>
-                <DespesaSubtitle />
-              </Suspense>
+              <div className="flex flex-col">
+                <span className="truncate text-sm text-gray-600 dark:text-gray-300">
+                  Execução orçamentária e empenhos de despesa pública dos municípios.
+                </span>
+                <span className="text-xs text-gray-400 dark:text-gray-500">
+                  <span className="font-medium text-blue-600 dark:text-blue-400">SIPAC</span>
+                  {" · "}
+                  <Suspense fallback={null}>
+                    <DespesaSubtitle />
+                  </Suspense>
+                </span>
+              </div>
+            )}
+            {isCredoresPage && (
+              <div className="flex flex-col">
+                <span className="truncate text-sm text-gray-600 dark:text-gray-300">
+                  Consulta a fornecedores e credores por CNPJ/CPF nos empenhos públicos.
+                </span>
+                <span className="text-xs text-gray-400 dark:text-gray-500">
+                  <span className="font-medium text-indigo-600 dark:text-indigo-400">SIPAC</span>
+                  {" · "}TCE-AC
+                </span>
+              </div>
+            )}
+            {isFlorestalPage && (
+              <div className="flex flex-col">
+                <span className="truncate text-sm text-gray-600 dark:text-gray-300">
+                  Monitoramento de desmatamento e cobertura florestal nos municípios.
+                </span>
+                <span className="text-xs text-gray-400 dark:text-gray-500">
+                  <span className="font-medium text-green-600 dark:text-green-400">PRODES</span>
+                  {" · "}INPE
+                </span>
+              </div>
+            )}
+            {isCaucPage && (
+              <div className="flex flex-col">
+                <span className="truncate text-sm text-gray-600 dark:text-gray-300">
+                  Regularidade fiscal e cadastral dos municípios acreanos no CAUC.
+                </span>
+                <span className="text-xs text-gray-400 dark:text-gray-500">
+                  <span className="font-medium text-violet-600 dark:text-violet-400">CAUC</span>
+                  {" · "}SICONFI/STN
+                </span>
+              </div>
+            )}
+            {isMapaPage && (
+              <div className="flex flex-col">
+                <span className="truncate text-sm text-gray-600 dark:text-gray-300">
+                  Índice de desenvolvimento da educação básica por município do Acre.
+                </span>
+                <span className="text-xs text-gray-400 dark:text-gray-500">
+                  <span className="font-medium text-sky-600 dark:text-sky-400">IDEB</span>
+                  {" · "}INEP/MEC
+                </span>
+              </div>
+            )}
+            {isCalendarPage && (
+              <div className="flex flex-col">
+                <span className="truncate text-sm text-gray-600 dark:text-gray-300">
+                  Agenda e compromissos do gabinete do conselheiro.
+                </span>
+              </div>
+            )}
+            {isProfilePage && (
+              <div className="flex flex-col">
+                <span className="truncate text-sm text-gray-600 dark:text-gray-300">
+                  Dados do perfil e preferências do usuário.
+                </span>
+              </div>
+            )}
+            {isUsuariosPage && (
+              <div className="flex flex-col">
+                <span className="truncate text-sm text-gray-600 dark:text-gray-300">
+                  Gerenciamento de usuários e perfis de acesso ao sistema.
+                </span>
+                <span className="text-xs text-gray-400 dark:text-gray-500">
+                  <span className="font-medium text-gray-600 dark:text-gray-400">Segurança</span>
+                  {" · "}Varadouro Digital
+                </span>
+              </div>
+            )}
+            {isRemessasPage && (
+              <div className="flex flex-col">
+                <span className="truncate text-sm text-gray-600 dark:text-gray-300">
+                  Calendário de envio de dados e prazos de remessas dos municípios.
+                </span>
+                <span className="text-xs text-gray-400 dark:text-gray-500">
+                  <span className="font-medium text-blue-600 dark:text-blue-400">SIPAC</span>
+                  {" · "}TCE-AC
+                </span>
+              </div>
             )}
             {isSaudePage && (
               <div className="flex flex-col">

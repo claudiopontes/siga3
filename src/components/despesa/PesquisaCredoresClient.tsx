@@ -168,16 +168,6 @@ export default function PesquisaCredoresClient() {
   return (
     <div className="min-h-screen space-y-5 bg-slate-50 p-4 pb-10 dark:bg-slate-900 sm:p-6">
 
-      {/* Título */}
-      <div>
-        <h1 className="text-xl font-bold text-slate-800 dark:text-slate-100 sm:text-2xl">
-          Pesquisa de Credores
-        </h1>
-        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-          Localize pessoas físicas ou jurídicas e consulte as despesas realizadas com o credor.
-        </p>
-      </div>
-
       {/* Barra de busca + filtros */}
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
