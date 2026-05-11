@@ -57,18 +57,6 @@ type RemessaResumoRow = {
   total_medias: number;
 };
 
-type SiopsResumoRow = {
-  area: string;
-  fonte: string;
-  ano: number;
-  periodo: string | null;
-  total_alertas: number;
-  total_criticos: number;
-  total_altos: number;
-  total_municipios_afetados: number;
-  atualizado_em: string | null;
-};
-
 type SaudeResumoRow = {
   area: string;
   total_alertas: number;
@@ -84,19 +72,6 @@ type SaudeResumoRow = {
   atualizado_em: string | null;
 };
 
-type SiopsAlertaRow = {
-  id_alerta: number | null;
-  ano: number;
-  periodo: string | null;
-  codigo_municipio_ibge: string | null;
-  nome_municipio: string | null;
-  tipo_alerta: string;
-  nivel: string;
-  descricao: string;
-  valor_observado: number | null;
-  valor_referencia: number | null;
-  prioridade: number;
-};
 
 type RemessaAlertaRow = {
   id_alerta: number;
@@ -493,34 +468,9 @@ export default function AlertasGabineteClient() {
   const [alertasRemessas, setAlertasRemessas] = useState<RemessaAlertaRow[]>([]);
   const [modalRemessas, setModalRemessas] = useState(false);
   const [carregandoRemessas, setCarregandoRemessas] = useState(true);
-  const [resumoSiops, setResumoSiops] = useState<SiopsResumoRow | null>(null);
-  const [alertasSiops, setAlertasSiops] = useState<SiopsAlertaRow[]>([]);
-  const [modalSiops, setModalSiops] = useState(false);
-  const [carregandoSiops, setCarregandoSiops] = useState(true);
   const [resumoSaude, setResumoSaude] = useState<SaudeResumoRow | null>(null);
   const [carregandoSaude, setCarregandoSaude] = useState(true);
 
-  // Busca alertas SIOPS via API local (PostgreSQL)
-  useEffect(() => {
-    let cancelado = false;
-    async function carregarSiops() {
-      try {
-        const [resResumo, resAlertas] = await Promise.all([
-          fetch("/api/alertas/siops/resumo").then((r) => r.json()),
-          fetch("/api/alertas/siops/detalhes").then((r) => r.json()),
-        ]);
-        if (cancelado) return;
-        if (resResumo && typeof resResumo === "object" && !resResumo.error) setResumoSiops(resResumo as SiopsResumoRow);
-        if (Array.isArray(resAlertas)) setAlertasSiops(resAlertas as SiopsAlertaRow[]);
-      } catch {
-        // silencioso — card mostrará sem dados
-      } finally {
-        if (!cancelado) setCarregandoSiops(false);
-      }
-    }
-    void carregarSiops();
-    return () => { cancelado = true; };
-  }, []);
 
   // Busca resumo consolidado de Saúde Pública (SIOPS + CNES/UBS + SISAGUA)
   useEffect(() => {
@@ -808,67 +758,6 @@ export default function AlertasGabineteClient() {
           );
         })()}
 
-        {/* Card SIOPS — alertas de saúde/orçamento */}
-        {carregandoSiops ? (
-          <CardSkeleton />
-        ) : (() => {
-          const semDados = !resumoSiops;
-          const criticos = resumoSiops?.total_criticos ?? 0;
-          const altos = resumoSiops?.total_altos ?? 0;
-          const totalAlertas = resumoSiops?.total_alertas ?? 0;
-          const municipios = resumoSiops?.total_municipios_afetados ?? 0;
-          return (
-            <div className={`rounded-xl border bg-white p-4 dark:bg-gray-800 ${
-              criticos > 0
-                ? "border-red-200 dark:border-red-800/50"
-                : altos > 0
-                  ? "border-amber-200 dark:border-amber-800/50"
-                  : "border-gray-200 dark:border-gray-700"
-            }`}>
-              <div className="flex items-start justify-between gap-3">
-                <span className={`rounded-full p-1.5 ${
-                  criticos > 0
-                    ? "bg-red-50 text-red-500 dark:bg-red-900/20 dark:text-red-400"
-                    : "bg-teal-50 text-teal-500 dark:bg-teal-900/20 dark:text-teal-400"
-                }`}>
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
-                  </svg>
-                </span>
-                {semDados ? (
-                  <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500 dark:bg-gray-700 dark:text-gray-400">Sem dados</span>
-                ) : criticos > 0 ? (
-                  <NivelBadge nivel="alto" />
-                ) : altos > 0 ? (
-                  <NivelBadge nivel="medio" />
-                ) : null}
-              </div>
-              <p className="mt-3 text-sm font-bold text-gray-900 dark:text-white">Saúde — SIOPS</p>
-              {semDados ? (
-                <p className="mt-1 text-xs font-medium text-gray-400 dark:text-gray-500">Aguardando carga de dados</p>
-              ) : (
-                <p className="mt-1 text-2xl font-bold text-gray-900 dark:text-white">{formatarNumero(totalAlertas)}</p>
-              )}
-              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                {semDados
-                  ? "Execute npm run carga-siops:postgres"
-                  : `${criticos} críticos · ${altos} altos · ${municipios} municípios · ${resumoSiops?.periodo ?? ""}`}
-              </p>
-              <p className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">Orçamento em saúde</p>
-              <button
-                type="button"
-                disabled={semDados || totalAlertas === 0}
-                onClick={() => setModalSiops(true)}
-                className="mt-3 inline-flex items-center gap-1 rounded-lg bg-blue-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-blue-500 dark:hover:bg-blue-600"
-              >
-                Ver detalhes
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M5 12h14" /><path d="m12 5 7 7-7 7" />
-                </svg>
-              </button>
-            </div>
-          );
-        })()}
 
         {/* Card Saúde Pública — consolidado SIOPS + CNES/UBS + SISAGUA */}
         {carregandoSaude ? (
@@ -975,77 +864,6 @@ export default function AlertasGabineteClient() {
         />
       ) : null}
 
-      {modalSiops ? (
-        <div className="fixed inset-0 z-120000 flex items-center justify-center p-3 sm:p-5">
-          <button
-            type="button"
-            aria-label="Fechar alertas SIOPS"
-            className="absolute inset-0 bg-gray-900/70 backdrop-blur-[1px]"
-            onClick={() => setModalSiops(false)}
-          />
-          <div className="relative z-10 flex max-h-[90vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900">
-            <div className="flex items-start justify-between gap-3 border-b border-gray-100 px-4 py-3 dark:border-gray-700">
-              <div>
-                <h2 className="text-base font-bold text-gray-900 dark:text-white">Alertas SIOPS — Saúde</h2>
-                <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-                  Alertas de orçamento em saúde do período mais recente disponível
-                  {resumoSiops?.periodo ? ` (${resumoSiops.ano} · ${resumoSiops.periodo})` : ""}.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setModalSiops(false)}
-                className="rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
-              >
-                Fechar
-              </button>
-            </div>
-            {alertasSiops.length === 0 ? (
-              <div className="px-4 py-10 text-center text-sm text-gray-500 dark:text-gray-400">Nenhum alerta encontrado.</div>
-            ) : (
-              <div className="overflow-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-gray-100 bg-gray-50 dark:border-gray-700 dark:bg-gray-900/40">
-                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Nível</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Município</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Alerta</th>
-                      <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-gray-500">Observado</th>
-                      <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-gray-500">Referência</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-50 dark:divide-gray-700/50">
-                    {alertasSiops.map((a, i) => (
-                      <tr key={`${a.codigo_municipio_ibge}-${a.tipo_alerta}-${i}`} className="hover:bg-gray-50 dark:hover:bg-gray-800/60">
-                        <td className="px-4 py-3">
-                          <NivelBadge nivel={a.nivel === "CRITICO" ? "alto" : a.nivel === "ALTO" ? "medio" : "baixo"} />
-                        </td>
-                        <td className="px-4 py-3 text-xs font-medium text-gray-900 dark:text-white">
-                          {a.nome_municipio ?? a.codigo_municipio_ibge ?? "—"}
-                        </td>
-                        <td className="max-w-xs px-4 py-3 text-xs text-gray-500 dark:text-gray-400">{a.descricao}</td>
-                        <td className="px-4 py-3 text-center text-xs font-bold text-gray-700 dark:text-gray-300">
-                          {a.valor_observado != null
-                            ? `${a.valor_observado.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}${a.tipo_alerta === "siops_aplicacao_saude_baixa" ? "%" : ""}`
-                            : "—"}
-                        </td>
-                        <td className="px-4 py-3 text-center text-xs text-gray-400 dark:text-gray-500">
-                          {a.valor_referencia != null
-                            ? `${a.valor_referencia.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}${a.tipo_alerta === "siops_aplicacao_saude_baixa" ? "%" : ""}`
-                            : "—"}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-            <div className="border-t border-gray-100 px-4 py-3 text-xs text-gray-400 dark:border-gray-700 dark:text-gray-500">
-              Fonte: SIOPS / Ministério da Saúde · Indicador ASPS (3.2): mínimo municipal 15% (LC 141/2012)
-            </div>
-          </div>
-        </div>
-      ) : null}
 
       {modalRemessas ? (
         <div className="fixed inset-0 z-120000 flex items-center justify-center p-3 sm:p-5">

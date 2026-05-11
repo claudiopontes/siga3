@@ -653,16 +653,102 @@ SISAGUA_POPULACAO_ABASTECIDA_RESOURCE_ID=
 
 ## Painel da Saúde — Consolidação
 
-O Painel da Saúde consolida dados de **três fontes** em `mart.saude_resumo_municipio`:
+O Painel da Saúde consolida dados de **quatro fontes** em `mart.saude_resumo_municipio`:
 
 | Fonte | Script de carga | Mart própria |
 |---|---|---|
 | **SIOPS** — orçamento saúde | `carga-siops:postgres` | `mart.siops_resumo_municipio`, `mart.siops_alertas` |
 | **CNES/UBS** — estrutura física | `carga-cnes-ubs:postgres` | `mart.saude_estrutura_municipio`, `mart.saude_estrutura_alertas` |
 | **SISAGUA** — qualidade da água | `carga-sisagua:postgres` | `mart.sisagua_resumo_municipio`, `mart.sisagua_alertas` |
+| **InfoDengue** — vigilância epidemiológica | `carga-infodengue:postgres` | `mart.vigilancia_arboviroses_resumo_municipio`, `mart.vigilancia_arboviroses_alertas` |
 
-O job `mart:saude-consolidado` lê das três fontes e gera:
-- `mart.saude_alertas` — todos os alertas unificados
+O job `mart:saude-consolidado` lê das quatro fontes e gera:
+- `mart.saude_alertas` — todos os alertas unificados (SIOPS + CNES/UBS + SISAGUA + InfoDengue)
 - `mart.saude_alertas_home` — máx 30 alertas CRITICO/ALTO para a home
-- `mart.saude_resumo_municipio` — score de risco combinado por município
+- `mart.saude_resumo_municipio` — score de risco combinado por município (inclui campos `vigilancia_*`)
 - `mart.saude_resumo_home` — totais para o card da home
+
+---
+
+## InfoDengue — Vigilância Epidemiológica
+
+**Fonte:** InfoDengue / AlertaDengue (Fiocruz / PROCC)
+**Endpoint:** `https://info.dengue.mat.br/api/alertcity`
+**Doenças monitoradas:** dengue, chikungunya, zika
+**Periodicidade:** semanal (semana epidemiológica)
+**Defasagem:** ~1–2 semanas
+
+### Parâmetros da API
+
+| Parâmetro | Descrição |
+|-----------|-----------|
+| `geocode` | Código IBGE do município (7 dígitos) |
+| `disease` | `dengue` \| `chikungunya` \| `zika` |
+| `format`  | `json` |
+| `ew_start` / `ew_end` | Semana epidemiológica inicial/final |
+| `ey_start` / `ey_end` | Ano epidemiológico inicial/final |
+
+### Tabelas
+
+| Camada | Tabela | Descrição |
+|--------|--------|-----------|
+| raw   | `raw.infodengue_raw` | Payload bruto JSON por geocode/doença/período |
+| stage | `stage.infodengue_stg` | Dados normalizados, uma linha por município/doença/semana |
+| dw    | `dw.fato_infodengue_semana` | Fatos analíticos, idempotente por `(municipio, doenca, ano, semana)` |
+| mart  | `mart.vigilancia_arboviroses_resumo_municipio` | Semana mais recente por município/doença |
+| mart  | `mart.vigilancia_arboviroses_alertas` | Todos os alertas gerados |
+| mart  | `mart.vigilancia_arboviroses_alertas_home` | Máx 30, CRITICO/ALTO |
+| mart  | `mart.vigilancia_arboviroses_resumo_home` | Totais para o card da home |
+
+### Alertas gerados
+
+| Tipo | Condição | Nível |
+|------|----------|-------|
+| `alerta_vermelho` | `nivel = 4` | CRITICO |
+| `alerta_laranja` | `nivel = 3` | ALTO |
+| `transmissao_alta` | `transmissao >= 2` | ALTO |
+| `rt_maior_que_1` | `rt > 1 AND p_rt1 >= 0.95` | ALTO |
+| `incidencia_alta` | `p_inc100k >= 100` | ALTO |
+| `receptividade_climatica` | `receptivo >= 2` | MEDIO |
+
+### APIs disponíveis
+
+| Endpoint | Descrição |
+|----------|-----------|
+| `GET /api/alertas/vigilancia/resumo` | Totais do resumo home |
+| `GET /api/alertas/vigilancia/detalhes` | Alertas home com filtros (`nivel`, `municipio`, `doenca`, `tipo_alerta`) |
+
+### Comandos
+
+```bash
+cd etl
+
+# Aplicar schema (primeira vez)
+npm run postgres:migrate
+
+# Inspecionar API (sem carga)
+npm run infodengue:inspecionar
+
+# Carga completa InfoDengue + mart vigilância + mart saúde consolidado
+npm run carga-infodengue:postgres
+
+# Carga completa de todas as fontes de saúde
+npm run carga-saude:postgres
+
+# Refresh apenas do mart consolidado (após qualquer carga parcial)
+npm run mart:saude-consolidado
+```
+
+### Variáveis de ambiente relevantes
+
+```env
+INFODENGUE_API_BASE_URL=https://info.dengue.mat.br/api/alertcity
+INFODENGUE_UF=AC
+INFODENGUE_ANO_INICIO=2024
+INFODENGUE_ANO_FIM=2026
+INFODENGUE_SEMANA_INICIO=1
+INFODENGUE_SEMANA_FIM=53
+INFODENGUE_DOENCAS=dengue,chikungunya,zika
+INFODENGUE_TIMEOUT_MS=30000
+INFODENGUE_RATE_LIMIT_MS=500
+```

@@ -2,6 +2,16 @@
 
 import React, { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
+import {
+  Droplets,
+  DollarSign,
+  Building2,
+  Activity,
+  ShieldCheck,
+  Heart,
+  AlertTriangle,
+  ChevronRight,
+} from "lucide-react";
 
 // ---------------------------------------------------------------------------
 // Tipos
@@ -20,39 +30,6 @@ interface SaudeResumoHome {
   siops_ano:                 number | null;
   siops_periodo:             string | null;
   atualizado_em:             string;
-}
-
-interface SaudeMunicipioResumo {
-  codigo_municipio_ibge:         string;
-  nome_municipio:                string | null;
-  uf:                            string | null;
-  siops_ano:                     number | null;
-  siops_periodo:                 string | null;
-  percentual_aplicado_saude:     number | null;
-  despesa_total_saude:           number | null;
-  receita_base_calculo:          number | null;
-  siops_total_indicadores:       number;
-  siops_situacao_envio:          string | null;
-  total_estabelecimentos:        number;
-  total_estabelecimentos_sus:    number;
-  total_ubs:                     number;
-  total_ubs_ativas:              number;
-  total_inativos:                number;
-  total_sem_atualizacao_recente: number;
-  data_mais_recente_atualizacao: string | null;
-  sisagua_total_amostras:        number | null;
-  sisagua_total_fora_padrao:     number | null;
-  sisagua_total_ecoli:           number | null;
-  sisagua_total_coliformes:      number | null;
-  sisagua_percentual_fora_padrao: number | null;
-  sisagua_data_ultima_coleta:    string | null;
-  total_alertas:                 number;
-  total_criticos:                number;
-  total_altos:                   number;
-  total_medios:                  number;
-  score_risco:                   number;
-  nivel_risco:                   string | null;
-  atualizado_em:                 string;
 }
 
 interface SaudeAlerta {
@@ -75,16 +52,6 @@ interface SaudeAlerta {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function fmtPct(v: number | null | undefined): string {
-  if (v === null || v === undefined) return "—";
-  return `${Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`;
-}
-
-function fmtNum(v: number | null | undefined): string {
-  if (v === null || v === undefined) return "—";
-  return Number(v).toLocaleString("pt-BR");
-}
-
 function labelPeriodo(siopsAno: number | null, siopsPerido: string | null): string {
   if (!siopsAno) return "—";
   if (!siopsPerido) return String(siopsAno);
@@ -92,15 +59,7 @@ function labelPeriodo(siopsAno: number | null, siopsPerido: string | null): stri
     "1": "1º Bim", "2": "2º Bim", "3": "3º Bim",
     "4": "4º Bim", "5": "5º Bim", "6": "6º Bim",
   };
-  const per = bimMap[String(siopsPerido)] ?? `Per.${siopsPerido}`;
-  return `${per}/${siopsAno}`;
-}
-
-function labelFonte(fonte: string): string {
-  if (fonte === "SIOPS")    return "SIOPS";
-  if (fonte === "CNES_UBS") return "CNES/UBS";
-  if (fonte === "SISAGUA")  return "SISAGUA";
-  return fonte;
+  return `${bimMap[String(siopsPerido)] ?? `Per.${siopsPerido}`}/${siopsAno}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -118,14 +77,14 @@ function NivelBadge({ nivel }: { nivel: string }) {
   return <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700 dark:bg-green-900/40 dark:text-green-300">Baixo</span>;
 }
 
-function FonteBadge({ fonte }: { fonte: string }) {
+function FonteBadgePequena({ fonte }: { fonte: string }) {
   if (fonte === "SIOPS")
-    return <span className="inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">SIOPS</span>;
+    return <span className="rounded bg-blue-50 px-1.5 py-0.5 text-xs font-medium text-blue-600 dark:bg-blue-900/30 dark:text-blue-300">SIOPS</span>;
   if (fonte === "CNES_UBS")
-    return <span className="inline-flex items-center rounded-full bg-teal-100 px-2 py-0.5 text-xs font-medium text-teal-700 dark:bg-teal-900/30 dark:text-teal-300">CNES/UBS</span>;
+    return <span className="rounded bg-teal-50 px-1.5 py-0.5 text-xs font-medium text-teal-600 dark:bg-teal-900/30 dark:text-teal-300">CNES/UBS</span>;
   if (fonte === "SISAGUA")
-    return <span className="inline-flex items-center rounded-full bg-cyan-100 px-2 py-0.5 text-xs font-medium text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300">SISAGUA</span>;
-  return <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600 dark:bg-gray-700 dark:text-gray-300">{fonte}</span>;
+    return <span className="rounded bg-cyan-50 px-1.5 py-0.5 text-xs font-medium text-cyan-600 dark:bg-cyan-900/30 dark:text-cyan-300">SISAGUA</span>;
+  return <span className="rounded bg-gray-100 px-1.5 py-0.5 text-xs font-medium text-gray-500 dark:bg-gray-700 dark:text-gray-400">{fonte}</span>;
 }
 
 // ---------------------------------------------------------------------------
@@ -142,44 +101,86 @@ function SkeletonCard() {
 }
 
 // ---------------------------------------------------------------------------
-// Card de análise complementar
+// Card de módulo de análise
 // ---------------------------------------------------------------------------
 
-interface AnaliseCardProps {
-  titulo: string;
-  subtitulo: string;
-  fonte: string;
-  href?: string;
-  emPreparacao?: boolean;
-  corBorda?: string;
-  corFonte?: string;
+interface ModuloCardProps {
+  titulo:          string;
+  descricao:       string;
+  fonte:           string;
+  icone:           React.ReactNode;
+  href?:           string;
+  status:          "disponivel" | "preparacao";
+  criticos?:       number;
+  altos?:          number;
+  corIcone?:       string;
+  corBorda?:       string;
+  corFonteBadge?:  string;
 }
 
-function AnaliseCard({ titulo, subtitulo, fonte, href, emPreparacao, corBorda = "border-gray-200", corFonte = "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300" }: AnaliseCardProps) {
-  const conteudo = (
-    <div className={`rounded-xl border ${corBorda} bg-white p-5 transition-shadow dark:bg-gray-800 ${emPreparacao ? "opacity-60" : "hover:shadow-md"}`}>
-      <div className="mb-2 flex items-start justify-between gap-2">
-        <h3 className="text-sm font-semibold text-gray-800 dark:text-white">{titulo}</h3>
-        {emPreparacao && (
-          <span className="shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500 dark:bg-gray-700 dark:text-gray-400">
-            Em preparação
-          </span>
-        )}
+function ModuloCard({
+  titulo, descricao, fonte, icone, href, status,
+  criticos = 0, altos = 0,
+  corIcone    = "text-gray-400 dark:text-gray-500",
+  corBorda    = "border-gray-200 dark:border-gray-700",
+  corFonteBadge = "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300",
+}: ModuloCardProps) {
+  const disponivel = status === "disponivel";
+
+  const card = (
+    <div
+      className={`group flex h-full flex-col rounded-xl border ${corBorda} bg-white p-5 transition-all dark:bg-gray-800 ${
+        disponivel ? "cursor-pointer hover:shadow-md hover:shadow-gray-100 dark:hover:shadow-none" : "opacity-60"
+      }`}
+    >
+      {/* Topo: ícone */}
+      <div className="mb-4">
+        <div className="inline-flex rounded-lg bg-gray-50 p-2 dark:bg-gray-700/50">
+          <div className={`h-5 w-5 ${corIcone}`}>{icone}</div>
+        </div>
       </div>
-      <p className="mb-3 text-xs text-gray-500 dark:text-gray-400">{subtitulo}</p>
-      <div className="flex items-center justify-between">
-        <span className={`rounded-md px-2 py-0.5 text-xs font-medium ${corFonte}`}>{fonte}</span>
-        {!emPreparacao && href && (
-          <span className="text-xs font-medium text-blue-600 dark:text-blue-400">Ver análise →</span>
-        )}
+
+      {/* Título e descrição */}
+      <h3 className="mb-1 text-sm font-semibold text-gray-800 dark:text-white">{titulo}</h3>
+      <p className="mb-4 flex-1 text-xs leading-relaxed text-gray-500 dark:text-gray-400">{descricao}</p>
+
+      {/* Rodapé: fonte + contadores + ação */}
+      <div className="space-y-3">
+        {/* Fonte + contadores de alerta */}
+        <div className="flex flex-wrap items-center gap-2">
+          <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${corFonteBadge}`}>{fonte}</span>
+          {disponivel && criticos > 0 && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-600 dark:bg-red-900/30 dark:text-red-400">
+              <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
+              {criticos} crítico{criticos !== 1 ? "s" : ""}
+            </span>
+          )}
+          {disponivel && altos > 0 && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-orange-50 px-2 py-0.5 text-xs font-semibold text-orange-600 dark:bg-orange-900/30 dark:text-orange-400">
+              <span className="h-1.5 w-1.5 rounded-full bg-orange-400" />
+              {altos} alto{altos !== 1 ? "s" : ""}
+            </span>
+          )}
+        </div>
+
+        {/* Botão de ação */}
+        <div className="flex items-center justify-end border-t border-gray-100 pt-2 dark:border-gray-700/60">
+          {disponivel && href ? (
+            <span className="flex items-center gap-1 text-xs font-medium text-blue-600 group-hover:gap-2 dark:text-blue-400 transition-all">
+              Abrir análise <ChevronRight className="h-3.5 w-3.5" />
+            </span>
+          ) : (
+            <span className="text-xs text-gray-400 dark:text-gray-500">Em breve</span>
+          )}
+        </div>
       </div>
     </div>
   );
 
-  if (!emPreparacao && href) {
-    return <Link href={href}>{conteudo}</Link>;
+  if (disponivel && href) {
+    return <Link href={href} className="block h-full">{card}</Link>;
   }
-  return conteudo;
+  return card;
 }
 
 // ---------------------------------------------------------------------------
@@ -187,28 +188,21 @@ function AnaliseCard({ titulo, subtitulo, fonte, href, emPreparacao, corBorda = 
 // ---------------------------------------------------------------------------
 
 export default function PainelSaudeClient() {
-  const [resumo, setResumo] = useState<SaudeResumoHome | null>(null);
-  const [municipios, setMunicipios] = useState<SaudeMunicipioResumo[]>([]);
-  const [alertas, setAlertas] = useState<SaudeAlerta[]>([]);
+  const [resumo,     setResumo]     = useState<SaudeResumoHome | null>(null);
+  const [totalMuns,  setTotalMuns]  = useState<number>(0);
+  const [alertas,    setAlertas]    = useState<SaudeAlerta[]>([]);
   const [carregando, setCarregando] = useState(true);
-  const [erro, setErro] = useState<string | null>(null);
-
-  // Filtros do ranking
-  const [buscaMunicipio, setBuscaMunicipio] = useState("");
-  const [filtroRisco, setFiltroRisco] = useState<string>("todos");
-
-  // Filtro de fonte dos alertas
-  const [filtroFonte, setFiltroFonte] = useState<string>("todas");
+  const [erro,       setErro]       = useState<string | null>(null);
 
   useEffect(() => {
     Promise.all([
       fetch("/api/saude/resumo").then((r) => r.json()),
-      fetch("/api/saude/municipios?orderBy=score_risco&orderDir=desc&pageSize=50").then((r) => r.json()),
+      fetch("/api/saude/municipios?pageSize=50").then((r) => r.json()),
       fetch("/api/saude/alertas?home=1").then((r) => r.json()),
     ])
       .then(([res, muns, als]) => {
         setResumo(res ?? null);
-        setMunicipios(Array.isArray(muns) ? muns : []);
+        setTotalMuns(Array.isArray(muns) ? muns.length : 0);
         setAlertas(Array.isArray(als) ? als : []);
       })
       .catch((e: unknown) => {
@@ -217,20 +211,29 @@ export default function PainelSaudeClient() {
       .finally(() => setCarregando(false));
   }, []);
 
-  const municipiosFiltrados = useMemo(() => {
-    return municipios.filter((m) => {
-      const nome = (m.nome_municipio ?? "").toLowerCase();
-      if (buscaMunicipio && !nome.includes(buscaMunicipio.toLowerCase())) return false;
-      if (filtroRisco !== "todos" && (m.nivel_risco ?? "BAIXO") !== filtroRisco) return false;
-      return true;
-    });
-  }, [municipios, buscaMunicipio, filtroRisco]);
+  // Top 5 alertas críticos/altos para o bloco "Principais riscos"
+  const principaisRiscos = useMemo(
+    () => alertas
+      .filter((a) => a.nivel === "CRITICO" || a.nivel === "ALTO")
+      .slice(0, 5),
+    [alertas]
+  );
 
-  const alertasFiltrados = useMemo(() => {
-    return alertas
-      .filter((a) => filtroFonte === "todas" || a.fonte === filtroFonte)
-      .slice(0, 30);
-  }, [alertas, filtroFonte]);
+  // Contadores por fonte (para badges nos cards de módulo)
+  const contagemPorFonte = useMemo(() => {
+    const acc: Record<string, { criticos: number; altos: number }> = {};
+    for (const a of alertas) {
+      if (!acc[a.fonte]) acc[a.fonte] = { criticos: 0, altos: 0 };
+      if (a.nivel === "CRITICO") acc[a.fonte].criticos++;
+      if (a.nivel === "ALTO")    acc[a.fonte].altos++;
+    }
+    return acc;
+  }, [alertas]);
+
+  const sisaguaCount     = contagemPorFonte["SISAGUA"]    ?? { criticos: 0, altos: 0 };
+  const siopsCount       = contagemPorFonte["SIOPS"]      ?? { criticos: 0, altos: 0 };
+  const cnesUbsCount     = contagemPorFonte["CNES_UBS"]   ?? { criticos: 0, altos: 0 };
+  const infodengueCount  = contagemPorFonte["INFODENGUE"] ?? { criticos: 0, altos: 0 };
 
   // ---------------------------------------------------------------------------
   // Render
@@ -246,7 +249,7 @@ export default function PainelSaudeClient() {
   }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
 
       {/* ── Cabeçalho ── */}
       <div className="rounded-xl border border-gray-200 bg-white px-5 py-4 dark:border-gray-700 dark:bg-gray-800">
@@ -281,7 +284,7 @@ export default function PainelSaudeClient() {
           <>
             <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
               <p className="text-xs font-medium uppercase tracking-wide text-gray-400">Municípios monitorados</p>
-              <p className="mt-1 text-3xl font-bold text-gray-900 dark:text-white">{municipios.length}</p>
+              <p className="mt-1 text-3xl font-bold text-gray-900 dark:text-white">{totalMuns}</p>
             </div>
             <div className="rounded-xl border border-red-200 bg-white p-4 dark:border-red-800/40 dark:bg-gray-800">
               <p className="text-xs font-medium uppercase tracking-wide text-red-500">Alertas críticos</p>
@@ -309,222 +312,122 @@ export default function PainelSaudeClient() {
         )}
       </div>
 
-      {/* ── Onde olhar primeiro? ── */}
-      <div className="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-800">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-5 py-3 dark:border-slate-700">
-          <div>
-            <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Onde olhar primeiro?</h2>
-            <p className="mt-0.5 text-xs text-slate-400">
-              Municípios ordenados por risco consolidado — SIOPS · CNES/UBS · SISAGUA
-            </p>
+      {/* ── Principais riscos atuais ── */}
+      {!carregando && principaisRiscos.length > 0 && (
+        <div className="rounded-xl border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800">
+          <div className="border-b border-slate-200 px-5 py-3 dark:border-slate-700">
+            <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Principais riscos atuais</h2>
+            <p className="mt-0.5 text-xs text-slate-400">Alertas críticos e altos com maior prioridade</p>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <input
-              type="text"
-              placeholder="Buscar município..."
-              value={buscaMunicipio}
-              onChange={(e) => setBuscaMunicipio(e.target.value)}
-              className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
-            />
-            <select
-              value={filtroRisco}
-              onChange={(e) => setFiltroRisco(e.target.value)}
-              className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
-            >
-              <option value="todos">Todos os riscos</option>
-              <option value="CRITICO">Crítico</option>
-              <option value="ALTO">Alto</option>
-              <option value="MEDIO">Médio</option>
-              <option value="BAIXO">Baixo</option>
-            </select>
+          <div className="divide-y divide-slate-100 dark:divide-slate-700">
+            {principaisRiscos.map((a, i) => (
+              <div key={i} className="flex items-start gap-3 px-5 py-3">
+                <div className="mt-0.5 shrink-0">
+                  <NivelBadge nivel={a.nivel} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm text-slate-700 dark:text-slate-200">{a.descricao}</p>
+                  <div className="mt-0.5 flex items-center gap-2">
+                    <FonteBadgePequena fonte={a.fonte} />
+                    {a.nome_municipio && (
+                      <span className="text-xs text-slate-400">{a.nome_municipio}</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
+      )}
 
-        {carregando ? (
-          <div className="p-6 text-center text-sm text-gray-400">Carregando...</div>
-        ) : municipiosFiltrados.length === 0 ? (
-          <div className="p-6 text-center text-sm text-gray-400">Nenhum município encontrado.</div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-400">
-                  <th className="px-4 py-3">Município</th>
-                  <th className="px-4 py-3">Nível de risco</th>
-                  <th className="px-4 py-3">Score</th>
-                  <th className="px-4 py-3">Alertas</th>
-                  <th className="px-4 py-3">% Saúde</th>
-                  <th className="px-4 py-3">UBS ativas</th>
-                  <th className="px-4 py-3">Água</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
-                {municipiosFiltrados.map((m) => {
-                  const pctSaude    = m.percentual_aplicado_saude !== null ? Number(m.percentual_aplicado_saude) : null;
-                  const abaixoMin   = pctSaude !== null && pctSaude < 15;
-                  const sAmostras   = m.sisagua_total_amostras ?? 0;
-                  const sFora       = m.sisagua_total_fora_padrao ?? 0;
-                  const sEcoli      = m.sisagua_total_ecoli ?? 0;
-                  const temSisagua  = sAmostras > 0;
-
-                  return (
-                    <tr key={m.codigo_municipio_ibge} className="hover:bg-slate-50 dark:hover:bg-slate-700/40">
-                      <td className="whitespace-nowrap px-4 py-3 font-medium text-slate-800 dark:text-slate-100">
-                        {m.nome_municipio ?? m.codigo_municipio_ibge}
-                      </td>
-                      <td className="px-4 py-3">
-                        <NivelBadge nivel={m.nivel_risco ?? "BAIXO"} />
-                      </td>
-                      <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
-                        {fmtNum(m.score_risco)}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className="font-semibold text-slate-700 dark:text-slate-200">{m.total_alertas}</span>
-                        {(m.total_criticos > 0 || m.total_altos > 0) && (
-                          <div className="mt-0.5 flex gap-2 text-xs">
-                            {m.total_criticos > 0 && <span className="text-red-600 dark:text-red-400">{m.total_criticos}C</span>}
-                            {m.total_altos > 0 && <span className="text-orange-600 dark:text-orange-400">{m.total_altos}A</span>}
-                          </div>
-                        )}
-                      </td>
-                      <td className="px-4 py-3">
-                        {pctSaude !== null ? (
-                          <span className={abaixoMin ? "font-semibold text-red-600 dark:text-red-400" : "font-medium text-green-700 dark:text-green-400"}>
-                            {fmtPct(pctSaude)}
-                          </span>
-                        ) : <span className="text-slate-400">—</span>}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={m.total_ubs_ativas === 0 ? "font-bold text-red-600 dark:text-red-400" : "font-medium text-slate-700 dark:text-slate-200"}>
-                          {m.total_ubs_ativas === 0 ? "Nenhuma" : m.total_ubs_ativas}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-xs">
-                        {!temSisagua ? (
-                          <span className="text-slate-400">—</span>
-                        ) : (
-                          <div className="flex flex-col gap-0.5 text-slate-500 dark:text-slate-400">
-                            <span>{fmtNum(sAmostras)} amostras{sFora > 0 && <span className="ml-1 font-semibold text-orange-600 dark:text-orange-400">· {sFora} fora</span>}</span>
-                            {sEcoli > 0 && <span className="font-semibold text-red-600 dark:text-red-400">E. coli: {sEcoli}</span>}
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      {/* ── Alertas prioritários ── */}
-      <div className="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-800">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-5 py-3 dark:border-slate-700">
-          <div>
-            <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Alertas prioritários</h2>
-            <p className="mt-0.5 text-xs text-slate-400">
-              Até 30 alertas de nível Crítico ou Alto
-              {filtroFonte !== "todas" && <span className="ml-1 font-medium text-slate-500">· filtrado: {labelFonte(filtroFonte)}</span>}
-            </p>
-          </div>
-          <select
-            value={filtroFonte}
-            onChange={(e) => setFiltroFonte(e.target.value)}
-            className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
-          >
-            <option value="todas">Todas as fontes</option>
-            <option value="SIOPS">SIOPS</option>
-            <option value="CNES_UBS">CNES/UBS</option>
-            <option value="SISAGUA">SISAGUA</option>
-          </select>
-        </div>
-
-        {carregando ? (
-          <div className="p-6 text-center text-sm text-gray-400">Carregando...</div>
-        ) : alertasFiltrados.length === 0 ? (
-          <div className="p-6 text-center text-sm text-gray-400">Nenhum alerta encontrado.</div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-400">
-                  <th className="px-4 py-3">Nível</th>
-                  <th className="px-4 py-3">Fonte</th>
-                  <th className="px-4 py-3">Município</th>
-                  <th className="px-4 py-3">Situação identificada</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
-                {alertasFiltrados.map((a, i) => (
-                  <tr key={i} className="hover:bg-slate-50 dark:hover:bg-slate-700/40">
-                    <td className="px-4 py-3"><NivelBadge nivel={a.nivel} /></td>
-                    <td className="px-4 py-3"><FonteBadge fonte={a.fonte} /></td>
-                    <td className="whitespace-nowrap px-4 py-3 font-medium text-slate-700 dark:text-slate-200">
-                      {a.nome_municipio ?? "—"}
-                    </td>
-                    <td className="px-4 py-3">
-                      <p className="text-slate-700 dark:text-slate-200">{a.descricao}</p>
-                      {(a.valor_observado !== null || a.valor_referencia !== null) && (
-                        <div className="mt-0.5 flex flex-wrap gap-x-3 text-xs text-slate-400">
-                          {a.valor_observado !== null && (
-                            <span>Apurado: <span className="font-medium text-slate-600 dark:text-slate-300">{fmtPct(Number(a.valor_observado))}</span></span>
-                          )}
-                          {a.valor_referencia !== null && (
-                            <span>Referência: <span className="font-medium text-slate-600 dark:text-slate-300">{fmtPct(Number(a.valor_referencia))}</span></span>
-                          )}
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      {/* ── Análises complementares ── */}
-      <div className="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-800">
-        <div className="border-b border-slate-200 px-5 py-3 dark:border-slate-700">
-          <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Análises complementares</h2>
-          <p className="mt-0.5 text-xs text-slate-400">
-            Módulos temáticos com aprofundamento por fonte de dados.
+      {/* ── Módulos de análise ── */}
+      <div>
+        <div className="mb-4">
+          <h2 className="text-base font-semibold text-slate-700 dark:text-slate-200">Módulos de análise</h2>
+          <p className="mt-0.5 text-sm text-slate-400">
+            Acesse análises específicas por dimensão da saúde pública.
           </p>
         </div>
-        <div className="grid grid-cols-1 gap-4 p-5 sm:grid-cols-2 xl:grid-cols-3">
-          <AnaliseCard
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+
+          <ModuloCard
             titulo="Qualidade da Água"
-            subtitulo="Amostras, E. coli, coliformes e parâmetros fora do padrão por município."
+            descricao="Amostras, E. coli, coliformes e parâmetros fora do padrão."
             fonte="SISAGUA"
+            icone={<Droplets className="h-5 w-5" />}
             href="/painel-saude/qualidade-agua"
+            status="disponivel"
+            criticos={sisaguaCount.criticos}
+            altos={sisaguaCount.altos}
+            corIcone="text-cyan-500 dark:text-cyan-400"
             corBorda="border-cyan-200 dark:border-cyan-800/40"
-            corFonte="bg-cyan-50 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300"
+            corFonteBadge="bg-cyan-50 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300"
           />
-          <AnaliseCard
+
+          <ModuloCard
+            titulo="Orçamento e Aplicação"
+            descricao="Aplicação mínima em saúde, despesa total, dados incompletos e variações atípicas."
+            fonte="SIOPS"
+            icone={<DollarSign className="h-5 w-5" />}
+            status="preparacao"
+            criticos={siopsCount.criticos}
+            altos={siopsCount.altos}
+            corIcone="text-blue-500 dark:text-blue-400"
+            corBorda="border-blue-200 dark:border-blue-800/40"
+            corFonteBadge="bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
+          />
+
+          <ModuloCard
+            titulo="Estrutura da Rede"
+            descricao="Estabelecimentos, UBS ativas, unidades inativas e atualização cadastral."
+            fonte="CNES/UBS"
+            icone={<Building2 className="h-5 w-5" />}
+            status="preparacao"
+            criticos={cnesUbsCount.criticos}
+            altos={cnesUbsCount.altos}
+            corIcone="text-teal-500 dark:text-teal-400"
+            corBorda="border-teal-200 dark:border-teal-800/40"
+            corFonteBadge="bg-teal-50 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300"
+          />
+
+          <ModuloCard
             titulo="Produção Assistencial"
-            subtitulo="Atendimentos, internações e valores aprovados."
+            descricao="Atendimentos, internações, produção ambulatorial e valores aprovados."
             fonte="SIA/SIH"
-            emPreparacao
+            icone={<Activity className="h-5 w-5" />}
+            status="preparacao"
           />
-          <AnaliseCard
+
+          <ModuloCard
             titulo="Vacinação"
-            subtitulo="Doses aplicadas, cobertura vacinal e queda de imunização."
+            descricao="Doses aplicadas, cobertura vacinal e queda de imunização."
             fonte="SI-PNI"
-            emPreparacao
+            icone={<ShieldCheck className="h-5 w-5" />}
+            status="preparacao"
           />
-          <AnaliseCard
+
+          <ModuloCard
             titulo="Mortalidade e Nascidos Vivos"
-            subtitulo="Mortalidade infantil, óbitos maternos e nascimentos."
+            descricao="Mortalidade infantil, óbitos maternos, nascimentos e pré-natal."
             fonte="SIM/SINASC"
-            emPreparacao
+            icone={<Heart className="h-5 w-5" />}
+            status="preparacao"
           />
-          <AnaliseCard
+
+          <ModuloCard
             titulo="Vigilância Epidemiológica"
-            subtitulo="Agravos de notificação e crescimento atípico de casos."
-            fonte="SINAN"
-            emPreparacao
+            descricao="Dengue, chikungunya e zika — alertas semanais por município do Acre."
+            fonte="InfoDengue"
+            icone={<AlertTriangle className="h-5 w-5" />}
+            href="/painel-saude/vigilancia"
+            status="disponivel"
+            criticos={infodengueCount.criticos}
+            altos={infodengueCount.altos}
+            corIcone="text-rose-500 dark:text-rose-400"
+            corBorda="border-rose-200 dark:border-rose-800/40"
+            corFonteBadge="bg-rose-50 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300"
           />
+
         </div>
       </div>
 

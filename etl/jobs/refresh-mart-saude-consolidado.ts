@@ -85,9 +85,47 @@ interface SiopsHomeRow {
   periodo: string;
 }
 
+interface InfoDengueAlertaRow {
+  id_alerta:             number | null;
+  fonte:                 string;
+  codigo_municipio_ibge: string | null;
+  nome_municipio:        string | null;
+  doenca:                string;
+  tipo_alerta:           string;
+  nivel:                 string;
+  descricao:             string;
+  valor_observado:       number | null;
+  valor_referencia:      number | null;
+  detalhe_json:          unknown;
+  ano_epidemiologico:    number | null;
+  semana_epidemiologica: number | null;
+}
+
+interface InfoDengueResumoRow {
+  codigo_municipio_ibge:    string;
+  doenca:                   string;
+  nivel:                    number | null;
+  ano_epidemiologico:       number | null;
+  semana_epidemiologica:    number | null;
+  total_alertas_municipio:  number;
+  total_criticos_municipio: number;
+  total_altos_municipio:    number;
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+// Normaliza código IBGE para 6 dígitos (sem dígito verificador).
+// SIOPS e CNES gravam 6 dígitos nativamente.
+// SISAGUA grava 7 dígitos (com dígito verificador) — truncamos para 6.
+// Isso garante que as três fontes se juntem corretamente na mesma chave.
+function normalizar6(cod: string | null | undefined): string | null {
+  if (!cod) return null;
+  const s = cod.trim();
+  if (s.length >= 7) return s.slice(0, 6);
+  return s.padStart(6, "0");
+}
 
 function pontosPorNivel(nivel: string): number {
   if (nivel === "CRITICO") return 5;
@@ -194,6 +232,47 @@ export async function executarMartSaudeConsolidado(): Promise<void> {
     FROM mart.sisagua_alertas
   `).catch(() => [] as AlertaRow[]);
 
+  // InfoDengue — alertas de vigilância epidemiológica
+  const infodengueAlertas = await pgQuery<InfoDengueAlertaRow>(`
+    SELECT
+      id_alerta,
+      'INFODENGUE'    AS fonte,
+      codigo_municipio_ibge,
+      nome_municipio,
+      doenca,
+      tipo_alerta,
+      nivel,
+      descricao,
+      valor_observado,
+      valor_referencia,
+      detalhe_json,
+      ano_epidemiologico,
+      semana_epidemiologica
+    FROM mart.vigilancia_arboviroses_alertas
+  `).catch(() => [] as InfoDengueAlertaRow[]);
+
+  // InfoDengue — resumo por município para campos de vigilância
+  const infodengueResumos = await pgQuery<InfoDengueResumoRow>(`
+    SELECT
+      r.codigo_municipio_ibge,
+      r.doenca,
+      r.nivel,
+      r.ano_epidemiologico,
+      r.semana_epidemiologica,
+      COALESCE(cnt.total_alertas,  0) AS total_alertas_municipio,
+      COALESCE(cnt.total_criticos, 0) AS total_criticos_municipio,
+      COALESCE(cnt.total_altos,    0) AS total_altos_municipio
+    FROM mart.vigilancia_arboviroses_resumo_municipio r
+    LEFT JOIN (
+      SELECT codigo_municipio_ibge,
+             COUNT(*) AS total_alertas,
+             COUNT(*) FILTER (WHERE nivel = 'CRITICO') AS total_criticos,
+             COUNT(*) FILTER (WHERE nivel = 'ALTO')    AS total_altos
+      FROM mart.vigilancia_arboviroses_alertas
+      GROUP BY codigo_municipio_ibge
+    ) cnt USING (codigo_municipio_ibge)
+  `).catch(() => [] as InfoDengueResumoRow[]);
+
   const sisaguaResumos = await pgQuery<SisaguaResumoRow>(`
     SELECT
       codigo_municipio_ibge,
@@ -225,20 +304,24 @@ export async function executarMartSaudeConsolidado(): Promise<void> {
   const siopsAnoAtual = siopsHomeFallback[0]?.ano ?? null;
   const siopsPerAtual = siopsHomeFallback[0]?.periodo ?? null;
 
-  console.log(`[mart:saude-consolidado] SIOPS municípios:    ${siopsResumos.length}`);
-  console.log(`[mart:saude-consolidado] CNES municípios:    ${cnesResumos.length}`);
-  console.log(`[mart:saude-consolidado] SISAGUA municípios: ${sisaguaResumos.length}`);
-  console.log(`[mart:saude-consolidado] Alertas SIOPS:    ${siopsAlertas.length}`);
-  console.log(`[mart:saude-consolidado] Alertas CNES/UBS: ${cnesAlertas.length}`);
-  console.log(`[mart:saude-consolidado] Alertas SISAGUA:  ${sisaguaAlertas.length}`);
+  console.log(`[mart:saude-consolidado] SIOPS municípios:       ${siopsResumos.length}`);
+  console.log(`[mart:saude-consolidado] CNES municípios:       ${cnesResumos.length}`);
+  console.log(`[mart:saude-consolidado] SISAGUA municípios:    ${sisaguaResumos.length}`);
+  console.log(`[mart:saude-consolidado] InfoDengue registros:  ${infodengueResumos.length}`);
+  console.log(`[mart:saude-consolidado] Alertas SIOPS:         ${siopsAlertas.length}`);
+  console.log(`[mart:saude-consolidado] Alertas CNES/UBS:      ${cnesAlertas.length}`);
+  console.log(`[mart:saude-consolidado] Alertas SISAGUA:       ${sisaguaAlertas.length}`);
+  console.log(`[mart:saude-consolidado] Alertas InfoDengue:    ${infodengueAlertas.length}`);
 
   // Mapa SISAGUA por município
   const sisaguaMap = new Map<string, SisaguaResumoRow>();
   for (const sg of sisaguaResumos) {
-    sisaguaMap.set(sg.codigo_municipio_ibge, sg);
+    // SISAGUA usa 7 dígitos; normaliza para 6 para compatibilidade com SIOPS/CNES
+    sisaguaMap.set(normalizar6(sg.codigo_municipio_ibge)!, sg);
   }
 
   // ── 2. Consolida municípios ──
+  // Chave canônica: 6 dígitos (sem dígito verificador)
   const municipioMap = new Map<string, {
     codigo: string;
     nome:   string | null;
@@ -249,38 +332,41 @@ export async function executarMartSaudeConsolidado(): Promise<void> {
   }>();
 
   for (const s of siopsResumos) {
-    municipioMap.set(s.codigo_municipio_ibge, {
-      codigo: s.codigo_municipio_ibge,
+    const chave = normalizar6(s.codigo_municipio_ibge)!;
+    municipioMap.set(chave, {
+      codigo: chave,
       nome: s.nome_municipio,
       uf: null,
       siops: s,
       cnes: null,
-      sisagua: sisaguaMap.get(s.codigo_municipio_ibge) ?? null,
+      sisagua: sisaguaMap.get(chave) ?? null,
     });
   }
   for (const c of cnesResumos) {
-    const existing = municipioMap.get(c.codigo_municipio_ibge);
+    const chave = normalizar6(c.codigo_municipio_ibge)!;
+    const existing = municipioMap.get(chave);
     if (existing) {
       existing.cnes = c;
       // CNES tem nome preferencial
       if (c.nome_municipio) existing.nome = c.nome_municipio;
       if (c.uf) existing.uf = c.uf;
     } else {
-      municipioMap.set(c.codigo_municipio_ibge, {
-        codigo: c.codigo_municipio_ibge,
+      municipioMap.set(chave, {
+        codigo: chave,
         nome: c.nome_municipio,
         uf: c.uf,
         siops: null,
         cnes: c,
-        sisagua: sisaguaMap.get(c.codigo_municipio_ibge) ?? null,
+        sisagua: sisaguaMap.get(chave) ?? null,
       });
     }
   }
   // Inclui municípios que só têm dados SISAGUA
   for (const sg of sisaguaResumos) {
-    if (!municipioMap.has(sg.codigo_municipio_ibge)) {
-      municipioMap.set(sg.codigo_municipio_ibge, {
-        codigo: sg.codigo_municipio_ibge,
+    const chave = normalizar6(sg.codigo_municipio_ibge)!;
+    if (!municipioMap.has(chave)) {
+      municipioMap.set(chave, {
+        codigo: chave,
         nome: sg.nome_municipio,
         uf: null,
         siops: null,
@@ -290,8 +376,64 @@ export async function executarMartSaudeConsolidado(): Promise<void> {
     }
   }
 
-  // ── 3. Todos alertas consolidados (SIOPS + CNES/UBS + SISAGUA) ──
-  const todosAlertas: AlertaRow[] = [...siopsAlertas, ...cnesAlertas, ...sisaguaAlertas];
+  // Mapa InfoDengue por município (6 dígitos) para campos de vigilância no resumo_municipio
+  // Por município: nível dengue, chikungunya, zika + totais de alerta
+  const infodengueMap = new Map<string, {
+    dengue_nivel:        number | null;
+    chikungunya_nivel:   number | null;
+    zika_nivel:          number | null;
+    total_alertas:       number;
+    total_criticos:      number;
+    total_altos:         number;
+    ano_epidemiologico:  number | null;
+    semana_epidemiologica: number | null;
+  }>();
+
+  for (const r of infodengueResumos) {
+    const chave = normalizar6(r.codigo_municipio_ibge)!;
+    const existing = infodengueMap.get(chave) ?? {
+      dengue_nivel: null, chikungunya_nivel: null, zika_nivel: null,
+      total_alertas: 0, total_criticos: 0, total_altos: 0,
+      ano_epidemiologico: null, semana_epidemiologica: null,
+    };
+    if (r.doenca === "dengue")      existing.dengue_nivel      = r.nivel;
+    if (r.doenca === "chikungunya") existing.chikungunya_nivel = r.nivel;
+    if (r.doenca === "zika")        existing.zika_nivel        = r.nivel;
+    // Usa totais do primeiro registro com dado (todos têm os mesmos totais por município)
+    if (existing.total_alertas === 0) {
+      existing.total_alertas       = Number(r.total_alertas_municipio)  || 0;
+      existing.total_criticos      = Number(r.total_criticos_municipio) || 0;
+      existing.total_altos         = Number(r.total_altos_municipio)    || 0;
+      existing.ano_epidemiologico  = r.ano_epidemiologico;
+      existing.semana_epidemiologica = r.semana_epidemiologica;
+    }
+    infodengueMap.set(chave, existing);
+  }
+
+  // ── 3. Todos alertas consolidados (SIOPS + CNES/UBS + SISAGUA + InfoDengue) ──
+  // Normaliza código de cada alerta para 6 dígitos antes de agregar
+  const normalizeAlerta = (a: AlertaRow): AlertaRow => ({
+    ...a,
+    codigo_municipio_ibge: normalizar6(a.codigo_municipio_ibge),
+  });
+  const normalizeInfoDengueAlerta = (a: InfoDengueAlertaRow): AlertaRow => ({
+    id_alerta:             a.id_alerta,
+    fonte:                 a.fonte,
+    codigo_municipio_ibge: normalizar6(a.codigo_municipio_ibge),
+    nome_municipio:        a.nome_municipio,
+    tipo_alerta:           a.tipo_alerta,
+    nivel:                 a.nivel,
+    descricao:             a.descricao,
+    valor_observado:       a.valor_observado,
+    valor_referencia:      a.valor_referencia,
+    detalhe_json:          a.detalhe_json,
+  });
+  const todosAlertas: AlertaRow[] = [
+    ...siopsAlertas.map(normalizeAlerta),
+    ...cnesAlertas.map(normalizeAlerta),
+    ...sisaguaAlertas.map(normalizeAlerta),
+    ...infodengueAlertas.map(normalizeInfoDengueAlerta),
+  ];
 
   // Score por município
   const scoreMap = new Map<string, number>();
@@ -389,6 +531,7 @@ export async function executarMartSaudeConsolidado(): Promise<void> {
       const c = m.cnes;
 
       const sg = m.sisagua;
+      const vigi = infodengueMap.get(m.codigo) ?? null;
       await client.query(`
         INSERT INTO mart.saude_resumo_municipio (
           codigo_municipio_ibge, nome_municipio, uf,
@@ -403,12 +546,16 @@ export async function executarMartSaudeConsolidado(): Promise<void> {
           sisagua_total_amostras, sisagua_total_fora_padrao,
           sisagua_total_ecoli, sisagua_total_coliformes,
           sisagua_percentual_fora_padrao, sisagua_data_ultima_coleta,
+          vigilancia_total_alertas, vigilancia_alertas_criticos, vigilancia_alertas_altos,
+          vigilancia_dengue_nivel, vigilancia_chikungunya_nivel, vigilancia_zika_nivel,
+          vigilancia_semana_epidemiologica, vigilancia_ano_epidemiologico,
           atualizado_em
         ) VALUES (
           $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
           $11,$12,$13,$14,$15,$16,$17,
           $18,$19,$20,$21,$22,$23,
-          $24,$25,$26,$27,$28,$29,now()
+          $24,$25,$26,$27,$28,$29,
+          $30,$31,$32,$33,$34,$35,$36,$37,now()
         )
         ON CONFLICT (codigo_municipio_ibge) DO UPDATE SET
           nome_municipio                = EXCLUDED.nome_municipio,
@@ -439,6 +586,14 @@ export async function executarMartSaudeConsolidado(): Promise<void> {
           sisagua_total_coliformes      = EXCLUDED.sisagua_total_coliformes,
           sisagua_percentual_fora_padrao = EXCLUDED.sisagua_percentual_fora_padrao,
           sisagua_data_ultima_coleta    = EXCLUDED.sisagua_data_ultima_coleta,
+          vigilancia_total_alertas      = EXCLUDED.vigilancia_total_alertas,
+          vigilancia_alertas_criticos   = EXCLUDED.vigilancia_alertas_criticos,
+          vigilancia_alertas_altos      = EXCLUDED.vigilancia_alertas_altos,
+          vigilancia_dengue_nivel       = EXCLUDED.vigilancia_dengue_nivel,
+          vigilancia_chikungunya_nivel  = EXCLUDED.vigilancia_chikungunya_nivel,
+          vigilancia_zika_nivel         = EXCLUDED.vigilancia_zika_nivel,
+          vigilancia_semana_epidemiologica = EXCLUDED.vigilancia_semana_epidemiologica,
+          vigilancia_ano_epidemiologico = EXCLUDED.vigilancia_ano_epidemiologico,
           atualizado_em                 = now()
       `, [
         m.codigo, m.nome, m.uf,
@@ -469,6 +624,14 @@ export async function executarMartSaudeConsolidado(): Promise<void> {
         sg?.sisagua_total_coliformes  ?? 0,
         sg?.sisagua_percentual_fora_padrao ?? null,
         sg?.sisagua_data_ultima_coleta ?? null,
+        vigi?.total_alertas      ?? null,
+        vigi?.total_criticos     ?? null,
+        vigi?.total_altos        ?? null,
+        vigi?.dengue_nivel       ?? null,
+        vigi?.chikungunya_nivel  ?? null,
+        vigi?.zika_nivel         ?? null,
+        vigi?.semana_epidemiologica ?? null,
+        vigi?.ano_epidemiologico    ?? null,
       ]);
     }
     console.log(`[mart:saude-consolidado] ✓ saude_resumo_municipio (${municipios.length} municípios)`);

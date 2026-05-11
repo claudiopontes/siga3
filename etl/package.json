@@ -42,7 +42,6 @@
     "sisagua:full:postgres": "ts-node jobs/sisagua-full-postgres.ts",
     "mart:sisagua": "ts-node jobs/refresh-mart-sisagua.ts",
     "carga-sisagua:postgres": "npm run sisagua:full:postgres && npm run mart:sisagua",
-    "carga-saude:postgres": "npm run carga-siops:postgres && npm run carga-cnes-ubs:postgres && npm run carga-sisagua:postgres && npm run mart:saude-consolidado",
     "cnes-ubs:inspecionar": "ts-node jobs/cnes-ubs-inspecionar.ts",
     "cnes-ubs:full:postgres": "ts-node jobs/cnes-ubs-full-postgres.ts",
     "mart:saude-estrutura": "ts-node jobs/refresh-mart-saude-estrutura.ts",
@@ -51,7 +50,13 @@
     "siconfi-rreo:full:postgres": "ts-node jobs/siconfi-rreo-full-postgres.ts",
     "mart:siconfi-rreo": "ts-node jobs/refresh-mart-siconfi-rreo.ts",
     "carga-siconfi-rreo:postgres": "npm run siconfi-rreo:full:postgres && npm run mart:siconfi-rreo",
-    "carga-full:postgres": "npm run dimensoes:postgres && npm run despesa:full:postgres && npm run mart:despesa && npm run credor:enriquecimento"
+    "carga-full:postgres": "npm run dimensoes:postgres && npm run despesa:full:postgres && npm run mart:despesa && npm run credor:enriquecimento",
+    "datasus:inspecionar": "ts-node jobs/datasus-inspecionar.ts",
+    "infodengue:inspecionar": "ts-node jobs/infodengue-inspecionar.ts",
+    "infodengue:full:postgres": "ts-node jobs/infodengue-full-postgres.ts",
+    "mart:infodengue": "ts-node jobs/refresh-mart-infodengue.ts",
+    "carga-infodengue:postgres": "npm run infodengue:full:postgres && npm run mart:infodengue && npm run mart:saude-consolidado",
+    "carga-saude:postgres": "npm run carga-siops:postgres && npm run carga-cnes-ubs:postgres && npm run carga-sisagua:postgres && npm run carga-infodengue:postgres"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.8",
