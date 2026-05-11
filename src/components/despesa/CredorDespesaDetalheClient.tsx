@@ -165,6 +165,7 @@ export default function CredorDespesaDetalheClient({ cpfCnpj }: { cpfCnpj: strin
   const [historicoExpandido, setHistoricoExpandido] = useState<Set<string>>(new Set());
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     setError(null);
     fetch(`/api/despesa/credor/${cpfCnpj}`)

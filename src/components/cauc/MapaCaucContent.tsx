@@ -66,6 +66,7 @@ export default function MapaCaucContent({ dados, onSelect, bloqueado = false }: 
       const prev = layersRef.current[selectedRef.current.codigo_ibge];
       if (prev) prev.setStyle(buildStyle(selectedRef.current.total_pendencias, maxPendencias, false));
       selectedRef.current = null;
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSelected(null);
     }
   }, [bloqueado, maxPendencias]);

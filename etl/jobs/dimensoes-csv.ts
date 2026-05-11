@@ -14,7 +14,6 @@ import { getSupabase } from "../connectors/supabase"; // usado apenas como fallb
 import { pgQuery, closePgPool } from "../connectors/postgres";
 
 type CsvRow = Record<string, string>;
-type DimTable = "aux_dim_uf" | "aux_dim_municipio" | "aux_dim_ente" | "aux_dim_entidade";
 
 type UfRow = {
   codigo: string;

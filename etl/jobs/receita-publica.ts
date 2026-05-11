@@ -89,9 +89,6 @@ function addMonths(row: Periodo, delta: number): Periodo {
   return { ano: date.getUTCFullYear(), mes: date.getUTCMonth() + 1 };
 }
 
-function periodoWhere(periodos: Periodo[]): string {
-  return periodos.map((p) => `(ANO = ${p.ano} AND MES = ${p.mes})`).join(" OR ");
-}
 
 async function gravarLog(status: "sucesso" | "erro", registros: number, duracao: number, mensagem?: string) {
   await pgQuery(

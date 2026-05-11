@@ -92,7 +92,7 @@ async function buscarCodigosMunicipios(): Promise<number[]> {
   const url = `https://servicodados.ibge.gov.br/api/v1/localidades/estados/${IBGE_UF}/municipios`;
   const resp = await fetch(url, { headers: { Accept: "application/json" } });
   if (!resp.ok) throw new Error(`IBGE localidades retornou HTTP ${resp.status}: ${url}`);
-  const data = (await resp.json()) as Array<{ id: number; nome: string }>; // eslint-disable-line @typescript-eslint/no-explicit-any
+  const data = (await resp.json()) as Array<{ id: number; nome: string }>;
   return data.map((m) => m.id);
 }
 

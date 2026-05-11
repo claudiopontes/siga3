@@ -150,7 +150,7 @@ async function buscarIndicadores(
     }
 
     return { ok: true, status: resp.status, dados: dados as IndicadorRaw[], naoHomologado: false };
-  } catch (err) {
+  } catch {
     return { ok: false, status: 0, dados: null, naoHomologado: false };
   }
 }

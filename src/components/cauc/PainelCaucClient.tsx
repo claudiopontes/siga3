@@ -115,6 +115,13 @@ function SkeletonCard() {
   );
 }
 
+// ─── Ícone de ordenação ───────────────────────────────────────────────────────
+
+function ThIcon({ col, ordem, ordemAsc }: { col: OrdemColuna; ordem: OrdemColuna; ordemAsc: boolean }) {
+  if (ordem !== col) return <span className="ml-1 text-gray-300">↕</span>;
+  return <span className="ml-1">{ordemAsc ? "↑" : "↓"}</span>;
+}
+
 // ─── Componente principal ────────────────────────────────────────────────────
 
 export default function PainelCaucClient() {
@@ -135,6 +142,7 @@ export default function PainelCaucClient() {
 
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setErro("Supabase não configurado.");
       setCarregando(false);
       return;
@@ -215,11 +223,6 @@ export default function PainelCaucClient() {
   function toggleOrdem(col: OrdemColuna) {
     if (ordem === col) setOrdemAsc((v) => !v);
     else { setOrdem(col); setOrdemAsc(false); }
-  }
-
-  function ThIcon({ col }: { col: OrdemColuna }) {
-    if (ordem !== col) return <span className="ml-1 text-gray-300">↕</span>;
-    return <span className="ml-1">{ordemAsc ? "↑" : "↓"}</span>;
   }
 
   if (erro) {
@@ -340,19 +343,19 @@ export default function PainelCaucClient() {
                   className="cursor-pointer px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 hover:text-gray-700 dark:text-gray-400"
                   onClick={() => toggleOrdem("nome_ente")}
                 >
-                  Município <ThIcon col="nome_ente" />
+                  Município <ThIcon col="nome_ente" ordem={ordem} ordemAsc={ordemAsc} />
                 </th>
                 <th
                   className="cursor-pointer px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-gray-500 hover:text-gray-700 dark:text-gray-400"
                   onClick={() => toggleOrdem("total_pendencias")}
                 >
-                  Pendências <ThIcon col="total_pendencias" />
+                  Pendências <ThIcon col="total_pendencias" ordem={ordem} ordemAsc={ordemAsc} />
                 </th>
                 <th
                   className="cursor-pointer px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-gray-500 hover:text-gray-700 dark:text-gray-400"
                   onClick={() => toggleOrdem("total_regulares")}
                 >
-                  Regulares <ThIcon col="total_regulares" />
+                  Regulares <ThIcon col="total_regulares" ordem={ordem} ordemAsc={ordemAsc} />
                 </th>
                 <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
                   Itens
@@ -361,7 +364,7 @@ export default function PainelCaucClient() {
                   className="cursor-pointer px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-gray-500 hover:text-gray-700 dark:text-gray-400"
                   onClick={() => toggleOrdem("nivel_alerta")}
                 >
-                  Alerta <ThIcon col="nivel_alerta" />
+                  Alerta <ThIcon col="nivel_alerta" ordem={ordem} ordemAsc={ordemAsc} />
                 </th>
                 <th className="px-4 py-3" />
               </tr>

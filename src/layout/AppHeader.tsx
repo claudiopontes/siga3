@@ -34,6 +34,7 @@ const AppHeader: React.FC = () => {
     "/painel-cobertura-florestal": { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "Cobertura Florestal" }] },
     "/painel-cauc": { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "CAUC Municípios" }] },
     "/painel-saude": { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "Saúde Pública" }] },
+    "/painel-saude/qualidade-agua": { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "Saúde Pública", href: "/painel-saude" }, { label: "Qualidade da Água" }] },
     "/gabinete-digital/mapa": { crumbs: [{ label: "Home", href: "/" }, { label: "Mapa IDEB" }] },
     "/calendar": { crumbs: [{ label: "Home", href: "/" }, { label: "Agenda" }] },
     "/profile": { crumbs: [{ label: "Home", href: "/" }, { label: "Perfil" }] },

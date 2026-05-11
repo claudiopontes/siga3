@@ -1,3 +1,4 @@
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const { Pool } = require('pg');
 const pool = new Pool({ connectionString: 'postgres://varadouro:varadouro_dev@localhost:5432/varadouro_digital' });
 

@@ -165,6 +165,7 @@ export default function CalendarioRemessasClient() {
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setCarregando(true);
     setErro(null);
     fetch(`/api/remessas/calendario?ano=${ano}`)

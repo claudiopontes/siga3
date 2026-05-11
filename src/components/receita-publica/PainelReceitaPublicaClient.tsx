@@ -391,12 +391,6 @@ export default function PainelReceitaPublicaClient() {
       .sort((a, b) => b[1] - a[1]);
   }, [rows, naturezaRows, naturezaNivelView]);
 
-  const composicaoTop = useMemo(() => composicaoArrecadada.slice(0, 12), [composicaoArrecadada]);
-  const composicaoTotal = useMemo(
-    () => composicaoArrecadada.reduce((acc, [, valor]) => acc + valor, 0),
-    [composicaoArrecadada],
-  );
-
   // Tabela "Receita Orçamentária Arrecadada"
   // Duas árvores paralelas: receitas e deduções.
   // Deduções são detectadas por tipo_receita="DEDU" e roteadas para a árvore de dedução,
@@ -455,19 +449,6 @@ export default function PainelReceitaPublicaClient() {
         (r) => r.nivel === 1 && normalizeReceitaCode(r.rubrica || r.codigo).startsWith(digito),
       )?.nome;
       return daDimensao ?? NOMES_CATEGORIA[digito] ?? `Grupo ${digito}`;
-    }
-
-    function obterFallback(map: Map<string, NodoReceita>, digito: string, ehDeducao: boolean): NodoReceita {
-      if (!map.has(digito)) {
-        map.set(digito, {
-          nome: nomeFallback(digito, ehDeducao),
-          isDeducao: ehDeducao,
-          valorTotal: 0, nivel: 1,
-          rubricaPrefix: digito,
-          filhos: [],
-        });
-      }
-      return map.get(digito)!;
     }
 
     // Cria nodo sintético em mapas[n-1] para o prefixo dado, buscando nome na dimensão.
@@ -645,35 +626,6 @@ export default function PainelReceitaPublicaClient() {
     return { raizes, totalLiquido };
   }, [rows, naturezaRows, naturezaNivelView]);
 
-  const composicaoBarOptions = useMemo<ApexOptions>(() => ({
-    chart: { type: "bar", toolbar: { show: false }, fontFamily: "inherit" },
-    plotOptions: { bar: { horizontal: true, borderRadius: 4 } },
-    colors: ["#0f766e"],
-    dataLabels: {
-      enabled: true,
-      formatter: (value: number) => fmtCompacto(value),
-      style: { fontSize: "10px" },
-    },
-    xaxis: {
-      labels: {
-        formatter: (value: string) => fmtCompacto(Number(value)),
-      },
-    },
-    yaxis: {
-      labels: { style: { fontSize: "11px" }, maxWidth: 280 },
-    },
-    tooltip: {
-      y: { formatter: (value: number) => fmtMoeda(Number(value)) },
-    },
-    grid: { borderColor: "#e2e8f0", strokeDashArray: 3 },
-  }), []);
-
-  const composicaoBarSeries = useMemo(
-    () => [{ name: "Arrecadação", data: composicaoTop.map(([name, value]) => ({ x: name, y: Number(value.toFixed(2)) })) }],
-    [composicaoTop],
-  );
-
-  
   const serieMensalEmpilhada = useMemo(() => {
     const groupLevel = naturezaNivelView;
     const monthSet = new Set<string>();

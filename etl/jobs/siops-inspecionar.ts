@@ -30,7 +30,7 @@ async function get(path: string): Promise<{ ok: boolean; status: number; dados: 
     let dados: unknown = text;
     try { dados = JSON.parse(text); } catch { /* mantém como texto */ }
     return { ok: resp.ok, status: resp.status, dados };
-  } catch (err) {
+  } catch {
     return { ok: false, status: 0, dados: null };
   }
 }

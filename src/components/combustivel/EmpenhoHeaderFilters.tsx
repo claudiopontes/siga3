@@ -539,7 +539,11 @@ function AnoFiltroDialog({
   const [fim, setFim] = useState(anoFim);
 
   useEffect(() => {
-    if (isOpen) { setInicio(anoInicio); setFim(anoFim); }
+    if (isOpen) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setInicio(anoInicio);
+      setFim(anoFim);
+    }
   }, [isOpen, anoInicio, anoFim]);
 
   const selectClass = "h-10 w-full rounded-lg border border-gray-300 bg-transparent px-3 text-sm text-gray-700 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-950 dark:text-white/90";

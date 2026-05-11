@@ -11,11 +11,7 @@ import { useDespesaData } from "@/hooks/useDespesaData";
 const Chart = dynamic(() => import("react-apexcharts"), { ssr: false });
 
 // --- Re-export de tipos para uso local ---
-type ResumoRow = import("@/hooks/useDespesaData").ResumoRow;
-type EvolucaoRow = import("@/hooks/useDespesaData").EvolucaoRow;
 type RankingCredorRow = import("@/hooks/useDespesaData").RankingCredorRow;
-type ComposicaoRow = import("@/hooks/useDespesaData").ComposicaoRow;
-type AlertaRow = import("@/hooks/useDespesaData").AlertaRow;
 
 // --- Helpers ---
 
@@ -91,7 +87,7 @@ export default function PainelDespesaClient() {
   const credoresRef   = useRef<HTMLDivElement | null>(null);
   const composicaoRef = useRef<HTMLDivElement | null>(null);
 
-  const { loading, error, viewsMissing, resumo, evolucao, rankEntes, rankCredores, composicao, alertas } =
+  const { loading, error, viewsMissing, resumo, evolucao, rankCredores, composicao, alertas } =
     useDespesaData({
       anoInicio: paramAnoInicio,
       anoFim: paramAnoFim,

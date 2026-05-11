@@ -1,5 +1,4 @@
 import "dotenv/config";
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import { pgQuery, withPgTransaction, closePgPool } from "../connectors/postgres";
 
@@ -12,8 +11,7 @@ const BATCH_SIZE = Number(process.env.MIGRAR_BATCH_SIZE ?? "1000");
 
 const ALLOWLIST = ["dim_ente", "dim_credor", "fato_empenho"];
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function lerTabela(supabase: SupabaseClient<any, any, any>, tabela: string): Promise<Record<string, unknown>[]> {
+async function lerTabela(supabase: SupabaseClient, tabela: string): Promise<Record<string, unknown>[]> {
   const rows: Record<string, unknown>[] = [];
   let from = 0;
   while (true) {
