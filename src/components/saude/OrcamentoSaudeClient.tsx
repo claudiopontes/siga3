@@ -452,14 +452,9 @@ export default function OrcamentoSaudeClient() {
       {/* ── Cards KPI ── */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
         {carregando ? (
-          Array.from({ length: 7 }).map((_, i) => <SkeletonCard key={i} />)
+          Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)
         ) : (
           <>
-            <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
-              <p className="text-xs font-medium uppercase tracking-wide text-gray-400">Municípios monitorados</p>
-              <p className="mt-1 text-3xl font-bold text-gray-900 dark:text-white">{resumo?.total_municipios ?? municipios.length}</p>
-            </div>
-
             <div className={`rounded-xl border p-4 ${(resumo?.abaixo_minimo ?? 0) > 0 ? "border-red-200 bg-white dark:border-red-800/40 dark:bg-gray-800" : "border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"}`}>
               <p className={`text-xs font-medium uppercase tracking-wide ${(resumo?.abaixo_minimo ?? 0) > 0 ? "text-red-500" : "text-gray-400"}`}>Abaixo do mínimo</p>
               <p className={`mt-1 text-3xl font-bold ${(resumo?.abaixo_minimo ?? 0) > 0 ? "text-red-600 dark:text-red-400" : "text-gray-700 dark:text-gray-300"}`}>

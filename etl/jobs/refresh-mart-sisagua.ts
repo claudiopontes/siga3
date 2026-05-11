@@ -152,29 +152,37 @@ export async function executarRefreshMartSisagua(): Promise<void> {
     totais AS (
       SELECT
         f.codigo_municipio_ibge,
-        count(*)::text                                                              AS total_amostras,
-        count(*) FILTER (WHERE f.fora_padrao = true)::text                         AS total_fora_padrao,
-        count(*) FILTER (
-          WHERE f.fora_padrao = true
-            AND (
-              f.parametro ILIKE '%e.coli%'
-              OR f.parametro ILIKE '%ecoli%'
-              OR f.parametro ILIKE '%escherichia%'
-            )
-        )::text                                                                     AS total_ecoli,
-        count(*) FILTER (
-          WHERE f.fora_padrao = true
-            AND f.parametro ILIKE '%coliforme%'
-        )::text                                                                     AS total_coliformes,
-        count(*) FILTER (
-          WHERE f.fora_padrao = true
-            AND (f.parametro ILIKE '%cloro%' OR f.parametro ILIKE '%clorine%')
-        )::text                                                                     AS total_cloro_baixo,
-        count(*) FILTER (
-          WHERE f.fora_padrao = true
-            AND f.parametro ILIKE '%turbidez%'
-        )::text                                                                     AS total_turbidez_fora,
-        max(f.data_coleta)::text                                                   AS data_ultima_coleta
+        -- total_amostras: soma das amostras analisadas de E. coli (parâmetro canônico sempre presente)
+        coalesce(sum(f.valor) FILTER (
+          WHERE f.parametro ILIKE '%escherichia%'
+            AND f.resultado ILIKE '%amostras analisadas%'
+        ), 0)::text                                                                 AS total_amostras,
+        -- total_fora_padrao: amostras com qualquer contaminante em presença
+        coalesce(sum(f.valor) FILTER (
+          WHERE f.resultado ILIKE '%presença%' OR f.resultado = 'PRESENTE'
+        ), 0)::text                                                                 AS total_fora_padrao,
+        -- total_ecoli: amostras com presença de Escherichia coli
+        coalesce(sum(f.valor) FILTER (
+          WHERE f.parametro ILIKE '%escherichia%'
+            AND (f.resultado ILIKE '%presença%' OR f.resultado = 'PRESENTE')
+        ), 0)::text                                                                 AS total_ecoli,
+        -- total_coliformes: amostras com presença de coliformes totais
+        coalesce(sum(f.valor) FILTER (
+          WHERE f.parametro ILIKE '%coliforme%'
+            AND (f.resultado ILIKE '%presença%' OR f.resultado = 'PRESENTE')
+        ), 0)::text                                                                 AS total_coliformes,
+        -- total_cloro_baixo: amostras com cloro residual abaixo do mínimo (< 0,2 mg/L)
+        coalesce(sum(f.valor) FILTER (
+          WHERE (f.parametro ILIKE '%cloro%' OR f.parametro ILIKE '%clorine%')
+            AND f.resultado ILIKE '%< 0,2%'
+        ), 0)::text                                                                 AS total_cloro_baixo,
+        -- total_turbidez_fora: amostras com turbidez acima de 5 uT
+        coalesce(sum(f.valor) FILTER (
+          WHERE f.parametro ILIKE '%turbidez%'
+            AND f.resultado ILIKE '%> 5,0 uT%'
+        ), 0)::text                                                                 AS total_turbidez_fora,
+        -- data_coleta é nulo na API; usa competencia (YYYYMM) → primeiro dia do mês
+        to_char(to_date(max(f.competencia), 'YYYYMM'), 'YYYY-MM-DD')               AS data_ultima_coleta
       FROM dw.fato_sisagua_parametro f
       WHERE f.codigo_municipio_ibge IS NOT NULL
       GROUP BY f.codigo_municipio_ibge
@@ -298,9 +306,10 @@ export async function executarRefreshMartSisagua(): Promise<void> {
   // Alertas para municípios SEM dado (apenas se houver algum dado no DW)
   if (totalFato > 0) {
     for (const mun of MUNICIPIOS_ACRE) {
-      if (!municipiosComDado.has(mun.codigo)) {
+      const cod6 = mun.codigo.length >= 7 ? mun.codigo.slice(0, 6) : mun.codigo;
+      if (!municipiosComDado.has(cod6)) {
         alertas.push({
-          codigoMunicipioIbge: mun.codigo,
+          codigoMunicipioIbge: cod6,
           nomeMunicipio:       mun.nome,
           tipoAlerta:          "sisagua_sem_dado_recente",
           nivel:               "MEDIO",
@@ -316,11 +325,16 @@ export async function executarRefreshMartSisagua(): Promise<void> {
   console.log(`[mart:sisagua] Alertas gerados: ${alertas.length}`);
 
   // ── 5. Consolida todos os municípios (com e sem dados) ──
+  // Normaliza para 6 dígitos (sem dígito verificador) — igual ao formato que o DW grava.
+  // MUNICIPIOS_ACRE usa 7 dígitos; sem normalização, o fallback criaria entradas duplicadas.
+  const normalizar6 = (cod: string) => cod.length >= 7 ? cod.slice(0, 6) : cod.padStart(6, "0");
+
   const todosResumosMap = new Map<string, ResumoMunicipio>(resumoMap);
   for (const mun of MUNICIPIOS_ACRE) {
-    if (!todosResumosMap.has(mun.codigo)) {
-      todosResumosMap.set(mun.codigo, {
-        codigo: mun.codigo, nome: mun.nome, uf: "AC",
+    const cod6 = normalizar6(mun.codigo);
+    if (!todosResumosMap.has(cod6)) {
+      todosResumosMap.set(cod6, {
+        codigo: cod6, nome: mun.nome, uf: "AC",
         totalAmostras: 0, totalForaPadrao: 0, totalEcoli: 0, totalColiformes: 0,
         totalCloroBaixo: 0, totalTurbidezFora: 0, percentualForaPadrao: null, dataUltimaColeta: null,
       });

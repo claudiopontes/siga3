@@ -187,19 +187,28 @@ export async function executarMartSaudeConsolidado(): Promise<void> {
     FROM mart.saude_estrutura_municipio
   `);
 
+  // Apenas período mais recente do SIOPS, para consistência com o painel de detalhe.
   const siopsAlertas = await pgQuery<AlertaRow>(`
+    WITH periodo_ref AS (
+      SELECT ano, periodo
+      FROM mart.siops_resumo_home
+      LIMIT 1
+    )
     SELECT
-      id_alerta,
+      a.id_alerta,
       'SIOPS'         AS fonte,
-      codigo_municipio_ibge,
-      nome_municipio,
-      tipo_alerta,
-      nivel,
-      descricao,
-      valor_observado,
-      valor_referencia,
-      detalhe_json
-    FROM mart.siops_alertas
+      a.codigo_municipio_ibge,
+      a.nome_municipio,
+      a.tipo_alerta,
+      a.nivel,
+      a.descricao,
+      a.valor_observado,
+      a.valor_referencia,
+      a.detalhe_json
+    FROM mart.siops_alertas a
+    JOIN periodo_ref pr
+      ON a.ano = pr.ano
+     AND (a.periodo = pr.periodo OR (a.periodo IS NULL AND pr.periodo IS NULL))
   `);
 
   const cnesAlertas = await pgQuery<AlertaRow>(`

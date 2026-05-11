@@ -33,6 +33,11 @@ interface SaudeAlerta {
   atualizado_em:         string;
 }
 
+interface SiopsResumoHub {
+  total_criticos: number;
+  total_altos:    number;
+}
+
 // ---------------------------------------------------------------------------
 // Card de módulo de análise
 // ---------------------------------------------------------------------------
@@ -121,19 +126,25 @@ function ModuloCard({
 // ---------------------------------------------------------------------------
 
 export default function PainelSaudeClient() {
-  const [alertas, setAlertas] = useState<SaudeAlerta[]>([]);
-  const [erro,    setErro]    = useState<string | null>(null);
+  const [alertas,     setAlertas]     = useState<SaudeAlerta[]>([]);
+  const [siopsResumo, setSiopsResumo] = useState<SiopsResumoHub | null>(null);
+  const [erro,        setErro]        = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/saude/alertas?home=1")
-      .then((r) => r.json())
-      .then((als) => setAlertas(Array.isArray(als) ? als : []))
+    Promise.all([
+      fetch("/api/saude/alertas?home=1").then((r) => r.json()),
+      fetch("/api/saude/orcamento/resumo").then((r) => r.json()),
+    ])
+      .then(([als, sr]) => {
+        setAlertas(Array.isArray(als) ? als : []);
+        setSiopsResumo(sr && !sr.error ? (sr as SiopsResumoHub) : null);
+      })
       .catch((e: unknown) => {
         setErro(e instanceof Error ? e.message : "Erro ao carregar dados.");
       });
   }, []);
 
-  // Contadores por fonte (para badges nos cards de módulo)
+  // Contadores por fonte para SISAGUA, CNES/UBS e InfoDengue
   const contagemPorFonte = useMemo(() => {
     const acc: Record<string, { criticos: number; altos: number }> = {};
     for (const a of alertas) {
@@ -145,9 +156,10 @@ export default function PainelSaudeClient() {
   }, [alertas]);
 
   const sisaguaCount    = contagemPorFonte["SISAGUA"]    ?? { criticos: 0, altos: 0 };
-  const siopsCount      = contagemPorFonte["SIOPS"]      ?? { criticos: 0, altos: 0 };
   const cnesUbsCount    = contagemPorFonte["CNES_UBS"]   ?? { criticos: 0, altos: 0 };
   const infodengueCount = contagemPorFonte["INFODENGUE"] ?? { criticos: 0, altos: 0 };
+  // SIOPS: usa o resumo do painel de detalhe (mesma fonte, mesmo período)
+  const siopsCount      = { criticos: siopsResumo?.total_criticos ?? 0, altos: siopsResumo?.total_altos ?? 0 };
 
   // ---------------------------------------------------------------------------
   // Render
