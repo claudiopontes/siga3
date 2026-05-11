@@ -76,8 +76,8 @@ function NivelBadge({ nivel }: { nivel: string }) {
     return <span className="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700 dark:bg-red-900/40 dark:text-red-300">Crítico</span>;
   if (n === "ALTO")
     return <span className="inline-flex items-center rounded-full bg-orange-100 px-2 py-0.5 text-xs font-semibold text-orange-700 dark:bg-orange-900/40 dark:text-orange-300">Alto</span>;
-  if (n === "MEDIO")
-    return <span className="inline-flex items-center rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-semibold text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300">Médio</span>;
+  if (n === "SEM_DADOS")
+    return <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-semibold text-gray-500 dark:bg-gray-700 dark:text-gray-400">S/ dados</span>;
   return <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700 dark:bg-green-900/40 dark:text-green-300">Baixo</span>;
 }
 
@@ -323,7 +323,7 @@ export default function QualidadeAguaClient() {
         </div>
         {carregando ? (
           <div className="p-6 text-center text-sm text-gray-400">Carregando...</div>
-        ) : munComDados.length === 0 ? (
+        ) : municipios.length === 0 ? (
           <div className="p-6 text-center text-sm text-gray-400">Sem dados SISAGUA carregados.</div>
         ) : (
           <div className="overflow-x-auto">
@@ -341,8 +341,14 @@ export default function QualidadeAguaClient() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
-                {[...munComDados]
-                  .sort((a, b) => (b.sisagua_total_fora_padrao ?? 0) - (a.sisagua_total_fora_padrao ?? 0))
+                {[...municipios]
+                  .sort((a, b) => {
+                    // Sem dados vai para o final
+                    const aSemDados = (a.sisagua_total_amostras ?? 0) === 0;
+                    const bSemDados = (b.sisagua_total_amostras ?? 0) === 0;
+                    if (aSemDados !== bSemDados) return aSemDados ? 1 : -1;
+                    return (b.sisagua_total_fora_padrao ?? 0) - (a.sisagua_total_fora_padrao ?? 0);
+                  })
                   .map((m) => (
                     <tr key={m.codigo_municipio_ibge} className="hover:bg-slate-50 dark:hover:bg-slate-700/40">
                       <td className="whitespace-nowrap px-4 py-3 font-medium text-slate-800 dark:text-slate-100">
@@ -370,7 +376,12 @@ export default function QualidadeAguaClient() {
                         ) : <span className="text-slate-400">{fmtPct(m.sisagua_percentual_fora_padrao)}</span>}
                       </td>
                       <td className="px-4 py-3 text-slate-500 dark:text-slate-400">{fmtData(m.sisagua_data_ultima_coleta)}</td>
-                      <td className="px-4 py-3"><NivelBadge nivel={m.nivel_risco ?? "BAIXO"} /></td>
+                      <td className="px-4 py-3"><NivelBadge nivel={
+                          (m.sisagua_total_amostras ?? 0) === 0 ? "SEM_DADOS"
+                        : (m.sisagua_total_ecoli ?? 0) > 0 ? "CRITICO"
+                        : (m.sisagua_total_fora_padrao ?? 0) > 0 ? "ALTO"
+                        : "BAIXO"
+                      } /></td>
                     </tr>
                   ))}
               </tbody>

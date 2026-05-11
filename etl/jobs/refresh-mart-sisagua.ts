@@ -185,6 +185,7 @@ export async function executarRefreshMartSisagua(): Promise<void> {
         to_char(to_date(max(f.competencia), 'YYYYMM'), 'YYYY-MM-DD')               AS data_ultima_coleta
       FROM dw.fato_sisagua_parametro f
       WHERE f.codigo_municipio_ibge IS NOT NULL
+        AND f.competencia >= to_char(date_trunc('month', now()) - interval '5 months', 'YYYYMM')
       GROUP BY f.codigo_municipio_ibge
     )
     SELECT

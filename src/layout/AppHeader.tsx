@@ -6,7 +6,6 @@ import ReceitaPublicaHeaderFilters from "@/components/receita-publica/ReceitaPub
 import DespesaHeaderFilters from "@/components/despesa/DespesaHeaderFilters";
 import DespesaSubtitle from "@/components/despesa/DespesaSubtitle";
 import { ThemeToggleButton } from "@/components/common/ThemeToggleButton";
-import NotificationDropdown from "@/components/header/NotificationDropdown";
 import UserDropdown from "@/components/header/UserDropdown";
 import { useSidebar } from "@/context/SidebarContext";
 import Image from "next/image";
@@ -19,11 +18,18 @@ const AppHeader: React.FC = () => {
   const pathname = usePathname();
   const { isMobileOpen, toggleSidebar, toggleMobileSidebar } = useSidebar();
 
-  const isCombustivelPage = pathname === "/painel-combustivel";
-  const isEmpenhoPage = pathname === "/painel-combustivel-empenhos";
-  const isReceitaPage = pathname === "/painel-receita-publica";
-  const isDespesaPage = pathname === "/painel-despesa";
-  const isSaudePage   = pathname === "/painel-saude";
+  const isCombustivelPage    = pathname === "/painel-combustivel";
+  const isEmpenhoPage        = pathname === "/painel-combustivel-empenhos";
+  const isReceitaPage        = pathname === "/painel-receita-publica";
+  const isDespesaPage        = pathname === "/painel-despesa";
+  const isSaudePage          = pathname === "/painel-saude";
+  const isCredoresPage       = pathname === "/pesquisa-credores";
+  const isFlorestalPage      = pathname === "/painel-cobertura-florestal";
+  const isCaucPage           = pathname === "/painel-cauc";
+  const isMapaPage           = pathname === "/gabinete-digital/mapa";
+  const isCalendarPage       = pathname === "/calendar";
+  const isProfilePage        = pathname === "/profile";
+  const isUsuariosPage       = pathname === "/seguranca/usuarios";
 
   const breadcrumbs: Record<string, { crumbs: { label: string; href?: string }[] }> = {
     "/": { crumbs: [{ label: "Home" }] },
@@ -199,7 +205,6 @@ const AppHeader: React.FC = () => {
               ))}
             </nav>
             <ThemeToggleButton />
-            <NotificationDropdown />
             <UserDropdown />
           </div>
         </div>
