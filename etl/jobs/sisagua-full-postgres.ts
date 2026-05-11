@@ -406,7 +406,7 @@ async function promoverParaDw(): Promise<{ parametros: number; populacao: number
        ano, mes, competencia, parametro, resultado, valor, unidade,
        fora_padrao, data_coleta, forma_abastecimento, sistema_abastecimento, ponto_coleta
      FROM stage.sisagua_parametros_stg
-     WHERE carregado_em > now() - interval '2 hours'
+     ON CONFLICT DO NOTHING
      RETURNING count(*)::text AS n`
   ).catch(async () => {
     // Fallback: insere tudo da stage
@@ -440,7 +440,7 @@ async function promoverParaDw(): Promise<{ parametros: number; populacao: number
          uf, codigo_municipio_ibge, nome_municipio, ano, mes, competencia,
          populacao_abastecida, forma_abastecimento, sistema_abastecimento
        FROM stage.sisagua_populacao_stg
-       WHERE carregado_em > now() - interval '2 hours'
+       ON CONFLICT DO NOTHING
        RETURNING 1
      )
      SELECT count(*)::text AS n FROM ins`

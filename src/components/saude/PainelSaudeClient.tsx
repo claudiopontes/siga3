@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 
 // ---------------------------------------------------------------------------
 // Tipos
@@ -489,7 +489,6 @@ export default function PainelSaudeClient() {
                   return (
                     <React.Fragment key={m.codigo_municipio_ibge}>
                       <tr
-                        onClick={() => toggleExpandir(m.codigo_municipio_ibge)}
                         onClick={() => toggleExpandir(m.codigo_municipio_ibge)}
                         className="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700/40"
                       >

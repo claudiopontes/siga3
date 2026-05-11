@@ -69,6 +69,21 @@ type SiopsResumoRow = {
   atualizado_em: string | null;
 };
 
+type SaudeResumoRow = {
+  area: string;
+  total_alertas: number;
+  total_criticos: number;
+  total_altos: number;
+  total_medios: number;
+  total_municipios_afetados: number;
+  municipios_risco_critico: number;
+  municipios_risco_alto: number;
+  municipios_risco_medio: number;
+  siops_ano: number | null;
+  siops_periodo: string | null;
+  atualizado_em: string | null;
+};
+
 type SiopsAlertaRow = {
   id_alerta: number | null;
   ano: number;
@@ -482,6 +497,8 @@ export default function AlertasGabineteClient() {
   const [alertasSiops, setAlertasSiops] = useState<SiopsAlertaRow[]>([]);
   const [modalSiops, setModalSiops] = useState(false);
   const [carregandoSiops, setCarregandoSiops] = useState(true);
+  const [resumoSaude, setResumoSaude] = useState<SaudeResumoRow | null>(null);
+  const [carregandoSaude, setCarregandoSaude] = useState(true);
 
   // Busca alertas SIOPS via API local (PostgreSQL)
   useEffect(() => {
@@ -502,6 +519,24 @@ export default function AlertasGabineteClient() {
       }
     }
     void carregarSiops();
+    return () => { cancelado = true; };
+  }, []);
+
+  // Busca resumo consolidado de Saúde Pública (SIOPS + CNES/UBS + SISAGUA)
+  useEffect(() => {
+    let cancelado = false;
+    async function carregarSaude() {
+      try {
+        const res = await fetch("/api/saude/resumo").then((r) => r.json());
+        if (cancelado) return;
+        if (res && typeof res === "object" && !res.error) setResumoSaude(res as SaudeResumoRow);
+      } catch {
+        // silencioso — card mostrará sem dados
+      } finally {
+        if (!cancelado) setCarregandoSaude(false);
+      }
+    }
+    void carregarSaude();
     return () => { cancelado = true; };
   }, []);
 
@@ -831,6 +866,79 @@ export default function AlertasGabineteClient() {
                   <path d="M5 12h14" /><path d="m12 5 7 7-7 7" />
                 </svg>
               </button>
+            </div>
+          );
+        })()}
+
+        {/* Card Saúde Pública — consolidado SIOPS + CNES/UBS + SISAGUA */}
+        {carregandoSaude ? (
+          <CardSkeleton />
+        ) : (() => {
+          const semDados = !resumoSaude;
+          const criticos = resumoSaude?.total_criticos ?? 0;
+          const altos = resumoSaude?.total_altos ?? 0;
+          const munCritico = resumoSaude?.municipios_risco_critico ?? 0;
+          const munAfetados = resumoSaude?.total_municipios_afetados ?? 0;
+          return (
+            <div className={`rounded-xl border bg-white p-4 dark:bg-gray-800 ${
+              criticos > 0
+                ? "border-red-200 dark:border-red-800/50"
+                : altos > 0
+                  ? "border-amber-200 dark:border-amber-800/50"
+                  : "border-gray-200 dark:border-gray-700"
+            }`}>
+              <div className="flex items-start justify-between gap-3">
+                <span className={`rounded-full p-1.5 ${
+                  criticos > 0
+                    ? "bg-red-50 text-red-500 dark:bg-red-900/20 dark:text-red-400"
+                    : "bg-teal-50 text-teal-500 dark:bg-teal-900/20 dark:text-teal-400"
+                }`}>
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M12 2a5 5 0 1 0 0 10A5 5 0 0 0 12 2z" />
+                    <path d="M12 12c-5.33 0-8 2.67-8 4v2h16v-2c0-1.33-2.67-4-8-4z" />
+                    <path d="M12 7v5" /><path d="M9.5 9.5h5" />
+                  </svg>
+                </span>
+                {semDados ? (
+                  <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500 dark:bg-gray-700 dark:text-gray-400">Sem dados</span>
+                ) : criticos > 0 ? (
+                  <NivelBadge nivel="alto" />
+                ) : altos > 0 ? (
+                  <NivelBadge nivel="medio" />
+                ) : null}
+              </div>
+              <p className="mt-3 text-sm font-bold text-gray-900 dark:text-white">Saúde Pública</p>
+              {semDados ? (
+                <p className="mt-1 text-xs font-medium text-gray-400 dark:text-gray-500">Dados de saúde ainda não carregados.</p>
+              ) : (
+                <>
+                  <div className="mt-1 flex items-baseline gap-2">
+                    <p className="text-2xl font-bold text-gray-900 dark:text-white">{criticos}</p>
+                    <span className="text-xs text-gray-400">críticos</span>
+                    <span className="text-sm font-semibold text-gray-500">·</span>
+                    <p className="text-lg font-bold text-amber-600 dark:text-amber-400">{altos}</p>
+                    <span className="text-xs text-gray-400">altos</span>
+                  </div>
+                  {munCritico > 0 && (
+                    <p className="mt-0.5 text-xs font-semibold text-red-600 dark:text-red-400">
+                      {munCritico} {munCritico === 1 ? "município" : "municípios"} em risco crítico
+                    </p>
+                  )}
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    {munAfetados} {munAfetados === 1 ? "município afetado" : "municípios afetados"}
+                  </p>
+                </>
+              )}
+              <p className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">SIOPS · CNES/UBS · SISAGUA</p>
+              <Link
+                href="/painel-saude"
+                className="mt-3 inline-flex items-center gap-1 rounded-lg bg-blue-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
+              >
+                Ver painel
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M5 12h14" /><path d="m12 5 7 7-7 7" />
+                </svg>
+              </Link>
             </div>
           );
         })()}
