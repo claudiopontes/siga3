@@ -2,8 +2,8 @@
  * refresh-mart-saude-consolidado.ts
  *
  * Reconstrói a camada consolidada do Painel da Saúde:
- *   - mart.saude_resumo_municipio  (SIOPS + CNES/UBS por município)
- *   - mart.saude_alertas           (todos os alertas de SIOPS e CNES/UBS)
+ *   - mart.saude_resumo_municipio  (SIOPS + CNES/UBS + SISAGUA por município)
+ *   - mart.saude_alertas           (todos os alertas de SIOPS, CNES/UBS e SISAGUA)
  *   - mart.saude_alertas_home      (máx 30, CRITICO/ALTO)
  *   - mart.saude_resumo_home       (totais + score para o card da home)
  *
@@ -14,6 +14,8 @@
  *   mart.siops_resumo_home         — resumo SIOPS
  *   mart.saude_estrutura_municipio — estrutura CNES/UBS
  *   mart.saude_estrutura_alertas   — alertas CNES/UBS
+ *   mart.sisagua_resumo_municipio  — qualidade da água SISAGUA
+ *   mart.sisagua_alertas           — alertas SISAGUA
  *
  * Score de risco por município:
  *   CRITICO = 5 pts · ALTO = 3 pts · MEDIO = 1 pt
@@ -39,6 +41,17 @@ interface SiopsResumoRow {
   receita_base_calculo:     number | null;
   total_indicadores:        number;
   situacao_envio:           string | null;
+}
+
+interface SisaguaResumoRow {
+  codigo_municipio_ibge:      string;
+  nome_municipio:             string | null;
+  sisagua_total_amostras:     number;
+  sisagua_total_fora_padrao:  number;
+  sisagua_total_ecoli:        number;
+  sisagua_total_coliformes:   number;
+  sisagua_percentual_fora_padrao: number | null;
+  sisagua_data_ultima_coleta: string | null;
 }
 
 interface CnesResumoRow {
@@ -166,6 +179,34 @@ export async function executarMartSaudeConsolidado(): Promise<void> {
     FROM mart.saude_estrutura_alertas
   `);
 
+  const sisaguaAlertas = await pgQuery<AlertaRow>(`
+    SELECT
+      id_alerta,
+      'SISAGUA'       AS fonte,
+      codigo_municipio_ibge,
+      nome_municipio,
+      tipo_alerta,
+      nivel,
+      descricao,
+      valor_observado,
+      valor_referencia,
+      detalhe_json
+    FROM mart.sisagua_alertas
+  `).catch(() => [] as AlertaRow[]);
+
+  const sisaguaResumos = await pgQuery<SisaguaResumoRow>(`
+    SELECT
+      codigo_municipio_ibge,
+      nome_municipio,
+      total_amostras        AS sisagua_total_amostras,
+      total_fora_padrao     AS sisagua_total_fora_padrao,
+      total_ecoli           AS sisagua_total_ecoli,
+      total_coliformes      AS sisagua_total_coliformes,
+      percentual_fora_padrao AS sisagua_percentual_fora_padrao,
+      data_ultima_coleta    AS sisagua_data_ultima_coleta
+    FROM mart.sisagua_resumo_municipio
+  `).catch(() => [] as SisaguaResumoRow[]);
+
   const siopsHome = await pgQuery<SiopsHomeRow>(`
     SELECT an_exercicio AS ano, nr_periodo::text AS periodo
     FROM mart.siops_resumo_home
@@ -184,18 +225,27 @@ export async function executarMartSaudeConsolidado(): Promise<void> {
   const siopsAnoAtual = siopsHomeFallback[0]?.ano ?? null;
   const siopsPerAtual = siopsHomeFallback[0]?.periodo ?? null;
 
-  console.log(`[mart:saude-consolidado] SIOPS municípios: ${siopsResumos.length}`);
-  console.log(`[mart:saude-consolidado] CNES municípios:  ${cnesResumos.length}`);
+  console.log(`[mart:saude-consolidado] SIOPS municípios:    ${siopsResumos.length}`);
+  console.log(`[mart:saude-consolidado] CNES municípios:    ${cnesResumos.length}`);
+  console.log(`[mart:saude-consolidado] SISAGUA municípios: ${sisaguaResumos.length}`);
   console.log(`[mart:saude-consolidado] Alertas SIOPS:    ${siopsAlertas.length}`);
   console.log(`[mart:saude-consolidado] Alertas CNES/UBS: ${cnesAlertas.length}`);
+  console.log(`[mart:saude-consolidado] Alertas SISAGUA:  ${sisaguaAlertas.length}`);
+
+  // Mapa SISAGUA por município
+  const sisaguaMap = new Map<string, SisaguaResumoRow>();
+  for (const sg of sisaguaResumos) {
+    sisaguaMap.set(sg.codigo_municipio_ibge, sg);
+  }
 
   // ── 2. Consolida municípios ──
   const municipioMap = new Map<string, {
     codigo: string;
     nome:   string | null;
     uf:     string | null;
-    siops:  SiopsResumoRow | null;
-    cnes:   CnesResumoRow  | null;
+    siops:  SiopsResumoRow    | null;
+    cnes:   CnesResumoRow     | null;
+    sisagua: SisaguaResumoRow | null;
   }>();
 
   for (const s of siopsResumos) {
@@ -205,6 +255,7 @@ export async function executarMartSaudeConsolidado(): Promise<void> {
       uf: null,
       siops: s,
       cnes: null,
+      sisagua: sisaguaMap.get(s.codigo_municipio_ibge) ?? null,
     });
   }
   for (const c of cnesResumos) {
@@ -221,12 +272,26 @@ export async function executarMartSaudeConsolidado(): Promise<void> {
         uf: c.uf,
         siops: null,
         cnes: c,
+        sisagua: sisaguaMap.get(c.codigo_municipio_ibge) ?? null,
+      });
+    }
+  }
+  // Inclui municípios que só têm dados SISAGUA
+  for (const sg of sisaguaResumos) {
+    if (!municipioMap.has(sg.codigo_municipio_ibge)) {
+      municipioMap.set(sg.codigo_municipio_ibge, {
+        codigo: sg.codigo_municipio_ibge,
+        nome: sg.nome_municipio,
+        uf: null,
+        siops: null,
+        cnes: null,
+        sisagua: sg,
       });
     }
   }
 
-  // ── 3. Todos alertas consolidados ──
-  const todosAlertas: AlertaRow[] = [...siopsAlertas, ...cnesAlertas];
+  // ── 3. Todos alertas consolidados (SIOPS + CNES/UBS + SISAGUA) ──
+  const todosAlertas: AlertaRow[] = [...siopsAlertas, ...cnesAlertas, ...sisaguaAlertas];
 
   // Score por município
   const scoreMap = new Map<string, number>();
@@ -249,7 +314,7 @@ export async function executarMartSaudeConsolidado(): Promise<void> {
   }
 
   // ── 4. alertas_home: CRITICO/ALTO, máx 30, ordenados ──
-  const alertasHomeSource: AlertaRow[] = [...siopsAlertas, ...cnesAlertas]
+  const alertasHomeSource: AlertaRow[] = [...siopsAlertas, ...cnesAlertas, ...sisaguaAlertas]
     .filter(a => a.nivel === "CRITICO" || a.nivel === "ALTO");
 
   alertasHomeSource.sort((a, b) => {
@@ -323,6 +388,7 @@ export async function executarMartSaudeConsolidado(): Promise<void> {
       const s = m.siops;
       const c = m.cnes;
 
+      const sg = m.sisagua;
       await client.query(`
         INSERT INTO mart.saude_resumo_municipio (
           codigo_municipio_ibge, nome_municipio, uf,
@@ -333,11 +399,16 @@ export async function executarMartSaudeConsolidado(): Promise<void> {
           total_ubs, total_ubs_ativas, total_inativos,
           total_sem_atualizacao_recente, data_mais_recente_atualizacao,
           total_alertas, total_criticos, total_altos, total_medios,
-          score_risco, nivel_risco, atualizado_em
+          score_risco, nivel_risco,
+          sisagua_total_amostras, sisagua_total_fora_padrao,
+          sisagua_total_ecoli, sisagua_total_coliformes,
+          sisagua_percentual_fora_padrao, sisagua_data_ultima_coleta,
+          atualizado_em
         ) VALUES (
           $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
           $11,$12,$13,$14,$15,$16,$17,
-          $18,$19,$20,$21,$22,$23,now()
+          $18,$19,$20,$21,$22,$23,
+          $24,$25,$26,$27,$28,$29,now()
         )
         ON CONFLICT (codigo_municipio_ibge) DO UPDATE SET
           nome_municipio                = EXCLUDED.nome_municipio,
@@ -362,6 +433,12 @@ export async function executarMartSaudeConsolidado(): Promise<void> {
           total_medios                  = EXCLUDED.total_medios,
           score_risco                   = EXCLUDED.score_risco,
           nivel_risco                   = EXCLUDED.nivel_risco,
+          sisagua_total_amostras        = EXCLUDED.sisagua_total_amostras,
+          sisagua_total_fora_padrao     = EXCLUDED.sisagua_total_fora_padrao,
+          sisagua_total_ecoli           = EXCLUDED.sisagua_total_ecoli,
+          sisagua_total_coliformes      = EXCLUDED.sisagua_total_coliformes,
+          sisagua_percentual_fora_padrao = EXCLUDED.sisagua_percentual_fora_padrao,
+          sisagua_data_ultima_coleta    = EXCLUDED.sisagua_data_ultima_coleta,
           atualizado_em                 = now()
       `, [
         m.codigo, m.nome, m.uf,
@@ -386,6 +463,12 @@ export async function executarMartSaudeConsolidado(): Promise<void> {
         counts.medios,
         score,
         nivelRisco(score),
+        sg?.sisagua_total_amostras    ?? 0,
+        sg?.sisagua_total_fora_padrao ?? 0,
+        sg?.sisagua_total_ecoli       ?? 0,
+        sg?.sisagua_total_coliformes  ?? 0,
+        sg?.sisagua_percentual_fora_padrao ?? null,
+        sg?.sisagua_data_ultima_coleta ?? null,
       ]);
     }
     console.log(`[mart:saude-consolidado] ✓ saude_resumo_municipio (${municipios.length} municípios)`);

@@ -552,3 +552,117 @@ SITUACAO, STATUS, STATUS_PUBLICACAO e TIPO_LIBERACAO serão analisados após exe
 ### Integração futura
 
 A API `/api/remessas/alertas` e `/api/remessas/resumo` já estão disponíveis para integração com a tela "Alertas do Gabinete".
+
+---
+
+## SISAGUA — Qualidade da Água para Consumo Humano
+
+### Propósito
+
+Integra dados do **SISAGUA** (Sistema de Informação de Vigilância da Qualidade da Água para Consumo Humano) do Ministério da Saúde/DATASUS.
+Permite monitorar parâmetros de potabilidade da água por município, identificando amostras fora dos padrões (E. coli, coliformes, turbidez, cloro).
+
+### Datasets / Endpoints
+
+| Endpoint | Conteúdo |
+|---|---|
+| `/sisagua/controle-mensal` | Parâmetros monitorados mensalmente por sistema de abastecimento |
+| `/sisagua/vigilancia` | Registros de vigilância sanitária da qualidade da água |
+| `/sisagua/fora-padrao` | Amostras com resultados fora dos padrões (endpoint pode não estar disponível) |
+| `/sisagua/populacao-abastecida` | Estimativa de população abastecida por município/sistema (opcional) |
+
+### Periodicidade
+
+Os dados são atualizados mensalmente pelo Ministério da Saúde conforme entrega das vigilâncias municipais.
+Recomenda-se executar a carga mensalmente ou trimestralmente.
+
+### Tabelas
+
+| Tabela | Schema | Descrição |
+|---|---|---|
+| `sisagua_raw` | `raw` | Payload bruto JSON de cada registro da API |
+| `sisagua_parametros_stg` | `stage` | Parâmetros de qualidade normalizados defensivamente |
+| `sisagua_populacao_stg` | `stage` | População abastecida normalizada |
+| `fato_sisagua_parametro` | `dw` | Fato analítico de parâmetros de qualidade |
+| `fato_sisagua_populacao` | `dw` | Fato analítico de população abastecida |
+| `sisagua_resumo_municipio` | `mart` | Uma linha por município com totais de amostras e alertas |
+| `sisagua_alertas` | `mart` | Todos os alertas gerados |
+| `sisagua_alertas_home` | `mart` | Alertas CRITICO/ALTO para o card da home (máx 30) |
+| `sisagua_resumo_home` | `mart` | Totais para o card da home |
+
+As colunas `sisagua_*` foram adicionadas a `mart.saude_resumo_municipio` para consolidação no Painel da Saúde.
+
+### Tipos de alerta
+
+| Tipo | Nível | Aparece na home? | Descrição |
+|---|---|---|---|
+| `sisagua_ecoli_detectada` | CRITICO | Sim | E. coli detectada fora do padrão |
+| `sisagua_coliformes_detectados` | ALTO | Sim | Coliformes totais fora do padrão |
+| `sisagua_amostra_fora_padrao` | ALTO | Sim | Amostras fora dos padrões de potabilidade |
+| `sisagua_sem_dado_recente` | MEDIO | Não | Município sem dados no SISAGUA |
+| `sisagua_baixa_quantidade_amostras` | MEDIO | Não | Volume de amostras abaixo da mediana |
+
+### Comandos
+
+```bash
+# Inspecionar endpoints e formato real da API SISAGUA
+npm run sisagua:inspecionar
+
+# Carga completa (todos os anos configurados)
+npm run sisagua:full:postgres
+
+# Reconstruir marts (alertas, home, resumo)
+npm run mart:sisagua
+
+# Carga completa + mart em sequência
+npm run carga-sisagua:postgres
+
+# Carga completa de saúde (SIOPS + CNES/UBS + SISAGUA + consolidado)
+npm run carga-saude:postgres
+```
+
+### Variáveis de ambiente
+
+```env
+SISAGUA_API_BASE_URL=https://apidadosabertos.saude.gov.br
+SISAGUA_UF=AC
+SISAGUA_ANO_INICIO=2024
+SISAGUA_ANO_FIM=2026
+SISAGUA_TIMEOUT_MS=30000
+SISAGUA_RATE_LIMIT_MS=500
+# Resource IDs opcionais (descubra com sisagua:inspecionar)
+SISAGUA_CONTROLE_MENSAL_RESOURCE_ID=
+SISAGUA_VIGILANCIA_RESOURCE_ID=
+SISAGUA_FORA_PADRAO_RESOURCE_ID=
+SISAGUA_POPULACAO_ABASTECIDA_RESOURCE_ID=
+```
+
+### APIs server-side
+
+- `GET /api/alertas/sisagua/resumo` — resumo consolidado (uma linha)
+- `GET /api/alertas/sisagua/detalhes?nivel=CRITICO&municipio=Rio+Branco&tipo_alerta=sisagua_ecoli_detectada` — alertas com filtros opcionais
+
+### Limitações conhecidas
+
+- A disponibilidade e o formato dos endpoints da API SISAGUA podem variar. Execute `sisagua:inspecionar` antes da primeira carga para identificar os campos reais.
+- Os campos dos registros podem mudar entre versões da API (por isso o mapeamento defensivo com múltiplos candidatos por campo).
+- Municípios sem dados no SISAGUA geram alerta `sisagua_sem_dado_recente` (MEDIO).
+- O endpoint `fora-padrao` e `populacao-abastecida` podem retornar 404 — o job os ignora graciosamente.
+
+---
+
+## Painel da Saúde — Consolidação
+
+O Painel da Saúde consolida dados de **três fontes** em `mart.saude_resumo_municipio`:
+
+| Fonte | Script de carga | Mart própria |
+|---|---|---|
+| **SIOPS** — orçamento saúde | `carga-siops:postgres` | `mart.siops_resumo_municipio`, `mart.siops_alertas` |
+| **CNES/UBS** — estrutura física | `carga-cnes-ubs:postgres` | `mart.saude_estrutura_municipio`, `mart.saude_estrutura_alertas` |
+| **SISAGUA** — qualidade da água | `carga-sisagua:postgres` | `mart.sisagua_resumo_municipio`, `mart.sisagua_alertas` |
+
+O job `mart:saude-consolidado` lê das três fontes e gera:
+- `mart.saude_alertas` — todos os alertas unificados
+- `mart.saude_alertas_home` — máx 30 alertas CRITICO/ALTO para a home
+- `mart.saude_resumo_municipio` — score de risco combinado por município
+- `mart.saude_resumo_home` — totais para o card da home

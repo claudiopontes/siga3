@@ -22,30 +22,38 @@ interface SaudeResumoHome {
 }
 
 interface SaudeMunicipioResumo {
-  codigo_municipio_ibge:        string;
-  nome_municipio:               string | null;
-  uf:                           string | null;
-  siops_ano:                    number | null;
-  siops_periodo:                string | null;
-  percentual_aplicado_saude:    number | null;
-  despesa_total_saude:          number | null;
-  receita_base_calculo:         number | null;
-  siops_total_indicadores:      number;
-  siops_situacao_envio:         string | null;
-  total_estabelecimentos:       number;
-  total_estabelecimentos_sus:   number;
-  total_ubs:                    number;
-  total_ubs_ativas:             number;
-  total_inativos:               number;
+  codigo_municipio_ibge:         string;
+  nome_municipio:                string | null;
+  uf:                            string | null;
+  siops_ano:                     number | null;
+  siops_periodo:                 string | null;
+  percentual_aplicado_saude:     number | null;
+  despesa_total_saude:           number | null;
+  receita_base_calculo:          number | null;
+  siops_total_indicadores:       number;
+  siops_situacao_envio:          string | null;
+  total_estabelecimentos:        number;
+  total_estabelecimentos_sus:    number;
+  total_ubs:                     number;
+  total_ubs_ativas:              number;
+  total_inativos:                number;
   total_sem_atualizacao_recente: number;
   data_mais_recente_atualizacao: string | null;
-  total_alertas:                number;
-  total_criticos:               number;
-  total_altos:                  number;
-  total_medios:                 number;
-  score_risco:                  number;
-  nivel_risco:                  string | null;
-  atualizado_em:                string;
+  // SISAGUA
+  sisagua_total_amostras:        number | null;
+  sisagua_total_fora_padrao:     number | null;
+  sisagua_total_ecoli:           number | null;
+  sisagua_total_coliformes:      number | null;
+  sisagua_percentual_fora_padrao: number | null;
+  sisagua_data_ultima_coleta:    string | null;
+  // Alertas consolidados
+  total_alertas:                 number;
+  total_criticos:                number;
+  total_altos:                   number;
+  total_medios:                  number;
+  score_risco:                   number;
+  nivel_risco:                   string | null;
+  atualizado_em:                 string;
 }
 
 interface SaudeAlerta {
@@ -98,6 +106,13 @@ function labelPeriodo(siopsAno: number | null, siopsPerido: string | null): stri
   return `${per}/${siopsAno}`;
 }
 
+function labelFonte(fonte: string): string {
+  if (fonte === "SIOPS")    return "SIOPS";
+  if (fonte === "CNES_UBS") return "CNES/UBS";
+  if (fonte === "SISAGUA")  return "SISAGUA";
+  return fonte;
+}
+
 // ---------------------------------------------------------------------------
 // Badges
 // ---------------------------------------------------------------------------
@@ -116,7 +131,11 @@ function NivelBadge({ nivel }: { nivel: string }) {
 function FonteBadge({ fonte }: { fonte: string }) {
   if (fonte === "SIOPS")
     return <span className="inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">SIOPS</span>;
-  return <span className="inline-flex items-center rounded-full bg-teal-100 px-2 py-0.5 text-xs font-medium text-teal-700 dark:bg-teal-900/30 dark:text-teal-300">CNES/UBS</span>;
+  if (fonte === "CNES_UBS")
+    return <span className="inline-flex items-center rounded-full bg-teal-100 px-2 py-0.5 text-xs font-medium text-teal-700 dark:bg-teal-900/30 dark:text-teal-300">CNES/UBS</span>;
+  if (fonte === "SISAGUA")
+    return <span className="inline-flex items-center rounded-full bg-cyan-100 px-2 py-0.5 text-xs font-medium text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300">SISAGUA</span>;
+  return <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600 dark:bg-gray-700 dark:text-gray-300">{fonte}</span>;
 }
 
 // ---------------------------------------------------------------------------
@@ -180,7 +199,7 @@ export default function PainelSaudeClient() {
     });
   }, [municipios, buscaMunicipio, filtroRisco]);
 
-  // Alertas filtrados (client-side)
+  // Alertas filtrados por fonte (client-side)
   const alertasFiltrados = useMemo(() => {
     return alertas.filter((a) => {
       if (filtroFonte !== "todas" && a.fonte !== filtroFonte) return false;
@@ -188,32 +207,50 @@ export default function PainelSaudeClient() {
     });
   }, [alertas, filtroFonte]);
 
-  // Métricas CNES/UBS derivadas dos municípios
+  // Métricas CNES/UBS
   const cnesMetrics = useMemo(() => {
-    const totalEstab   = municipios.reduce((s, m) => s + (m.total_estabelecimentos ?? 0), 0);
-    const totalUbs     = municipios.reduce((s, m) => s + (m.total_ubs ?? 0), 0);
-    const totalUbsAt   = municipios.reduce((s, m) => s + (m.total_ubs_ativas ?? 0), 0);
-    const semUbs       = municipios.filter((m) => m.total_ubs_ativas === 0).length;
-    const baixaUbs     = municipios.filter((m) => m.total_ubs_ativas === 1).length;
+    const totalEstab = municipios.reduce((s, m) => s + (m.total_estabelecimentos ?? 0), 0);
+    const totalUbs   = municipios.reduce((s, m) => s + (m.total_ubs ?? 0), 0);
+    const totalUbsAt = municipios.reduce((s, m) => s + (m.total_ubs_ativas ?? 0), 0);
+    const semUbs     = municipios.filter((m) => m.total_ubs_ativas === 0).length;
+    const baixaUbs   = municipios.filter((m) => m.total_ubs_ativas === 1).length;
     return { totalEstab, totalUbs, totalUbsAt, semUbs, baixaUbs };
   }, [municipios]);
 
-  // SIOPS
+  // Métricas SIOPS
   const siopsMetrics = useMemo(() => {
-    const comDado  = municipios.filter((m) => m.siops_situacao_envio === "COM_DADO").length;
-    const semDado  = municipios.filter((m) => m.siops_situacao_envio === "SEM_DADO" || !m.siops_situacao_envio).length;
-    const valores  = municipios.map((m) => Number(m.percentual_aplicado_saude)).filter((v) => !isNaN(v) && v > 0);
-    const media    = valores.length > 0 ? valores.reduce((a, b) => a + b, 0) / valores.length : null;
-    const abaixo   = municipios.filter((m) => m.percentual_aplicado_saude !== null && Number(m.percentual_aplicado_saude) < 15).length;
+    const comDado = municipios.filter((m) => m.siops_situacao_envio === "COM_DADO").length;
+    const semDado = municipios.filter((m) => m.siops_situacao_envio === "SEM_DADO" || !m.siops_situacao_envio).length;
+    const valores = municipios.map((m) => Number(m.percentual_aplicado_saude)).filter((v) => !isNaN(v) && v > 0);
+    const media   = valores.length > 0 ? valores.reduce((a, b) => a + b, 0) / valores.length : null;
+    const abaixo  = municipios.filter((m) => m.percentual_aplicado_saude !== null && Number(m.percentual_aplicado_saude) < 15).length;
     return { comDado, semDado, media, abaixo };
+  }, [municipios]);
+
+  // Métricas SISAGUA agregadas de todos os municípios
+  const sisaguaMetrics = useMemo(() => {
+    const totalAmostras   = municipios.reduce((s, m) => s + (m.sisagua_total_amostras ?? 0), 0);
+    const totalForaPadrao = municipios.reduce((s, m) => s + (m.sisagua_total_fora_padrao ?? 0), 0);
+    const totalEcoli      = municipios.reduce((s, m) => s + (m.sisagua_total_ecoli ?? 0), 0);
+    const totalColiformes = municipios.reduce((s, m) => s + (m.sisagua_total_coliformes ?? 0), 0);
+    const munComFora      = municipios.filter((m) => (m.sisagua_total_fora_padrao ?? 0) > 0).length;
+    const munComEcoli     = municipios.filter((m) => (m.sisagua_total_ecoli ?? 0) > 0).length;
+    const temDados        = totalAmostras > 0;
+
+    // Data de coleta mais recente entre todos os municípios
+    const datas = municipios
+      .map((m) => m.sisagua_data_ultima_coleta)
+      .filter(Boolean) as string[];
+    const ultimaColeta = datas.length > 0
+      ? datas.sort((a, b) => b.localeCompare(a))[0]
+      : null;
+
+    return { totalAmostras, totalForaPadrao, totalEcoli, totalColiformes, munComFora, munComEcoli, ultimaColeta, temDados };
   }, [municipios]);
 
   // Toggle linha expansível
   function toggleExpandir(ibge: string) {
-    if (expandido === ibge) {
-      setExpandido(null);
-      return;
-    }
+    if (expandido === ibge) { setExpandido(null); return; }
     setExpandido(ibge);
     if (!alertasMun[ibge]) {
       setCarregandoAlerta(ibge);
@@ -222,9 +259,7 @@ export default function PainelSaudeClient() {
         .then((data: unknown) => {
           setAlertasMun((prev) => ({ ...prev, [ibge]: Array.isArray(data) ? data : [] }));
         })
-        .catch(() => {
-          setAlertasMun((prev) => ({ ...prev, [ibge]: [] }));
-        })
+        .catch(() => { setAlertasMun((prev) => ({ ...prev, [ibge]: [] })); })
         .finally(() => setCarregandoAlerta(null));
     }
   }
@@ -251,9 +286,13 @@ export default function PainelSaudeClient() {
           <div>
             <h1 className="text-xl font-bold text-gray-900 dark:text-white">Saúde Pública</h1>
             <p className="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
-              Monitoramento de aplicação em saúde, estrutura da rede e alertas dos municípios do Acre.
+              Monitoramento de aplicação em saúde, estrutura da rede e qualidade da água dos municípios do Acre.
             </p>
-            <p className="mt-0.5 text-xs text-gray-400 dark:text-gray-500">Base inicial: SIOPS + CNES/UBS.</p>
+            <div className="mt-1 flex flex-wrap gap-2">
+              <span className="inline-flex items-center gap-1 rounded-md bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-600 dark:bg-blue-900/30 dark:text-blue-300">SIOPS</span>
+              <span className="inline-flex items-center gap-1 rounded-md bg-teal-50 px-2 py-0.5 text-xs font-medium text-teal-600 dark:bg-teal-900/30 dark:text-teal-300">CNES/UBS</span>
+              <span className="inline-flex items-center gap-1 rounded-md bg-cyan-50 px-2 py-0.5 text-xs font-medium text-cyan-600 dark:bg-cyan-900/30 dark:text-cyan-300">SISAGUA</span>
+            </div>
           </div>
           {resumo && (
             <span className="rounded-lg bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-500 dark:bg-gray-700 dark:text-gray-300">
@@ -263,7 +302,7 @@ export default function PainelSaudeClient() {
         </div>
       </div>
 
-      {/* ── Cards KPI ── */}
+      {/* ── Cards KPI consolidados ── */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
         {carregando ? (
           Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)
@@ -273,29 +312,24 @@ export default function PainelSaudeClient() {
               <p className="text-xs font-medium uppercase tracking-wide text-gray-400">Municípios</p>
               <p className="mt-1 text-3xl font-bold text-gray-900 dark:text-white">{municipios.length}</p>
             </div>
-
             <div className="rounded-xl border border-red-200 bg-white p-4 dark:border-red-800/40 dark:bg-gray-800">
               <p className="text-xs font-medium uppercase tracking-wide text-red-500">Alertas críticos</p>
               <p className="mt-1 text-3xl font-bold text-red-600 dark:text-red-400">{resumo?.total_criticos ?? 0}</p>
             </div>
-
             <div className="rounded-xl border border-orange-200 bg-white p-4 dark:border-orange-800/40 dark:bg-gray-800">
               <p className="text-xs font-medium uppercase tracking-wide text-orange-500">Alertas altos</p>
               <p className="mt-1 text-3xl font-bold text-orange-600 dark:text-orange-400">{resumo?.total_altos ?? 0}</p>
             </div>
-
             <div className="rounded-xl border border-red-200 bg-white p-4 dark:border-red-800/40 dark:bg-gray-800">
               <p className="text-xs font-medium uppercase tracking-wide text-red-400">Risco crítico</p>
               <p className="mt-1 text-3xl font-bold text-red-600 dark:text-red-400">{resumo?.municipios_risco_critico ?? 0}</p>
               <p className="text-xs text-gray-400">municípios</p>
             </div>
-
             <div className="rounded-xl border border-orange-200 bg-white p-4 dark:border-orange-800/40 dark:bg-gray-800">
               <p className="text-xs font-medium uppercase tracking-wide text-orange-400">Risco alto</p>
               <p className="mt-1 text-3xl font-bold text-orange-600 dark:text-orange-400">{resumo?.municipios_risco_alto ?? 0}</p>
               <p className="text-xs text-gray-400">municípios</p>
             </div>
-
             <div className="rounded-xl border border-blue-200 bg-white p-4 dark:border-blue-800/40 dark:bg-gray-800">
               <p className="text-xs font-medium uppercase tracking-wide text-blue-400">Período SIOPS</p>
               <p className="mt-1 text-lg font-bold text-blue-600 dark:text-blue-400">
@@ -303,6 +337,74 @@ export default function PainelSaudeClient() {
               </p>
             </div>
           </>
+        )}
+      </div>
+
+      {/* ── SISAGUA — Qualidade da Água ── */}
+      <div className="rounded-2xl border border-cyan-200 bg-white shadow-sm dark:border-cyan-800/40 dark:bg-slate-800">
+        <div className="border-b border-cyan-100 px-5 py-3 dark:border-cyan-800/30">
+          <h2 className="text-sm font-semibold text-cyan-700 dark:text-cyan-300">
+            Qualidade da Água — SISAGUA
+          </h2>
+          <p className="mt-0.5 text-xs text-slate-400">
+            Monitoramento de amostras, parâmetros fora do padrão e sinais de risco sanitário.
+          </p>
+        </div>
+
+        {carregando ? (
+          <div className="grid grid-cols-2 gap-3 p-5 sm:grid-cols-3 lg:grid-cols-6">
+            {Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)}
+          </div>
+        ) : !sisaguaMetrics.temDados ? (
+          <div className="p-6 text-center text-sm text-slate-400">
+            Sem dados SISAGUA carregados — execute <code className="rounded bg-slate-100 px-1 dark:bg-slate-700">npm run carga-sisagua:postgres</code> para carregar.
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-3 p-5 sm:grid-cols-3 lg:grid-cols-6">
+            <div className="rounded-xl border border-cyan-100 bg-cyan-50 p-4 dark:border-cyan-900/30 dark:bg-cyan-900/10">
+              <p className="text-xs font-medium uppercase tracking-wide text-cyan-600 dark:text-cyan-400">Total amostras</p>
+              <p className="mt-1 text-2xl font-bold text-cyan-700 dark:text-cyan-300">{fmtNum(sisaguaMetrics.totalAmostras)}</p>
+            </div>
+
+            <div className={`rounded-xl border p-4 ${sisaguaMetrics.totalForaPadrao > 0 ? "border-orange-200 bg-orange-50 dark:border-orange-800/40 dark:bg-orange-900/10" : "border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"}`}>
+              <p className={`text-xs font-medium uppercase tracking-wide ${sisaguaMetrics.totalForaPadrao > 0 ? "text-orange-600 dark:text-orange-400" : "text-gray-400"}`}>Fora do padrão</p>
+              <p className={`mt-1 text-2xl font-bold ${sisaguaMetrics.totalForaPadrao > 0 ? "text-orange-700 dark:text-orange-300" : "text-gray-700 dark:text-gray-200"}`}>
+                {fmtNum(sisaguaMetrics.totalForaPadrao)}
+              </p>
+              <p className="text-xs text-gray-400">amostras</p>
+            </div>
+
+            <div className={`rounded-xl border p-4 ${sisaguaMetrics.totalEcoli > 0 ? "border-red-200 bg-red-50 dark:border-red-800/40 dark:bg-red-900/10" : "border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"}`}>
+              <p className={`text-xs font-medium uppercase tracking-wide ${sisaguaMetrics.totalEcoli > 0 ? "text-red-600 dark:text-red-400" : "text-gray-400"}`}>E. coli</p>
+              <p className={`mt-1 text-2xl font-bold ${sisaguaMetrics.totalEcoli > 0 ? "text-red-700 dark:text-red-300" : "text-gray-700 dark:text-gray-200"}`}>
+                {fmtNum(sisaguaMetrics.totalEcoli)}
+              </p>
+              <p className="text-xs text-gray-400">registros</p>
+            </div>
+
+            <div className={`rounded-xl border p-4 ${sisaguaMetrics.totalColiformes > 0 ? "border-orange-200 bg-orange-50 dark:border-orange-800/40 dark:bg-orange-900/10" : "border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"}`}>
+              <p className={`text-xs font-medium uppercase tracking-wide ${sisaguaMetrics.totalColiformes > 0 ? "text-orange-600 dark:text-orange-400" : "text-gray-400"}`}>Coliformes</p>
+              <p className={`mt-1 text-2xl font-bold ${sisaguaMetrics.totalColiformes > 0 ? "text-orange-700 dark:text-orange-300" : "text-gray-700 dark:text-gray-200"}`}>
+                {fmtNum(sisaguaMetrics.totalColiformes)}
+              </p>
+              <p className="text-xs text-gray-400">registros</p>
+            </div>
+
+            <div className={`rounded-xl border p-4 ${sisaguaMetrics.munComFora > 0 ? "border-orange-200 bg-orange-50 dark:border-orange-800/40 dark:bg-orange-900/10" : "border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"}`}>
+              <p className={`text-xs font-medium uppercase tracking-wide ${sisaguaMetrics.munComFora > 0 ? "text-orange-600 dark:text-orange-400" : "text-gray-400"}`}>Municípios c/ alerta</p>
+              <p className={`mt-1 text-2xl font-bold ${sisaguaMetrics.munComFora > 0 ? "text-orange-700 dark:text-orange-300" : "text-gray-700 dark:text-gray-200"}`}>
+                {sisaguaMetrics.munComFora}
+              </p>
+              <p className="text-xs text-gray-400">fora do padrão</p>
+            </div>
+
+            <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
+              <p className="text-xs font-medium uppercase tracking-wide text-gray-400">Última coleta</p>
+              <p className="mt-1 text-sm font-bold text-gray-700 dark:text-gray-200">
+                {sisaguaMetrics.ultimaColeta ? fmtData(sisaguaMetrics.ultimaColeta) : "Sem dado"}
+              </p>
+            </div>
+          </div>
         )}
       </div>
 
@@ -334,6 +436,7 @@ export default function PainelSaudeClient() {
           <option value="todas">Todas as fontes</option>
           <option value="SIOPS">SIOPS</option>
           <option value="CNES_UBS">CNES/UBS</option>
+          <option value="SISAGUA">SISAGUA</option>
         </select>
       </div>
 
@@ -344,7 +447,7 @@ export default function PainelSaudeClient() {
             Municípios por nível de risco consolidado
           </h2>
           <p className="mt-0.5 text-xs text-slate-400">
-            Ordenado por prioridade de atenção — combina alertas de orçamento (SIOPS) e estrutura da rede (CNES/UBS)
+            Ordenado por prioridade — combina alertas de orçamento (SIOPS), estrutura da rede (CNES/UBS) e qualidade da água (SISAGUA)
           </p>
         </div>
 
@@ -362,11 +465,11 @@ export default function PainelSaudeClient() {
                   <th className="px-4 py-3">Nível de risco</th>
                   <th className="px-4 py-3">Alertas</th>
                   <th className="px-4 py-3">
-                    <span>% aplicado em saúde</span>
+                    <span>% saúde</span>
                     <span className="ml-1 font-normal normal-case text-slate-400">(mín. 15%)</span>
                   </th>
                   <th className="px-4 py-3">Rede SUS</th>
-                  <th className="px-4 py-3">Atualiz. CNES</th>
+                  <th className="px-4 py-3">Água — SISAGUA</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
@@ -377,20 +480,22 @@ export default function PainelSaudeClient() {
                   const munAlertas = alertasMun[m.codigo_municipio_ibge] ?? [];
                   const carregandoEste = carregandoAlerta === m.codigo_municipio_ibge;
 
+                  const sAmostras   = m.sisagua_total_amostras ?? 0;
+                  const sFora       = m.sisagua_total_fora_padrao ?? 0;
+                  const sEcoli      = m.sisagua_total_ecoli ?? 0;
+                  const sColiformes = m.sisagua_total_coliformes ?? 0;
+                  const temSisagua  = sAmostras > 0;
+
                   return (
-                    <>
-                      {/* ── Linha principal (clicável) ── */}
+                    <React.Fragment key={m.codigo_municipio_ibge}>
                       <tr
-                        key={m.codigo_municipio_ibge}
+                        onClick={() => toggleExpandir(m.codigo_municipio_ibge)}
                         onClick={() => toggleExpandir(m.codigo_municipio_ibge)}
                         className="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700/40"
                       >
                         {/* Chevron */}
                         <td className="px-2 py-3 text-center text-slate-400">
-                          <svg
-                            className={`inline h-4 w-4 transition-transform ${isOpen ? "rotate-90" : ""}`}
-                            fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
-                          >
+                          <svg className={`inline h-4 w-4 transition-transform ${isOpen ? "rotate-90" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                             <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
                           </svg>
                         </td>
@@ -405,24 +510,14 @@ export default function PainelSaudeClient() {
                           <NivelBadge nivel={m.nivel_risco ?? "BAIXO"} />
                         </td>
 
-                        {/* Alertas: total + breakdown */}
+                        {/* Alertas */}
                         <td className="px-4 py-3">
-                          <span className="font-semibold text-slate-700 dark:text-slate-200">
-                            {m.total_alertas}
-                          </span>
+                          <span className="font-semibold text-slate-700 dark:text-slate-200">{m.total_alertas}</span>
                           <span className="ml-1 text-slate-400">total</span>
                           {(m.total_criticos > 0 || m.total_altos > 0) && (
                             <div className="mt-0.5 flex gap-2 text-xs">
-                              {m.total_criticos > 0 && (
-                                <span className="text-red-600 dark:text-red-400">
-                                  {m.total_criticos} crítico{m.total_criticos !== 1 ? "s" : ""}
-                                </span>
-                              )}
-                              {m.total_altos > 0 && (
-                                <span className="text-orange-600 dark:text-orange-400">
-                                  {m.total_altos} alto{m.total_altos !== 1 ? "s" : ""}
-                                </span>
-                              )}
+                              {m.total_criticos > 0 && <span className="text-red-600 dark:text-red-400">{m.total_criticos} crítico{m.total_criticos !== 1 ? "s" : ""}</span>}
+                              {m.total_altos > 0 && <span className="text-orange-600 dark:text-orange-400">{m.total_altos} alto{m.total_altos !== 1 ? "s" : ""}</span>}
                             </div>
                           )}
                         </td>
@@ -434,13 +529,9 @@ export default function PainelSaudeClient() {
                               <span className={abaixoMinimo ? "font-semibold text-red-600 dark:text-red-400" : "font-medium text-green-700 dark:text-green-400"}>
                                 {fmtPct(pctSaude)}
                               </span>
-                              {abaixoMinimo && (
-                                <div className="mt-0.5 text-xs text-red-500">abaixo do mínimo legal</div>
-                              )}
+                              {abaixoMinimo && <div className="mt-0.5 text-xs text-red-500">abaixo do mínimo legal</div>}
                             </div>
-                          ) : (
-                            <span className="text-slate-400">Sem dado</span>
-                          )}
+                          ) : <span className="text-slate-400">Sem dado</span>}
                         </td>
 
                         {/* Rede SUS */}
@@ -454,18 +545,28 @@ export default function PainelSaudeClient() {
                                 UBS ativa{m.total_ubs_ativas !== 1 ? "s" : ""}
                               </span>
                             </span>
-                            <span className="text-slate-400">
-                              {fmtNum(m.total_estabelecimentos)} estabelecimento{m.total_estabelecimentos !== 1 ? "s" : ""} no total
-                            </span>
+                            <span className="text-slate-400">{fmtNum(m.total_estabelecimentos)} estab. no total</span>
                           </div>
                         </td>
 
-                        {/* Data atualização CNES */}
-                        <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-500 dark:text-slate-400">
-                          {m.data_mais_recente_atualizacao
-                            ? fmtData(m.data_mais_recente_atualizacao)
-                            : <span className="text-slate-400">Não informada</span>
-                          }
+                        {/* Água — SISAGUA (compacto) */}
+                        <td className="px-4 py-3">
+                          {!temSisagua ? (
+                            <span className="text-xs text-slate-400">Sem dado</span>
+                          ) : (
+                            <div className="flex flex-col gap-0.5 text-xs">
+                              <span className="text-slate-500 dark:text-slate-400">
+                                {fmtNum(sAmostras)} amostras
+                                {sFora > 0 && <span className="ml-1 font-semibold text-orange-600 dark:text-orange-400">· {sFora} fora</span>}
+                              </span>
+                              {(sEcoli > 0 || sColiformes > 0) && (
+                                <span className="flex gap-2">
+                                  {sEcoli > 0 && <span className="font-semibold text-red-600 dark:text-red-400">E. coli: {sEcoli}</span>}
+                                  {sColiformes > 0 && <span className="font-semibold text-orange-600 dark:text-orange-400">Col.: {sColiformes}</span>}
+                                </span>
+                              )}
+                            </div>
+                          )}
                         </td>
                       </tr>
 
@@ -473,9 +574,9 @@ export default function PainelSaudeClient() {
                       {isOpen && (
                         <tr key={`${m.codigo_municipio_ibge}-detail`} className="bg-slate-50 dark:bg-slate-900/40">
                           <td colSpan={7} className="px-6 py-5">
-                            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
 
-                              {/* Bloco SIOPS */}
+                              {/* SIOPS */}
                               <div className="rounded-xl border border-blue-100 bg-white p-4 dark:border-blue-900/30 dark:bg-slate-800">
                                 <p className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-blue-600 dark:text-blue-400">
                                   <span className="inline-block h-2 w-2 rounded-full bg-blue-500" />
@@ -483,10 +584,8 @@ export default function PainelSaudeClient() {
                                 </p>
                                 <dl className="space-y-2 text-sm">
                                   <div className="flex justify-between">
-                                    <dt className="text-slate-500 dark:text-slate-400">Período de referência</dt>
-                                    <dd className="font-medium text-slate-700 dark:text-slate-200">
-                                      {labelPeriodo(m.siops_ano, m.siops_periodo)}
-                                    </dd>
+                                    <dt className="text-slate-500 dark:text-slate-400">Período</dt>
+                                    <dd className="font-medium text-slate-700 dark:text-slate-200">{labelPeriodo(m.siops_ano, m.siops_periodo)}</dd>
                                   </div>
                                   <div className="flex justify-between">
                                     <dt className="text-slate-500 dark:text-slate-400">% aplicado em saúde</dt>
@@ -496,19 +595,15 @@ export default function PainelSaudeClient() {
                                     </dd>
                                   </div>
                                   <div className="flex justify-between">
-                                    <dt className="text-slate-500 dark:text-slate-400">Despesa total em saúde</dt>
+                                    <dt className="text-slate-500 dark:text-slate-400">Despesa total saúde</dt>
                                     <dd className="font-medium text-slate-700 dark:text-slate-200">
-                                      {m.despesa_total_saude !== null
-                                        ? `R$ ${Number(m.despesa_total_saude).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                                        : "—"}
+                                      {m.despesa_total_saude !== null ? `R$ ${Number(m.despesa_total_saude).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—"}
                                     </dd>
                                   </div>
                                   <div className="flex justify-between">
-                                    <dt className="text-slate-500 dark:text-slate-400">Receita base de cálculo</dt>
+                                    <dt className="text-slate-500 dark:text-slate-400">Receita base</dt>
                                     <dd className="font-medium text-slate-700 dark:text-slate-200">
-                                      {m.receita_base_calculo !== null
-                                        ? `R$ ${Number(m.receita_base_calculo).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                                        : "—"}
+                                      {m.receita_base_calculo !== null ? `R$ ${Number(m.receita_base_calculo).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—"}
                                     </dd>
                                   </div>
                                   <div className="flex justify-between">
@@ -516,14 +611,13 @@ export default function PainelSaudeClient() {
                                     <dd className="font-medium">
                                       {m.siops_situacao_envio === "COM_DADO"
                                         ? <span className="text-green-600 dark:text-green-400">Enviado</span>
-                                        : <span className="text-orange-600 dark:text-orange-400">Sem dado</span>
-                                      }
+                                        : <span className="text-orange-600 dark:text-orange-400">Sem dado</span>}
                                     </dd>
                                   </div>
                                 </dl>
                               </div>
 
-                              {/* Bloco CNES/UBS */}
+                              {/* CNES/UBS */}
                               <div className="rounded-xl border border-teal-100 bg-white p-4 dark:border-teal-900/30 dark:bg-slate-800">
                                 <p className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-teal-600 dark:text-teal-400">
                                   <span className="inline-block h-2 w-2 rounded-full bg-teal-500" />
@@ -531,7 +625,7 @@ export default function PainelSaudeClient() {
                                 </p>
                                 <dl className="space-y-2 text-sm">
                                   <div className="flex justify-between">
-                                    <dt className="text-slate-500 dark:text-slate-400">Total de estabelecimentos</dt>
+                                    <dt className="text-slate-500 dark:text-slate-400">Total estabelecimentos</dt>
                                     <dd className="font-medium text-slate-700 dark:text-slate-200">{fmtNum(m.total_estabelecimentos)}</dd>
                                   </div>
                                   <div className="flex justify-between">
@@ -539,32 +633,66 @@ export default function PainelSaudeClient() {
                                     <dd className="font-medium text-slate-700 dark:text-slate-200">{fmtNum(m.total_estabelecimentos_sus)}</dd>
                                   </div>
                                   <div className="flex justify-between">
-                                    <dt className="text-slate-500 dark:text-slate-400">UBS (tipo 02) cadastradas</dt>
+                                    <dt className="text-slate-500 dark:text-slate-400">UBS cadastradas</dt>
                                     <dd className="font-medium text-slate-700 dark:text-slate-200">{fmtNum(m.total_ubs)}</dd>
                                   </div>
                                   <div className="flex justify-between">
                                     <dt className="text-slate-500 dark:text-slate-400">UBS ativas</dt>
-                                    <dd className={`font-semibold ${m.total_ubs_ativas === 0 ? "text-red-600 dark:text-red-400" : "text-green-700 dark:text-green-400"}`}>
-                                      {fmtNum(m.total_ubs_ativas)}
-                                    </dd>
+                                    <dd className={`font-semibold ${m.total_ubs_ativas === 0 ? "text-red-600 dark:text-red-400" : "text-green-700 dark:text-green-400"}`}>{fmtNum(m.total_ubs_ativas)}</dd>
                                   </div>
                                   <div className="flex justify-between">
-                                    <dt className="text-slate-500 dark:text-slate-400">Estabelecimentos inativos</dt>
-                                    <dd className={`font-semibold ${m.total_inativos > 0 ? "text-orange-600 dark:text-orange-400" : "text-slate-700 dark:text-slate-200"}`}>
-                                      {fmtNum(m.total_inativos)}
-                                    </dd>
+                                    <dt className="text-slate-500 dark:text-slate-400">Inativos</dt>
+                                    <dd className={`font-semibold ${m.total_inativos > 0 ? "text-orange-600 dark:text-orange-400" : "text-slate-700 dark:text-slate-200"}`}>{fmtNum(m.total_inativos)}</dd>
                                   </div>
                                   <div className="flex justify-between">
-                                    <dt className="text-slate-500 dark:text-slate-400">Sem atualização recente</dt>
-                                    <dd className={`font-semibold ${m.total_sem_atualizacao_recente > 0 ? "text-yellow-600 dark:text-yellow-400" : "text-slate-700 dark:text-slate-200"}`}>
-                                      {fmtNum(m.total_sem_atualizacao_recente)}
-                                    </dd>
+                                    <dt className="text-slate-500 dark:text-slate-400">Sem atualiz. recente</dt>
+                                    <dd className={`font-semibold ${m.total_sem_atualizacao_recente > 0 ? "text-yellow-600 dark:text-yellow-400" : "text-slate-700 dark:text-slate-200"}`}>{fmtNum(m.total_sem_atualizacao_recente)}</dd>
                                   </div>
                                   <div className="flex justify-between">
-                                    <dt className="text-slate-500 dark:text-slate-400">Data de atualização CNES</dt>
+                                    <dt className="text-slate-500 dark:text-slate-400">Atualiz. CNES</dt>
                                     <dd className="text-slate-600 dark:text-slate-300">{fmtData(m.data_mais_recente_atualizacao)}</dd>
                                   </div>
                                 </dl>
+                              </div>
+
+                              {/* SISAGUA */}
+                              <div className="rounded-xl border border-cyan-100 bg-white p-4 dark:border-cyan-900/30 dark:bg-slate-800">
+                                <p className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-cyan-600 dark:text-cyan-400">
+                                  <span className="inline-block h-2 w-2 rounded-full bg-cyan-500" />
+                                  SISAGUA — Qualidade da Água
+                                </p>
+                                {!temSisagua ? (
+                                  <p className="text-xs text-slate-400">Sem dados SISAGUA para este município.</p>
+                                ) : (
+                                  <dl className="space-y-2 text-sm">
+                                    <div className="flex justify-between">
+                                      <dt className="text-slate-500 dark:text-slate-400">Total de amostras</dt>
+                                      <dd className="font-medium text-slate-700 dark:text-slate-200">{fmtNum(sAmostras)}</dd>
+                                    </div>
+                                    <div className="flex justify-between">
+                                      <dt className="text-slate-500 dark:text-slate-400">Fora do padrão</dt>
+                                      <dd className={`font-semibold ${sFora > 0 ? "text-orange-600 dark:text-orange-400" : "text-green-700 dark:text-green-400"}`}>{fmtNum(sFora)}</dd>
+                                    </div>
+                                    <div className="flex justify-between">
+                                      <dt className="text-slate-500 dark:text-slate-400">% fora do padrão</dt>
+                                      <dd className={`font-semibold ${(m.sisagua_percentual_fora_padrao ?? 0) > 0 ? "text-orange-600 dark:text-orange-400" : "text-slate-700 dark:text-slate-200"}`}>
+                                        {fmtPct(m.sisagua_percentual_fora_padrao)}
+                                      </dd>
+                                    </div>
+                                    <div className="flex justify-between">
+                                      <dt className="text-slate-500 dark:text-slate-400">Registros E. coli</dt>
+                                      <dd className={`font-bold ${sEcoli > 0 ? "text-red-600 dark:text-red-400" : "text-slate-700 dark:text-slate-200"}`}>{fmtNum(sEcoli)}</dd>
+                                    </div>
+                                    <div className="flex justify-between">
+                                      <dt className="text-slate-500 dark:text-slate-400">Coliformes totais</dt>
+                                      <dd className={`font-semibold ${sColiformes > 0 ? "text-orange-600 dark:text-orange-400" : "text-slate-700 dark:text-slate-200"}`}>{fmtNum(sColiformes)}</dd>
+                                    </div>
+                                    <div className="flex justify-between">
+                                      <dt className="text-slate-500 dark:text-slate-400">Última coleta</dt>
+                                      <dd className="text-slate-600 dark:text-slate-300">{fmtData(m.sisagua_data_ultima_coleta)}</dd>
+                                    </div>
+                                  </dl>
+                                )}
                               </div>
                             </div>
 
@@ -583,13 +711,14 @@ export default function PainelSaudeClient() {
                                 <div className="divide-y divide-slate-100 dark:divide-slate-700">
                                   {munAlertas.map((a, ai) => (
                                     <div key={ai} className="flex items-start gap-3 px-4 py-3">
-                                      <div className="mt-0.5 shrink-0">
-                                        <NivelBadge nivel={a.nivel} />
-                                      </div>
+                                      <div className="mt-0.5 shrink-0"><NivelBadge nivel={a.nivel} /></div>
                                       <div className="min-w-0">
                                         <p className="text-sm text-slate-700 dark:text-slate-200">{a.descricao}</p>
                                         <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-slate-400">
                                           <FonteBadge fonte={a.fonte} />
+                                          {a.fonte === "SISAGUA" && (
+                                            <span className="text-cyan-600 dark:text-cyan-400">Qualidade da água / vigilância sanitária</span>
+                                          )}
                                           {a.valor_observado !== null && (
                                             <span>Apurado: <span className="font-medium text-slate-600 dark:text-slate-300">{fmtPct(Number(a.valor_observado))}</span></span>
                                           )}
@@ -606,7 +735,7 @@ export default function PainelSaudeClient() {
                           </td>
                         </tr>
                       )}
-                    </>
+                    </React.Fragment>
                   );
                 })}
               </tbody>
@@ -618,11 +747,10 @@ export default function PainelSaudeClient() {
       {/* ── Alertas prioritários ── */}
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-800">
         <div className="border-b border-slate-200 px-5 py-3 dark:border-slate-700">
-          <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-            Alertas prioritários
-          </h2>
+          <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Alertas prioritários</h2>
           <p className="mt-0.5 text-xs text-slate-400">
-            Até 30 alertas de nível Crítico ou Alto — SIOPS + CNES/UBS
+            Até 30 alertas de nível Crítico ou Alto — SIOPS · CNES/UBS · SISAGUA
+            {filtroFonte !== "todas" && <span className="ml-1 font-medium text-slate-500">· filtrado: {labelFonte(filtroFonte)}</span>}
           </p>
         </div>
 
@@ -646,28 +774,29 @@ export default function PainelSaudeClient() {
                   const temValores = a.valor_observado !== null || a.valor_referencia !== null;
                   return (
                     <tr key={i} className="hover:bg-slate-50 dark:hover:bg-slate-700/40">
-                      <td className="px-4 py-3">
-                        <NivelBadge nivel={a.nivel} />
-                      </td>
-                      <td className="px-4 py-3">
-                        <FonteBadge fonte={a.fonte} />
-                      </td>
+                      <td className="px-4 py-3"><NivelBadge nivel={a.nivel} /></td>
+                      <td className="px-4 py-3"><FonteBadge fonte={a.fonte} /></td>
                       <td className="whitespace-nowrap px-4 py-3 font-medium text-slate-700 dark:text-slate-200">
                         {a.nome_municipio ?? "—"}
                       </td>
                       <td className="px-4 py-3">
                         <p className="text-slate-700 dark:text-slate-200">{a.descricao}</p>
-                        {temValores && (
-                          <p className="mt-0.5 text-xs text-slate-400">
-                            {a.valor_observado !== null && (
-                              <span>Valor apurado: <span className="font-medium text-slate-600 dark:text-slate-300">{fmtPct(Number(a.valor_observado))}</span></span>
-                            )}
-                            {a.valor_observado !== null && a.valor_referencia !== null && <span className="mx-1">·</span>}
-                            {a.valor_referencia !== null && (
-                              <span>Referência: <span className="font-medium text-slate-600 dark:text-slate-300">{fmtPct(Number(a.valor_referencia))}</span></span>
-                            )}
-                          </p>
-                        )}
+                        <div className="mt-0.5 flex flex-wrap gap-x-3 text-xs text-slate-400">
+                          {a.fonte === "SISAGUA" && (
+                            <span className="text-cyan-600 dark:text-cyan-400">Qualidade da água / vigilância sanitária</span>
+                          )}
+                          {temValores && (
+                            <>
+                              {a.valor_observado !== null && (
+                                <span>Valor apurado: <span className="font-medium text-slate-600 dark:text-slate-300">{fmtPct(Number(a.valor_observado))}</span></span>
+                              )}
+                              {a.valor_observado !== null && a.valor_referencia !== null && <span>·</span>}
+                              {a.valor_referencia !== null && (
+                                <span>Referência: <span className="font-medium text-slate-600 dark:text-slate-300">{fmtPct(Number(a.valor_referencia))}</span></span>
+                              )}
+                            </>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
@@ -684,16 +813,10 @@ export default function PainelSaudeClient() {
         {/* SIOPS */}
         <div className="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-800">
           <div className="border-b border-slate-200 px-5 py-3 dark:border-slate-700">
-            <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-              Orçamento e aplicação — SIOPS
-            </h2>
-            <p className="mt-0.5 text-xs text-slate-400">
-              Período: {labelPeriodo(resumo?.siops_ano ?? null, resumo?.siops_periodo ?? null)}
-            </p>
+            <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Orçamento e aplicação — SIOPS</h2>
+            <p className="mt-0.5 text-xs text-slate-400">Período: {labelPeriodo(resumo?.siops_ano ?? null, resumo?.siops_periodo ?? null)}</p>
           </div>
-          {carregando ? (
-            <div className="p-6 text-center text-sm text-gray-400">Carregando...</div>
-          ) : (
+          {carregando ? <div className="p-6 text-center text-sm text-gray-400">Carregando...</div> : (
             <div className="space-y-3 p-5">
               <div className="flex items-center justify-between rounded-lg bg-slate-50 px-4 py-2.5 dark:bg-slate-900/40">
                 <span className="text-sm text-slate-600 dark:text-slate-300">Municípios com dado</span>
@@ -701,23 +824,15 @@ export default function PainelSaudeClient() {
               </div>
               <div className="flex items-center justify-between rounded-lg bg-slate-50 px-4 py-2.5 dark:bg-slate-900/40">
                 <span className="text-sm text-slate-600 dark:text-slate-300">Municípios sem dado recente</span>
-                <span className={`font-semibold ${siopsMetrics.semDado > 0 ? "text-orange-600 dark:text-orange-400" : "text-slate-800 dark:text-slate-100"}`}>
-                  {siopsMetrics.semDado}
-                </span>
+                <span className={`font-semibold ${siopsMetrics.semDado > 0 ? "text-orange-600 dark:text-orange-400" : "text-slate-800 dark:text-slate-100"}`}>{siopsMetrics.semDado}</span>
               </div>
               <div className="flex items-center justify-between rounded-lg bg-slate-50 px-4 py-2.5 dark:bg-slate-900/40">
                 <span className="text-sm text-slate-600 dark:text-slate-300">Média % aplicado em saúde</span>
-                <span className="font-semibold text-slate-800 dark:text-slate-100">
-                  {fmtPct(siopsMetrics.media)}
-                </span>
+                <span className="font-semibold text-slate-800 dark:text-slate-100">{fmtPct(siopsMetrics.media)}</span>
               </div>
               <div className="flex items-center justify-between rounded-lg bg-red-50 px-4 py-2.5 dark:bg-red-900/20">
-                <span className="text-sm text-slate-600 dark:text-slate-300">
-                  Abaixo do mínimo (15% — LC 141/2012)
-                </span>
-                <span className={`font-bold ${siopsMetrics.abaixo > 0 ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400"}`}>
-                  {siopsMetrics.abaixo}
-                </span>
+                <span className="text-sm text-slate-600 dark:text-slate-300">Abaixo do mínimo (15% — LC 141/2012)</span>
+                <span className={`font-bold ${siopsMetrics.abaixo > 0 ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400"}`}>{siopsMetrics.abaixo}</span>
               </div>
             </div>
           )}
@@ -726,14 +841,10 @@ export default function PainelSaudeClient() {
         {/* CNES/UBS */}
         <div className="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-800">
           <div className="border-b border-slate-200 px-5 py-3 dark:border-slate-700">
-            <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-              Estrutura da rede — CNES/UBS
-            </h2>
+            <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Estrutura da rede — CNES/UBS</h2>
             <p className="mt-0.5 text-xs text-slate-400">Fonte: Cadastro Nacional de Estabelecimentos de Saúde</p>
           </div>
-          {carregando ? (
-            <div className="p-6 text-center text-sm text-gray-400">Carregando...</div>
-          ) : (
+          {carregando ? <div className="p-6 text-center text-sm text-gray-400">Carregando...</div> : (
             <div className="space-y-3 p-5">
               <div className="flex items-center justify-between rounded-lg bg-slate-50 px-4 py-2.5 dark:bg-slate-900/40">
                 <span className="text-sm text-slate-600 dark:text-slate-300">Total estabelecimentos</span>
@@ -749,15 +860,11 @@ export default function PainelSaudeClient() {
               </div>
               <div className="flex items-center justify-between rounded-lg bg-red-50 px-4 py-2.5 dark:bg-red-900/20">
                 <span className="text-sm text-slate-600 dark:text-slate-300">Municípios sem UBS ativa</span>
-                <span className={`font-bold ${cnesMetrics.semUbs > 0 ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400"}`}>
-                  {cnesMetrics.semUbs}
-                </span>
+                <span className={`font-bold ${cnesMetrics.semUbs > 0 ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400"}`}>{cnesMetrics.semUbs}</span>
               </div>
               <div className="flex items-center justify-between rounded-lg bg-orange-50 px-4 py-2.5 dark:bg-orange-900/20">
                 <span className="text-sm text-slate-600 dark:text-slate-300">Municípios com baixa cobertura UBS</span>
-                <span className={`font-bold ${cnesMetrics.baixaUbs > 0 ? "text-orange-600 dark:text-orange-400" : "text-slate-800 dark:text-slate-100"}`}>
-                  {cnesMetrics.baixaUbs}
-                </span>
+                <span className={`font-bold ${cnesMetrics.baixaUbs > 0 ? "text-orange-600 dark:text-orange-400" : "text-slate-800 dark:text-slate-100"}`}>{cnesMetrics.baixaUbs}</span>
               </div>
             </div>
           )}
