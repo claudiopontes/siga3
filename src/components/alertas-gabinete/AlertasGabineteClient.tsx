@@ -797,11 +797,14 @@ export default function AlertasGabineteClient() {
                 ) : null}
               </div>
               <p className="mt-3 text-sm font-bold text-gray-900 dark:text-white">Saúde Pública</p>
+              <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                Alertas de aplicação, estrutura da rede, qualidade da água e vigilância epidemiológica.
+              </p>
               {semDados ? (
                 <p className="mt-1 text-xs font-medium text-gray-400 dark:text-gray-500">Dados de saúde ainda não carregados.</p>
               ) : (
                 <>
-                  <div className="mt-1 flex items-baseline gap-2">
+                  <div className="mt-2 flex items-baseline gap-2">
                     <p className="text-2xl font-bold text-gray-900 dark:text-white">{criticos}</p>
                     <span className="text-xs text-gray-400">críticos</span>
                     <span className="text-sm font-semibold text-gray-500">·</span>
@@ -811,6 +814,9 @@ export default function AlertasGabineteClient() {
                   {munCritico > 0 && (
                     <p className="mt-0.5 text-xs font-semibold text-red-600 dark:text-red-400">
                       {munCritico} {munCritico === 1 ? "município" : "municípios"} em risco crítico
+                      {(resumoSaude?.municipios_risco_alto ?? 0) > 0 && (
+                        <> · {resumoSaude!.municipios_risco_alto} em risco alto</>
+                      )}
                     </p>
                   )}
                   <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
@@ -818,7 +824,7 @@ export default function AlertasGabineteClient() {
                   </p>
                 </>
               )}
-              <p className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">SIOPS · CNES/UBS · SISAGUA</p>
+              <p className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">SIOPS · CNES/UBS · SISAGUA · InfoDengue</p>
               <Link
                 href="/painel-saude"
                 className="mt-3 inline-flex items-center gap-1 rounded-lg bg-blue-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"

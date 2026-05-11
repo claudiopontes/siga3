@@ -226,30 +226,43 @@ export async function executarMartSiops(): Promise<void> {
     }
 
     // -- Alerta 4: siops_variacao_atipica --
+    // Compara o mesmo período entre anos consecutivos (ex: 1º bim/2025 vs 1º bim/2026)
+    // para evitar comparações sem sentido entre bimestres de grandezas distintas.
     for (const [hKey, serie] of historicoValor.entries()) {
       if (serie.length < 2) continue;
-      serie.sort((a, b) => a.ano !== b.ano ? a.ano - b.ano : a.periodo.localeCompare(b.periodo));
       const codigo = hKey.split("|")[0];
       const nome = municipiosTodos.find(m => m.codigo === codigo)?.nome ?? null;
 
-      for (let i = 1; i < serie.length; i++) {
-        const anterior = serie[i - 1];
-        const atual    = serie[i];
-        if (anterior.valor === 0 || atual.valor == null) continue;
-        const variacao = Math.abs((atual.valor - anterior.valor) / anterior.valor) * 100;
-        if (variacao >= VARIACAO_ATIPICA_THRESHOLD) {
-          const nivel = variacao >= 100 ? "ALTO" : "MEDIO";
-          alertas.push({
-            ano: atual.ano, periodo: atual.periodo || null, codigo, nome,
-            tipo: "siops_variacao_atipica", nivel,
-            descricao: `Variação atípica de despesa total em saúde (${variacao.toFixed(1)}% em relação ao período anterior).`,
-            valor_obs: atual.valor, valor_ref: anterior.valor,
-            detalhe: {
-              variacao_percentual: variacao.toFixed(2),
-              periodo_anterior: `${anterior.ano}/${anterior.periodo}`,
-              valor_anterior: anterior.valor,
-            },
-          });
+      // Agrupa por período
+      const porPeriodo = new Map<string, { ano: number; valor: number }[]>();
+      for (const s of serie) {
+        const p = s.periodo ?? "";
+        if (!porPeriodo.has(p)) porPeriodo.set(p, []);
+        porPeriodo.get(p)!.push({ ano: s.ano, valor: s.valor });
+      }
+
+      for (const [periodo, entradas] of porPeriodo.entries()) {
+        if (entradas.length < 2) continue;
+        entradas.sort((a, b) => a.ano - b.ano);
+        for (let i = 1; i < entradas.length; i++) {
+          const anterior = entradas[i - 1];
+          const atual    = entradas[i];
+          if (anterior.valor === 0 || atual.valor == null) continue;
+          const variacao = Math.abs((atual.valor - anterior.valor) / anterior.valor) * 100;
+          if (variacao >= VARIACAO_ATIPICA_THRESHOLD) {
+            const nivel = variacao >= 100 ? "ALTO" : "MEDIO";
+            alertas.push({
+              ano: atual.ano, periodo: periodo || null, codigo, nome,
+              tipo: "siops_variacao_atipica", nivel,
+              descricao: `Variação atípica de despesa total em saúde (${variacao.toFixed(1)}% em relação ao mesmo período do ano anterior).`,
+              valor_obs: atual.valor, valor_ref: anterior.valor,
+              detalhe: {
+                variacao_percentual: variacao.toFixed(2),
+                periodo_anterior: `${anterior.ano}/${periodo}`,
+                valor_anterior: anterior.valor,
+              },
+            });
+          }
         }
       }
     }

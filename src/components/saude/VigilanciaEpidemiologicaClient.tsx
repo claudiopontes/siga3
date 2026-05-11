@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useEffect, useState, useMemo } from "react";
-import Link from "next/link";
 import dynamic from "next/dynamic";
 import { ApexOptions } from "apexcharts";
 
@@ -221,44 +220,6 @@ export default function VigilanciaEpidemiologicaClient() {
   return (
     <div className="space-y-5">
 
-      {/* ── Cabeçalho ── */}
-      <div className="rounded-xl border border-gray-200 bg-white px-5 py-4 dark:border-gray-700 dark:bg-gray-800">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <div className="mb-2">
-              <Link
-                href="/painel-saude"
-                className="inline-flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
-              >
-                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-                </svg>
-                Voltar para Saúde Pública
-              </Link>
-            </div>
-            <h1 className="text-xl font-bold text-gray-900 dark:text-white">Vigilância Epidemiológica</h1>
-            <p className="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
-              Monitoramento de dengue, chikungunya e zika com base nos alertas do InfoDengue.
-            </p>
-            <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
-              Fonte:{" "}
-              <span className="font-medium text-rose-600 dark:text-rose-400">InfoDengue</span>
-              {" · "}
-              <span>Arboviroses</span>
-              {resumo?.semana_epidemiologica && (
-                <>{" · "}<span>Semana epidemiológica {resumo.semana_epidemiologica}/{resumo.ano_epidemiologico}</span></>
-              )}
-            </p>
-          </div>
-          {resumo && (
-            <span className="rounded-lg bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-500 dark:bg-gray-700 dark:text-gray-300">
-              {resumo.semana_epidemiologica
-                ? `SE ${resumo.semana_epidemiologica}/${resumo.ano_epidemiologico}`
-                : "Dados carregados"}
-            </span>
-          )}
-        </div>
-      </div>
 
       {/* ── Estado vazio ── */}
       {semVazio && (

@@ -124,6 +124,9 @@ export default function UserDropdown() {
           <span className="mt-0.5 block text-theme-xs text-gray-500 dark:text-gray-400">
             {email}
           </span>
+          <span className="mt-1 block text-theme-xs text-gray-400 dark:text-gray-500">
+            Gabinete do Cons. Ronald Polanco Ribeiro
+          </span>
         </div>
 
         <ul className="flex flex-col gap-1 pt-4 pb-3 border-b border-gray-200 dark:border-gray-800">

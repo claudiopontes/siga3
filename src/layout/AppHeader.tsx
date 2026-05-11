@@ -23,6 +23,7 @@ const AppHeader: React.FC = () => {
   const isEmpenhoPage = pathname === "/painel-combustivel-empenhos";
   const isReceitaPage = pathname === "/painel-receita-publica";
   const isDespesaPage = pathname === "/painel-despesa";
+  const isSaudePage   = pathname === "/painel-saude";
 
   const breadcrumbs: Record<string, { crumbs: { label: string; href?: string }[] }> = {
     "/": { crumbs: [{ label: "Home" }] },
@@ -36,6 +37,7 @@ const AppHeader: React.FC = () => {
     "/painel-saude": { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "Saúde Pública" }] },
     "/painel-saude/qualidade-agua": { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "Saúde Pública", href: "/painel-saude" }, { label: "Qualidade da Água" }] },
     "/painel-saude/vigilancia": { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "Saúde Pública", href: "/painel-saude" }, { label: "Vigilância Epidemiológica" }] },
+    "/painel-saude/orcamento": { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "Saúde Pública", href: "/painel-saude" }, { label: "Orçamento e Aplicação" }] },
     "/gabinete-digital/mapa": { crumbs: [{ label: "Home", href: "/" }, { label: "Mapa IDEB" }] },
     "/calendar": { crumbs: [{ label: "Home", href: "/" }, { label: "Agenda" }] },
     "/profile": { crumbs: [{ label: "Home", href: "/" }, { label: "Perfil" }] },
@@ -84,13 +86,56 @@ const AppHeader: React.FC = () => {
           </button>
 
           <div className="hidden min-w-0 flex-col lg:flex">
-            <span className="truncate text-sm font-semibold text-gray-700 dark:text-gray-200">
-              Gabinete do Cons. Ronald Polanco Ribeiro
-            </span>
             {isDespesaPage && (
               <Suspense fallback={null}>
                 <DespesaSubtitle />
               </Suspense>
+            )}
+            {isSaudePage && (
+              <div className="flex flex-col">
+                <span className="truncate text-sm text-gray-600 dark:text-gray-300">
+                  Orçamento, estrutura de rede e vigilância sanitária municipal.
+                </span>
+                <span className="text-xs text-gray-400 dark:text-gray-500">
+                  <span className="font-medium text-blue-600 dark:text-blue-400">SIOPS</span>
+                  {" · "}
+                  <span className="font-medium text-teal-600 dark:text-teal-400">CNES/UBS</span>
+                  {" · "}
+                  <span className="font-medium text-cyan-600 dark:text-cyan-400">SISAGUA</span>
+                </span>
+              </div>
+            )}
+            {pathname === "/painel-saude/qualidade-agua" && (
+              <div className="flex flex-col">
+                <span className="truncate text-sm text-gray-600 dark:text-gray-300">
+                  Amostras, parâmetros fora do padrão e risco sanitário nos municípios.
+                </span>
+                <span className="text-xs text-gray-400 dark:text-gray-500">
+                  <span className="font-medium text-cyan-600 dark:text-cyan-400">SISAGUA</span>
+                </span>
+              </div>
+            )}
+            {pathname === "/painel-saude/vigilancia" && (
+              <div className="flex flex-col">
+                <span className="truncate text-sm text-gray-600 dark:text-gray-300">
+                  Alertas semanais de dengue, chikungunya e zika por município.
+                </span>
+                <span className="text-xs text-gray-400 dark:text-gray-500">
+                  <span className="font-medium text-rose-600 dark:text-rose-400">InfoDengue</span>
+                  {" · "}Arboviroses
+                </span>
+              </div>
+            )}
+            {pathname === "/painel-saude/orcamento" && (
+              <div className="flex flex-col">
+                <span className="truncate text-sm text-gray-600 dark:text-gray-300">
+                  Aplicação mínima em saúde, despesa total e alertas orçamentários.
+                </span>
+                <span className="text-xs text-gray-400 dark:text-gray-500">
+                  <span className="font-medium text-blue-600 dark:text-blue-400">SIOPS</span>
+                  {" · "}Aplicação em saúde
+                </span>
+              </div>
             )}
           </div>
 
@@ -142,7 +187,7 @@ const AppHeader: React.FC = () => {
                 <React.Fragment key={i}>
                   {i > 0 && <span className="text-gray-300 dark:text-gray-600">/</span>}
                   {crumb.href ? (
-                    <Link href={crumb.href} className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300">
+                    <Link href={crumb.href} className="text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300">
                       {crumb.label}
                     </Link>
                   ) : i === currentCrumbs.length - 1 ? (
