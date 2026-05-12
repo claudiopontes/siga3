@@ -19,7 +19,7 @@
  */
 
 import "dotenv/config";
-import { pgQuery, closePgPool } from "../connectors/postgres";
+import { pgQuery, withPgTransaction, closePgPool } from "../connectors/postgres";
 
 // ---------------------------------------------------------------------------
 // Configuração
@@ -396,57 +396,101 @@ async function carregarPopulacao(ano: number): Promise<number> {
 async function promoverParaDw(): Promise<{ parametros: number; populacao: number }> {
   console.log("[sisagua:full] Promovendo stage → dw...");
 
-  const [pRow] = await pgQuery<{ n: string }>(
-    `INSERT INTO dw.fato_sisagua_parametro
-       (endpoint, uf, codigo_municipio_ibge, nome_municipio,
-        ano, mes, competencia, parametro, resultado, valor, unidade,
-        fora_padrao, data_coleta, forma_abastecimento, sistema_abastecimento, ponto_coleta)
-     SELECT
-       endpoint, uf, codigo_municipio_ibge, nome_municipio,
-       ano, mes, competencia, parametro, resultado, valor, unidade,
-       fora_padrao, data_coleta, forma_abastecimento, sistema_abastecimento, ponto_coleta
-     FROM stage.sisagua_parametros_stg
-     ON CONFLICT DO NOTHING
-     RETURNING count(*)::text AS n`
-  ).catch(async () => {
-    // Fallback: insere tudo da stage
-    const rows = await pgQuery<{ n: string }>(
-      `WITH ins AS (
-         INSERT INTO dw.fato_sisagua_parametro
-           (endpoint, uf, codigo_municipio_ibge, nome_municipio,
-            ano, mes, competencia, parametro, resultado, valor, unidade,
-            fora_padrao, data_coleta, forma_abastecimento, sistema_abastecimento, ponto_coleta)
-         SELECT
-           endpoint, uf, codigo_municipio_ibge, nome_municipio,
-           ano, mes, competencia, parametro, resultado, valor, unidade,
-           fora_padrao, data_coleta, forma_abastecimento, sistema_abastecimento, ponto_coleta
-         FROM stage.sisagua_parametros_stg
-         RETURNING 1
-       )
-       SELECT count(*)::text AS n FROM ins`
+  // ── Parâmetros de qualidade ────────────────────────────────────────────────
+
+  // 1. Verifica se a stage tem dados
+  const [stageCount] = await pgQuery<{ n: string }>(
+    `SELECT count(*)::text AS n FROM stage.sisagua_parametros_stg`
+  );
+  const totalStage = parseInt(stageCount?.n ?? "0", 10);
+
+  if (totalStage === 0) {
+    console.log("[sisagua:full] ALERTA: stage.sisagua_parametros_stg está vazia — nenhum dado para promover ao dw.");
+    return { parametros: 0, populacao: 0 };
+  }
+
+  // 2. Coleta competências distintas presentes na stage atual
+  const competenciasRows = await pgQuery<{ competencia: string | null }>(
+    `SELECT DISTINCT competencia FROM stage.sisagua_parametros_stg`
+  );
+  const competencias = competenciasRows
+    .map((r) => r.competencia)
+    .filter((c): c is string => c !== null && c !== "");
+
+  if (competencias.length === 0) {
+    console.log("[sisagua:full] ALERTA: stage não contém competências válidas — abortando promoção ao dw para evitar limpeza incorreta.");
+    return { parametros: 0, populacao: 0 };
+  }
+
+  console.log(`[sisagua:full] Competências na stage (${competencias.length}): ${competencias.slice(0, 10).join(", ")}${competencias.length > 10 ? " ..." : ""}`);
+
+  // 3. DELETE + INSERT em transação por competência
+  let parametros = 0;
+  await withPgTransaction(async (client) => {
+    // Remove do dw somente as competências que serão reprocessadas
+    const placeholders = competencias.map((_, i) => `$${i + 1}`).join(", ");
+    const { rowCount: deletados } = await client.query(
+      `DELETE FROM dw.fato_sisagua_parametro WHERE competencia IN (${placeholders})`,
+      competencias
     );
-    return rows;
+    console.log(`[sisagua:full] dw.fato_sisagua_parametro: ${deletados ?? 0} registros removidos (competências reprocessadas).`);
+
+    // Insere os dados limpos da stage atual
+    const { rowCount: inseridos } = await client.query(
+      `INSERT INTO dw.fato_sisagua_parametro
+         (endpoint, uf, codigo_municipio_ibge, nome_municipio,
+          ano, mes, competencia, parametro, resultado, valor, unidade,
+          fora_padrao, data_coleta, forma_abastecimento, sistema_abastecimento, ponto_coleta)
+       SELECT
+         endpoint, uf, codigo_municipio_ibge, nome_municipio,
+         ano, mes, competencia, parametro, resultado, valor, unidade,
+         fora_padrao, data_coleta, forma_abastecimento, sistema_abastecimento, ponto_coleta
+       FROM stage.sisagua_parametros_stg`
+    );
+    parametros = inseridos ?? 0;
   });
 
-  const parametros = parseInt(pRow?.n ?? "0", 10);
   console.log(`[sisagua:full] ✓ dw.fato_sisagua_parametro: ${parametros} registros inseridos.`);
 
-  const [popRow] = await pgQuery<{ n: string }>(
-    `WITH ins AS (
-       INSERT INTO dw.fato_sisagua_populacao
-         (uf, codigo_municipio_ibge, nome_municipio, ano, mes, competencia,
-          populacao_abastecida, forma_abastecimento, sistema_abastecimento)
-       SELECT
-         uf, codigo_municipio_ibge, nome_municipio, ano, mes, competencia,
-         populacao_abastecida, forma_abastecimento, sistema_abastecimento
-       FROM stage.sisagua_populacao_stg
-       ON CONFLICT DO NOTHING
-       RETURNING 1
-     )
-     SELECT count(*)::text AS n FROM ins`
-  ).catch(() => [{ n: "0" }] as Array<{ n: string }>);
+  // ── População abastecida ───────────────────────────────────────────────────
 
-  const populacao = parseInt(popRow?.n ?? "0", 10);
+  const [popStageCount] = await pgQuery<{ n: string }>(
+    `SELECT count(*)::text AS n FROM stage.sisagua_populacao_stg`
+  );
+  const totalPopStage = parseInt(popStageCount?.n ?? "0", 10);
+
+  let populacao = 0;
+  if (totalPopStage === 0) {
+    console.log("[sisagua:full] Aviso: stage.sisagua_populacao_stg vazia — nenhum dado de população para promover.");
+  } else {
+    const popCompRows = await pgQuery<{ competencia: string | null }>(
+      `SELECT DISTINCT competencia FROM stage.sisagua_populacao_stg`
+    );
+    const popCompetencias = popCompRows
+      .map((r) => r.competencia)
+      .filter((c): c is string => c !== null && c !== "");
+
+    await withPgTransaction(async (client) => {
+      if (popCompetencias.length > 0) {
+        const placeholders = popCompetencias.map((_, i) => `$${i + 1}`).join(", ");
+        await client.query(
+          `DELETE FROM dw.fato_sisagua_populacao WHERE competencia IN (${placeholders})`,
+          popCompetencias
+        );
+      }
+      const { rowCount: inseridos } = await client.query(
+        `INSERT INTO dw.fato_sisagua_populacao
+           (uf, codigo_municipio_ibge, nome_municipio, ano, mes, competencia,
+            populacao_abastecida, forma_abastecimento, sistema_abastecimento)
+         SELECT
+           uf, codigo_municipio_ibge, nome_municipio, ano, mes, competencia,
+           populacao_abastecida, forma_abastecimento, sistema_abastecimento
+         FROM stage.sisagua_populacao_stg`
+      );
+      populacao = inseridos ?? 0;
+    });
+  }
+
   console.log(`[sisagua:full] ✓ dw.fato_sisagua_populacao: ${populacao} registros inseridos.`);
 
   return { parametros, populacao };
@@ -468,6 +512,15 @@ export async function executarSisaguaFull(): Promise<void> {
      RETURNING id`
   ).catch(() => [{ id: 0 }] as Array<{ id: number }>);
   const cargaId = cargaRow?.id ?? 0;
+
+  // Limpa a stage antes de cada execução para evitar acúmulo de execuções anteriores
+  await pgQuery(`TRUNCATE stage.sisagua_parametros_stg`).catch((err) => {
+    console.log(`[sisagua:full] Aviso: não foi possível truncar stage.sisagua_parametros_stg: ${(err as Error).message}`);
+  });
+  await pgQuery(`TRUNCATE stage.sisagua_populacao_stg`).catch((err) => {
+    console.log(`[sisagua:full] Aviso: não foi possível truncar stage.sisagua_populacao_stg: ${(err as Error).message}`);
+  });
+  console.log("[sisagua:full] Stage truncada. Iniciando coleta da API...");
 
   let totalParametros = 0;
   let totalPopulacao  = 0;

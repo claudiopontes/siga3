@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { RefreshCw } from "lucide-react";
+import { ETL_CONFIG, classificarCarga, type StatusCarga } from "@/lib/etl-config";
 
 interface EtlCarga {
   modulo: string;
@@ -23,25 +24,8 @@ interface EtlStatus {
   carga: EtlCarga | null;
 }
 
-const MODULO_LABEL: Record<string, string> = {
-  mart_mortalidade:          "Mortalidade (SIM/SINASC)",
-  mart_saude_consolidado:    "Saúde — Consolidado",
-  mart_siops:                "Orçamento Saúde (SIOPS)",
-  mart_pni:                  "Vacinação PNI",
-  mart_pni_cobertura:        "Cobertura Vacinal (PNI)",
-  mart_infodengue:           "Vigilância Epidemiológica (InfoDengue)",
-  mart_sisagua:              "Qualidade da Água (SISAGUA)",
-  mart_saude_estrutura:      "Estrutura da Rede (CNES/UBS)",
-  mart_remessas:             "Remessas Contábeis",
-  mart_siconfi_rreo:         "RREO (SICONFI)",
-  despesa_full_postgres:     "Despesa (Empenhos)",
-  mart_despesa:              "Mart Despesa",
-  remessas_full_postgres:    "Carga Remessas",
-  processos_gabinete:        "Processos Gabinete",
-};
-
 function labelModulo(modulo: string) {
-  return MODULO_LABEL[modulo] ?? modulo;
+  return ETL_CONFIG[modulo]?.nomeExibicao ?? modulo;
 }
 
 function formatDuracao(ms: number | null) {
@@ -67,41 +51,54 @@ function tempoRelativo(iso: string) {
   return "agora";
 }
 
-function StatusBadge({ status }: { status: string }) {
-  const s = status.toLowerCase();
-  if (s === "ok" || s === "sucesso")
+function StatusBadge({ statusCarga }: { statusCarga: StatusCarga }) {
+  if (statusCarga === "ok")
     return (
       <span className="inline-flex items-center gap-1.5 rounded-full bg-green-50 px-2.5 py-1 text-xs font-semibold text-green-700 dark:bg-green-900/20 dark:text-green-400">
         <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
         OK
       </span>
     );
-  if (s === "erro" || s === "error")
+  if (statusCarga === "erro")
     return (
       <span className="inline-flex items-center gap-1.5 rounded-full bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-700 dark:bg-red-900/20 dark:text-red-400">
         <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
         Erro
       </span>
     );
+  if (statusCarga === "pendente")
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-500 dark:bg-gray-700/40 dark:text-gray-400">
+        <span className="h-1.5 w-1.5 rounded-full bg-gray-400" />
+        Pendente
+      </span>
+    );
+  if (statusCarga === "muito_desatualizado")
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-full bg-yellow-50 px-2.5 py-1 text-xs font-semibold text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400">
+        <span className="h-1.5 w-1.5 rounded-full bg-yellow-500" />
+        Muito desatualizado
+      </span>
+    );
+  // desatualizado
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full bg-yellow-50 px-2.5 py-1 text-xs font-semibold text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-400">
-      <span className="h-1.5 w-1.5 rounded-full bg-yellow-500" />
-      {status}
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-yellow-50 px-2.5 py-1 text-xs font-semibold text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-300">
+      <span className="h-1.5 w-1.5 rounded-full bg-yellow-400" />
+      Desatualizado
     </span>
   );
 }
 
-function SemaforoIndicador({ status, executado_em }: { status: string; executado_em: string }) {
-  const s = status.toLowerCase();
-  const diasDesde = Math.floor((Date.now() - new Date(executado_em).getTime()) / 86400000);
-
-  if (s === "erro" || s === "error")
+function SemaforoIndicador({ statusCarga }: { statusCarga: StatusCarga }) {
+  if (statusCarga === "erro")
     return <span className="h-3 w-3 rounded-full bg-red-500" title="Erro na última execução" />;
-  if (diasDesde > 7)
-    return <span className="h-3 w-3 rounded-full bg-yellow-400" title="Mais de 7 dias sem atualização" />;
-  if (diasDesde > 1)
-    return <span className="h-3 w-3 rounded-full bg-yellow-300" title="Mais de 1 dia sem atualização" />;
-  return <span className="h-3 w-3 rounded-full bg-green-500" title="Atualizado recentemente" />;
+  if (statusCarga === "pendente")
+    return <span className="h-3 w-3 rounded-full bg-gray-400" title="Nunca executado" />;
+  if (statusCarga === "muito_desatualizado")
+    return <span className="h-3 w-3 rounded-full bg-yellow-500" title="Muito desatualizado (acima de 2× a tolerância)" />;
+  if (statusCarga === "desatualizado")
+    return <span className="h-3 w-3 rounded-full bg-yellow-300" title="Desatualizado (acima da tolerância configurada)" />;
+  return <span className="h-3 w-3 rounded-full bg-green-500" title="Atualizado dentro do prazo esperado" />;
 }
 
 export default function EtlStatusClient() {
@@ -130,12 +127,16 @@ export default function EtlStatusClient() {
 
   useEffect(() => { void carregar(); }, []);
 
-  const totalOk = dados.filter((d) => d.status.toLowerCase() === "ok" || d.status.toLowerCase() === "sucesso").length;
-  const totalErro = dados.filter((d) => d.status.toLowerCase() === "erro" || d.status.toLowerCase() === "error").length;
-  const totalDesatualizado = dados.filter((d) => {
-    if (d.status.toLowerCase() === "erro") return false;
-    return Math.floor((Date.now() - new Date(d.executado_em).getTime()) / 86400000) > 1;
-  }).length;
+  const dadosClassificados = dados.map((d) => ({
+    ...d,
+    statusCarga: classificarCarga(d.status, d.executado_em, d.modulo),
+  }));
+
+  const totalOk           = dadosClassificados.filter((d) => d.statusCarga === "ok").length;
+  const totalErro         = dadosClassificados.filter((d) => d.statusCarga === "erro").length;
+  const totalDesatualizado = dadosClassificados.filter(
+    (d) => d.statusCarga === "desatualizado" || d.statusCarga === "muito_desatualizado"
+  ).length;
 
   return (
     <div className="space-y-6">
@@ -210,6 +211,7 @@ export default function EtlStatusClient() {
               <tr className="border-b border-gray-100 bg-gray-50 dark:border-gray-700 dark:bg-gray-900/40">
                 <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Base / Módulo</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Status</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Periodicidade</th>
                 <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Registros</th>
                 <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Duração</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Última execução</th>
@@ -217,35 +219,47 @@ export default function EtlStatusClient() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50 dark:divide-gray-700/50">
-              {dados.map((item) => (
-                <tr key={item.modulo} className="hover:bg-gray-50 dark:hover:bg-gray-800/60">
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <SemaforoIndicador status={item.status} executado_em={item.executado_em} />
-                      <div>
-                        <p className="font-medium text-gray-900 dark:text-white">{labelModulo(item.modulo)}</p>
-                        <p className="text-xs text-gray-400 dark:text-gray-500 font-mono">{item.modulo}</p>
+              {dadosClassificados.map((item) => {
+                const config = ETL_CONFIG[item.modulo];
+                return (
+                  <tr key={item.modulo} className="hover:bg-gray-50 dark:hover:bg-gray-800/60">
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <SemaforoIndicador statusCarga={item.statusCarga} />
+                        <div>
+                          <p className="font-medium text-gray-900 dark:text-white">{labelModulo(item.modulo)}</p>
+                          <p className="text-xs text-gray-400 dark:text-gray-500 font-mono">{item.modulo}</p>
+                        </div>
                       </div>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <StatusBadge status={item.status} />
-                  </td>
-                  <td className="px-4 py-3 text-right font-mono text-xs text-gray-700 dark:text-gray-300">
-                    {item.registros > 0 ? item.registros.toLocaleString("pt-BR") : "—"}
-                  </td>
-                  <td className="px-4 py-3 text-right font-mono text-xs text-gray-700 dark:text-gray-300">
-                    {formatDuracao(item.duracao_ms)}
-                  </td>
-                  <td className="px-4 py-3">
-                    <p className="text-xs font-medium text-gray-700 dark:text-gray-300">{formatDataHora(item.executado_em)}</p>
-                    <p className="text-xs text-gray-400 dark:text-gray-500">{tempoRelativo(item.executado_em)}</p>
-                  </td>
-                  <td className="max-w-xs px-4 py-3 text-xs text-gray-500 dark:text-gray-400">
-                    {item.mensagem ?? "—"}
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td className="px-4 py-3">
+                      <StatusBadge statusCarga={item.statusCarga} />
+                    </td>
+                    <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400">
+                      {config ? (
+                        <span title={`Tolerância: ${config.toleranciaDias} dia(s)`}>
+                          {config.periodicidade}
+                        </span>
+                      ) : (
+                        <span className="text-gray-300 dark:text-gray-600">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-right font-mono text-xs text-gray-700 dark:text-gray-300">
+                      {item.registros > 0 ? item.registros.toLocaleString("pt-BR") : "—"}
+                    </td>
+                    <td className="px-4 py-3 text-right font-mono text-xs text-gray-700 dark:text-gray-300">
+                      {formatDuracao(item.duracao_ms)}
+                    </td>
+                    <td className="px-4 py-3">
+                      <p className="text-xs font-medium text-gray-700 dark:text-gray-300">{formatDataHora(item.executado_em)}</p>
+                      <p className="text-xs text-gray-400 dark:text-gray-500">{tempoRelativo(item.executado_em)}</p>
+                    </td>
+                    <td className="max-w-xs px-4 py-3 text-xs text-gray-500 dark:text-gray-400">
+                      {item.mensagem ?? "—"}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
