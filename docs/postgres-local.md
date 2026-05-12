@@ -937,3 +937,122 @@ etl/data/pni/cobertura/2026/
 ```
 
 Execute `npm run carga-pni-cobertura:postgres` após adicionar novos arquivos.
+
+---
+
+## SIM/SINASC — Mortalidade e Nascidos Vivos
+
+**Finalidade:** Monitorar indicadores de mortalidade infantil, materna, fetal e neonatal, além da qualidade da assistência ao nascimento (pré-natal, baixo peso, parto cesáreo), com base no SIM (Sistema de Informação sobre Mortalidade) e SINASC (Sistema de Informação sobre Nascidos Vivos) do DATASUS.
+
+**Fontes:**
+- OpenDataSUS CKAN: `https://opendatasus.saude.gov.br`
+- API alternativa: `https://apidadosabertos.saude.gov.br`
+- URLs diretas de CSV (fallback, configurável em `SIM_DIRECT_URLS` e `SINASC_DIRECT_URLS`)
+
+**Filtro:** registros com UF de residência = AC ou código município iniciado em `12`.
+
+**Periodicidade:** Anual (dados homologados com ~12–18 meses de defasagem).
+
+### Codificação de idade do SIM (DATASUS)
+
+| Código | Significado |
+|--------|-------------|
+| `1XX` | Dias de vida (XX = número de dias) |
+| `2XX` | Meses de vida (XX = número de meses) |
+| `4XX` | Anos de vida (XX = número de anos) |
+| `5XX` | ≥ 100 anos |
+
+### Tabelas
+
+| Camada | Tabela | Descrição |
+|--------|--------|-----------|
+| raw    | `raw.sim_obitos_raw` | Payload bruto JSON/CSV do SIM por óbito |
+| raw    | `raw.sinasc_nascidos_raw` | Payload bruto JSON/CSV do SINASC por nascido vivo |
+| stage  | `stage.sim_obitos_stg` | Óbitos normalizados: idade em dias/anos, faixas, flags booleanos |
+| stage  | `stage.sinasc_nascidos_stg` | Nascidos normalizados: peso, pré-natal, parto, anomalias |
+| dw     | `dw.fato_sim_obito` | Fatos analíticos de óbitos (por município de residência) |
+| dw     | `dw.fato_sinasc_nascido` | Fatos analíticos de nascidos vivos |
+| mart   | `mart.mortalidade_resumo_municipio` | Taxas e indicadores por município × ano |
+| mart   | `mart.mortalidade_alertas` | Todos os alertas gerados |
+| mart   | `mart.mortalidade_alertas_home` | Máx 30 alertas CRITICO/ALTO para a home |
+| mart   | `mart.mortalidade_resumo_home` | Totais estaduais para o card da home |
+
+Campos `mortalidade_*` foram adicionados a `mart.saude_resumo_municipio` para consolidação no Painel da Saúde.
+
+### Indicadores calculados
+
+| Indicador | Fórmula | Unidade |
+|-----------|---------|---------|
+| Taxa de Mortalidade Infantil (TMI) | óbitos < 1 ano / nascidos vivos × 1000 | por mil NV |
+| Taxa de Mortalidade Neonatal (TMN) | óbitos < 28 dias / nascidos vivos × 1000 | por mil NV |
+| Taxa de Mortalidade Pós-Neonatal | óbitos 28–364 dias / nascidos vivos × 1000 | por mil NV |
+| % Baixo Peso | nascidos com peso < 2.500g / total NV × 100 | % |
+| % Pré-natal Insuficiente | NV com < 7 consultas / total NV × 100 | % |
+| % Parto Cesáreo | NV por cesárea / total NV × 100 | % |
+
+### Alertas gerados
+
+| Tipo | Nível | Condição |
+|------|-------|----------|
+| `mortalidade_infantil_alta` | CRITICO/ALTO | TMI > mediana estadual × 2 (CRITICO) ou × 1,5 (ALTO) |
+| `obito_materno_registrado` | CRITICO | ≥ 1 óbito materno no período |
+| `baixo_peso_alto` | ALTO | % Baixo Peso > mediana estadual × 1,5 |
+| `prenatal_insuficiente_alto` | ALTO | % Pré-natal insuficiente > mediana × 1,5 |
+| `parto_cesareo_muito_alto` | ALTO | % Cesáreo > 80% |
+
+### Comandos
+
+```bash
+cd etl
+
+# Aplicar schema (primeira vez)
+npm run postgres:migrate
+
+# Inspecionar disponibilidade e formato dos dados SIM/SINASC no OpenDataSUS
+npm run mortalidade:inspecionar
+
+# Carga completa (todos os anos configurados, filtrado por UF=AC)
+npm run mortalidade:ingest
+
+# Reconstruir marts (taxas, alertas, home)
+npm run mart:mortalidade
+
+# Carga + mart + consolidado em sequência
+npm run carga-mortalidade:postgres
+
+# Carga completa de todas as fontes de saúde (inclui mortalidade)
+npm run carga-saude:postgres
+```
+
+### APIs server-side
+
+| Rota | Descrição |
+|------|-----------|
+| `GET /api/saude/mortalidade/resumo?ano=2023` | Totais estaduais (TMI, óbitos infantis, maternos, NV) |
+| `GET /api/saude/mortalidade/municipios?ano=2023&municipio=Rio+Branco` | Resumo por município |
+| `GET /api/saude/mortalidade/alertas?home=1&nivel=CRITICO` | Alertas com filtros |
+| `GET /api/saude/mortalidade/serie?municipio=Rio+Branco` | Série histórica por município (ou estado) |
+
+### Variáveis de ambiente
+
+```env
+MORTALIDADE_API_BASE_URL=https://opendatasus.saude.gov.br
+MORTALIDADE_API_ALTERNATIVE_BASE_URL=https://apidadosabertos.saude.gov.br
+MORTALIDADE_UF=AC
+MORTALIDADE_ANO_INICIO=2023
+MORTALIDADE_ANO_FIM=2026
+MORTALIDADE_TIMEOUT_MS=30000
+MORTALIDADE_RATE_LIMIT_MS=500
+MORTALIDADE_MAX_SAMPLE_ROWS=500
+# Fallback para CSV direto (preencha se API retornar HTML/WAF)
+SIM_DIRECT_URLS=
+SINASC_DIRECT_URLS=
+```
+
+### Limitações conhecidas
+
+- O OpenDataSUS pode bloquear requisições automatizadas (WAF/HTML). Execute `mortalidade:inspecionar` antes da primeira carga para verificar o formato real e configurar `SIM_DIRECT_URLS`/`SINASC_DIRECT_URLS` se necessário.
+- Dados SIM e SINASC são homologados anualmente com defasagem de 12–18 meses. Dados do ano corrente são preliminares.
+- A codificação de idade do SIM (1XX/2XX/4XX/5XX) é DATASUS-específica e tratada na função `derivarIdadeSim()` do job de ingestão.
+- Campos sensíveis (`co_paciente`, `cpf_*`, dados de identificação individual) são redacted antes do armazenamento em raw.
+- `isObitoMaterno()` usa o campo DATASUS `obitograv` (valores 1–3 = gestante/puerpério). `isObitoFetal()` usa `tipobito = 1`.

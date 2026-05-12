@@ -8,14 +8,16 @@
  *   - mart.saude_resumo_home       (totais + score para o card da home)
  *
  * Fontes:
- *   mart.siops_resumo_municipio    — orçamento saúde
- *   mart.siops_alertas             — alertas SIOPS
- *   mart.siops_alertas_home        — alertas SIOPS home
- *   mart.siops_resumo_home         — resumo SIOPS
- *   mart.saude_estrutura_municipio — estrutura CNES/UBS
- *   mart.saude_estrutura_alertas   — alertas CNES/UBS
- *   mart.sisagua_resumo_municipio  — qualidade da água SISAGUA
- *   mart.sisagua_alertas           — alertas SISAGUA
+ *   mart.siops_resumo_municipio       — orçamento saúde
+ *   mart.siops_alertas                — alertas SIOPS
+ *   mart.siops_alertas_home           — alertas SIOPS home
+ *   mart.siops_resumo_home            — resumo SIOPS
+ *   mart.saude_estrutura_municipio    — estrutura CNES/UBS
+ *   mart.saude_estrutura_alertas      — alertas CNES/UBS
+ *   mart.sisagua_resumo_municipio     — qualidade da água SISAGUA
+ *   mart.sisagua_alertas              — alertas SISAGUA
+ *   mart.mortalidade_resumo_municipio — mortalidade/nascidos SIM+SINASC
+ *   mart.mortalidade_alertas          — alertas SIM/SINASC
  *
  * Score de risco por município:
  *   CRITICO = 5 pts · ALTO = 3 pts · MEDIO = 1 pt
@@ -137,6 +139,32 @@ interface PniAlertaRow {
   valor_observado:       number | null;
   valor_referencia:      number | null;
   detalhe_json:          unknown;
+}
+
+interface MortalidadeAlertaRow {
+  id_alerta:             number | null;
+  fonte:                 string;
+  codigo_municipio_ibge: string | null;
+  nome_municipio:        string | null;
+  tipo_alerta:           string;
+  nivel:                 string;
+  descricao:             string;
+  valor_observado:       number | null;
+  valor_referencia:      number | null;
+  detalhe_json:          unknown;
+  ano:                   number;
+}
+
+interface MortalidadeResumoRow {
+  codigo_municipio_ibge:                 string | null;
+  nome_municipio:                        string;
+  ano:                                   number;
+  nascidos_vivos:                        number;
+  obitos_infantis:                       number;
+  obitos_maternos:                       number;
+  taxa_mortalidade_infantil:             number | null;
+  percentual_baixo_peso:                 number | null;
+  percentual_prenatal_insuficiente:      number | null;
 }
 
 interface PniResumoRow {
@@ -401,6 +429,38 @@ export async function executarMartSaudeConsolidado(): Promise<void> {
     ORDER BY codigo_municipio_ibge, ano DESC
   `).catch(() => [] as PniResumoRow[]);
 
+  // SIM/SINASC — alertas e resumo mais recente por município
+  const mortalidadeAlertas = await pgQuery<MortalidadeAlertaRow>(`
+    SELECT
+      id_alerta,
+      'SIM_SINASC'    AS fonte,
+      codigo_municipio_ibge,
+      nome_municipio,
+      tipo_alerta,
+      nivel,
+      descricao,
+      valor_observado,
+      valor_referencia,
+      detalhe_json,
+      ano
+    FROM mart.mortalidade_alertas
+  `).catch(() => [] as MortalidadeAlertaRow[]);
+
+  const mortalidadeResumos = await pgQuery<MortalidadeResumoRow>(`
+    SELECT DISTINCT ON (nome_municipio)
+      codigo_municipio_ibge,
+      nome_municipio,
+      ano,
+      nascidos_vivos,
+      obitos_infantis,
+      obitos_maternos,
+      taxa_mortalidade_infantil,
+      percentual_baixo_peso,
+      percentual_prenatal_insuficiente
+    FROM mart.mortalidade_resumo_municipio
+    ORDER BY nome_municipio, ano DESC
+  `).catch(() => [] as MortalidadeResumoRow[]);
+
   const sisaguaResumos = await pgQuery<SisaguaResumoRow>(`
     SELECT
       codigo_municipio_ibge,
@@ -444,6 +504,15 @@ export async function executarMartSaudeConsolidado(): Promise<void> {
   console.log(`[mart:saude-consolidado] Alertas SISAGUA:       ${sisaguaAlertas.length}`);
   console.log(`[mart:saude-consolidado] Alertas PNI:           ${pniAlertas.length}`);
   console.log(`[mart:saude-consolidado] Alertas InfoDengue:    ${infodengueAlertas.length}`);
+  console.log(`[mart:saude-consolidado] Mortalidade mun:      ${mortalidadeResumos.length}`);
+  console.log(`[mart:saude-consolidado] Alertas Mortalidade:  ${mortalidadeAlertas.length}`);
+
+  // Mapa mortalidade por município (6 dígitos ou nome como fallback)
+  const mortalidadeMap = new Map<string, MortalidadeResumoRow>();
+  for (const r of mortalidadeResumos) {
+    const chave = normalizar6(r.codigo_municipio_ibge) ?? r.nome_municipio.toLowerCase();
+    mortalidadeMap.set(chave, r);
+  }
 
   // Mapa SISAGUA por município
   const sisaguaMap = new Map<string, SisaguaResumoRow>();
@@ -580,6 +649,7 @@ export async function executarMartSaudeConsolidado(): Promise<void> {
     ...infodengueAlertas.map(normalizeInfoDengueAlerta),
     ...pniAlertas.map(normalizeAlerta),
     ...pniCoberturaAlertas.map(normalizeAlerta),
+    ...mortalidadeAlertas.map(normalizeAlerta),
   ];
 
   // Score por município
@@ -603,8 +673,12 @@ export async function executarMartSaudeConsolidado(): Promise<void> {
   }
 
   // ── 4. alertas_home: CRITICO/ALTO, máx 30, ordenados ──
-  const alertasHomeSource: AlertaRow[] = [...siopsAlertas, ...cnesAlertas, ...sisaguaAlertas]
-    .filter(a => a.nivel === "CRITICO" || a.nivel === "ALTO");
+  const alertasHomeSource: AlertaRow[] = [
+    ...siopsAlertas,
+    ...cnesAlertas,
+    ...sisaguaAlertas,
+    ...mortalidadeAlertas,
+  ].filter(a => a.nivel === "CRITICO" || a.nivel === "ALTO");
 
   alertasHomeSource.sort((a, b) => {
     const pa = nivelPrioridade(a.nivel), pb = nivelPrioridade(b.nivel);
@@ -681,6 +755,7 @@ export async function executarMartSaudeConsolidado(): Promise<void> {
       const vigi = infodengueMap.get(m.codigo) ?? null;
       const pni  = pniMap.get(m.codigo) ?? null;
       const pniCob = pniCobMap.get(m.codigo) ?? pniCobMap.get(m.nome?.toLowerCase() ?? "") ?? null;
+      const mort = mortalidadeMap.get(m.codigo) ?? mortalidadeMap.get(m.nome?.toLowerCase() ?? "") ?? null;
       await client.query(`
         INSERT INTO mart.saude_resumo_municipio (
           codigo_municipio_ibge, nome_municipio, uf,
@@ -703,6 +778,9 @@ export async function executarMartSaudeConsolidado(): Promise<void> {
           pni_cobertura_media, pni_cobertura_total_abaixo_meta,
           pni_cobertura_menor, pni_cobertura_imunobiologico_menor,
           pni_cobertura_tipo_periodo, pni_cobertura_data_referencia,
+          mortalidade_taxa_infantil, mortalidade_obitos_infantis, mortalidade_obitos_maternos,
+          mortalidade_nascidos_vivos, mortalidade_percentual_baixo_peso,
+          mortalidade_percentual_prenatal_insuficiente,
           atualizado_em
         ) VALUES (
           $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
@@ -711,7 +789,8 @@ export async function executarMartSaudeConsolidado(): Promise<void> {
           $24,$25,$26,$27,$28,$29,
           $30,$31,$32,$33,$34,$35,$36,$37,
           $38,$39,$40,$41,$42,$43,
-          $44,$45,$46,$47,$48,$49,now()
+          $44,$45,$46,$47,$48,$49,
+          $50,$51,$52,$53,$54,$55,now()
         )
         ON CONFLICT (codigo_municipio_ibge) DO UPDATE SET
           nome_municipio                = EXCLUDED.nome_municipio,
@@ -755,14 +834,20 @@ export async function executarMartSaudeConsolidado(): Promise<void> {
           pni_mes_referencia            = EXCLUDED.pni_mes_referencia,
           pni_total_alertas             = EXCLUDED.pni_total_alertas,
           pni_alertas_criticos          = EXCLUDED.pni_alertas_criticos,
-          pni_alertas_altos                  = EXCLUDED.pni_alertas_altos,
-          pni_cobertura_media                = EXCLUDED.pni_cobertura_media,
-          pni_cobertura_total_abaixo_meta    = EXCLUDED.pni_cobertura_total_abaixo_meta,
-          pni_cobertura_menor                = EXCLUDED.pni_cobertura_menor,
-          pni_cobertura_imunobiologico_menor = EXCLUDED.pni_cobertura_imunobiologico_menor,
-          pni_cobertura_tipo_periodo         = EXCLUDED.pni_cobertura_tipo_periodo,
-          pni_cobertura_data_referencia      = EXCLUDED.pni_cobertura_data_referencia,
-          atualizado_em                      = now()
+          pni_alertas_altos                        = EXCLUDED.pni_alertas_altos,
+          pni_cobertura_media                      = EXCLUDED.pni_cobertura_media,
+          pni_cobertura_total_abaixo_meta          = EXCLUDED.pni_cobertura_total_abaixo_meta,
+          pni_cobertura_menor                      = EXCLUDED.pni_cobertura_menor,
+          pni_cobertura_imunobiologico_menor       = EXCLUDED.pni_cobertura_imunobiologico_menor,
+          pni_cobertura_tipo_periodo               = EXCLUDED.pni_cobertura_tipo_periodo,
+          pni_cobertura_data_referencia            = EXCLUDED.pni_cobertura_data_referencia,
+          mortalidade_taxa_infantil                = EXCLUDED.mortalidade_taxa_infantil,
+          mortalidade_obitos_infantis              = EXCLUDED.mortalidade_obitos_infantis,
+          mortalidade_obitos_maternos              = EXCLUDED.mortalidade_obitos_maternos,
+          mortalidade_nascidos_vivos               = EXCLUDED.mortalidade_nascidos_vivos,
+          mortalidade_percentual_baixo_peso        = EXCLUDED.mortalidade_percentual_baixo_peso,
+          mortalidade_percentual_prenatal_insuficiente = EXCLUDED.mortalidade_percentual_prenatal_insuficiente,
+          atualizado_em                            = now()
       `, [
         m.codigo, m.nome, m.uf,
         s?.ano ?? null, s?.periodo ?? null,
@@ -812,6 +897,12 @@ export async function executarMartSaudeConsolidado(): Promise<void> {
         pniCob?.imunobiologico_menor_cobertura ?? null,
         pniCob?.tipo_periodo                  ?? null,
         pniCob?.data_referencia               ?? null,
+        mort?.taxa_mortalidade_infantil          ?? null,
+        mort?.obitos_infantis                    ?? null,
+        mort?.obitos_maternos                    ?? null,
+        mort?.nascidos_vivos                     ?? null,
+        mort?.percentual_baixo_peso              ?? null,
+        mort?.percentual_prenatal_insuficiente   ?? null,
       ]);
     }
     console.log(`[mart:saude-consolidado] ✓ saude_resumo_municipio (${municipios.length} municípios)`);

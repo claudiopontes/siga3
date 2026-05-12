@@ -45,7 +45,8 @@ const AppHeader: React.FC = () => {
     "/painel-saude/qualidade-agua": { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "Saúde Pública", href: "/painel-saude" }, { label: "Qualidade da Água" }] },
     "/painel-saude/vigilancia": { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "Saúde Pública", href: "/painel-saude" }, { label: "Vigilância Epidemiológica" }] },
     "/painel-saude/orcamento": { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "Saúde Pública", href: "/painel-saude" }, { label: "Orçamento e Aplicação" }] },
-    "/painel-saude/vacinacao": { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "Saúde Pública", href: "/painel-saude" }, { label: "Vacinação" }] },
+    "/painel-saude/vacinacao":   { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "Saúde Pública", href: "/painel-saude" }, { label: "Vacinação" }] },
+    "/painel-saude/mortalidade": { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "Saúde Pública", href: "/painel-saude" }, { label: "Mortalidade e Nascidos Vivos" }] },
     "/gabinete-digital/mapa": { crumbs: [{ label: "Home", href: "/" }, { label: "Mapa IDEB" }] },
     "/remessas/calendario": { crumbs: [{ label: "Home", href: "/" }, { label: "Remessas" }, { label: "Envio Contabilidade" }] },
     "/calendar": { crumbs: [{ label: "Home", href: "/" }, { label: "Agenda" }] },
@@ -275,6 +276,18 @@ const AppHeader: React.FC = () => {
                 </span>
                 <span className="text-xs text-gray-400 dark:text-gray-500">
                   <span className="font-medium text-emerald-600 dark:text-emerald-400">PNI/RNDS</span>
+                </span>
+              </div>
+            )}
+            {pathname === "/painel-saude/mortalidade" && (
+              <div className="flex flex-col">
+                <span className="truncate text-sm text-gray-600 dark:text-gray-300">
+                  Mortalidade infantil, óbitos maternos, nascidos vivos e indicadores de pré-natal.
+                </span>
+                <span className="text-xs text-gray-400 dark:text-gray-500">
+                  <span className="font-medium text-rose-600 dark:text-rose-400">SIM</span>
+                  {" · "}
+                  <span className="font-medium text-rose-600 dark:text-rose-400">SINASC</span>
                 </span>
               </div>
             )}

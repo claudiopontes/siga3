@@ -65,7 +65,17 @@
     "pni:cobertura:ingest": "ts-node jobs/ingest-pni-cobertura-xlsx.ts",
     "mart:pni-cobertura": "ts-node jobs/refresh-mart-pni-cobertura.ts",
     "carga-pni-cobertura:postgres": "npm run pni:cobertura:ingest && npm run mart:pni-cobertura && npm run mart:saude-consolidado",
-    "carga-saude:postgres": "npm run carga-siops:postgres && npm run carga-cnes-ubs:postgres && npm run carga-sisagua:postgres && npm run carga-infodengue:postgres && npm run carga-pni:postgres && npm run carga-pni-cobertura:postgres"
+    "mortalidade:inspecionar": "ts-node jobs/mortalidade-inspecionar.ts",
+    "mortalidade:ingest": "ts-node jobs/ingest-mortalidade-sinasc.ts",
+    "mart:mortalidade": "ts-node jobs/refresh-mart-mortalidade.ts",
+    "carga-mortalidade:postgres": "npm run mortalidade:ingest && npm run mart:mortalidade && npm run mart:saude-consolidado",
+    "sim:api:inspecionar": "ts-node jobs/sim-api-inspecionar.ts",
+    "sim:api:ingest": "ts-node jobs/ingest-sim-api.ts",
+    "sim:csv:ingest": "ts-node jobs/ingest-sim-csv.ts",
+    "carga-sim-api:postgres": "npm run sim:api:ingest && npm run mart:mortalidade && npm run mart:saude-consolidado",
+    "carga-sim-csv:postgres": "npm run sim:csv:ingest && npm run mart:mortalidade && npm run mart:saude-consolidado",
+    "carga-mortalidade-api:postgres": "npm run sim:api:ingest && npm run mart:mortalidade && npm run mart:saude-consolidado",
+    "carga-saude:postgres": "npm run carga-siops:postgres && npm run carga-cnes-ubs:postgres && npm run carga-sisagua:postgres && npm run carga-infodengue:postgres && npm run carga-pni:postgres && npm run carga-pni-cobertura:postgres && npm run carga-mortalidade:postgres"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.8",

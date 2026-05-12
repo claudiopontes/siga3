@@ -159,6 +159,7 @@ export default function PainelSaudeClient() {
   const cnesUbsCount      = contagemPorFonte["CNES_UBS"]      ?? { criticos: 0, altos: 0 };
   const infodengueCount   = contagemPorFonte["INFODENGUE"]    ?? { criticos: 0, altos: 0 };
   const pniCoberturaCount = contagemPorFonte["PNI_COBERTURA"] ?? { criticos: 0, altos: 0 };
+  const mortalidadeCount  = contagemPorFonte["SIM_SINASC"]    ?? { criticos: 0, altos: 0 };
   // SIOPS: usa o resumo do painel de detalhe (mesma fonte, mesmo período)
   const siopsCount      = { criticos: siopsResumo?.total_criticos ?? 0, altos: siopsResumo?.total_altos ?? 0 };
 
@@ -247,10 +248,16 @@ export default function PainelSaudeClient() {
 
           <ModuloCard
             titulo="Mortalidade e Nascidos Vivos"
-            descricao="Mortalidade infantil, óbitos maternos, nascimentos e pré-natal."
+            descricao="Mortalidade infantil, óbitos maternos, nascimentos, pré-natal e baixo peso."
             fonte="SIM/SINASC"
             icone={<Heart className="h-5 w-5" />}
-            status="preparacao"
+            href="/painel-saude/mortalidade"
+            status="disponivel"
+            criticos={mortalidadeCount.criticos}
+            altos={mortalidadeCount.altos}
+            corIcone="text-rose-500 dark:text-rose-400"
+            corBorda="border-rose-200 dark:border-rose-800/40"
+            corFonteBadge="bg-rose-50 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300"
           />
 
           <ModuloCard
