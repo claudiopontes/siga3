@@ -73,22 +73,6 @@ type SaudeResumoRow = {
 };
 
 
-type RemessaAlertaRow = {
-  id_alerta: number;
-  id_remessa: number | null;
-  id_entidade: number;
-  nome_entidade: string | null;
-  nome_ente: string | null;
-  ano: number;
-  numero: number;
-  tipo_alerta: string;
-  nivel: string;
-  descricao: string;
-  prazo_envio: string | null;
-  data_envio: string | null;
-  dias_atraso: number | null;
-  situacao: string | null;
-};
 
 const NIVEL_ORDER: Record<AlertaRow["nivel_alerta"], number> = {
   alto: 0,
@@ -301,11 +285,11 @@ function ProcessoCard({
 }) {
   return (
     <div className={`rounded-xl border bg-white p-4 transition hover:border-gray-300 dark:bg-gray-800 dark:hover:border-gray-600 ${
-      destaque ? "border-red-200 dark:border-red-800/50" : "border-gray-200 dark:border-gray-700"
+      !semDados && (valor ?? 0) > 0 ? "border-red-200 dark:border-red-800/50" : "border-gray-200 dark:border-gray-700"
     }`}>
       <div className="flex items-start justify-between gap-3">
         <span className={`rounded-full p-1.5 ${
-          destaque
+          !semDados && (valor ?? 0) > 0
             ? "bg-red-50 text-red-500 dark:bg-red-900/20 dark:text-red-400"
             : "bg-gray-50 text-gray-500 dark:bg-gray-900/40 dark:text-gray-300"
         }`}>
@@ -327,11 +311,20 @@ function ProcessoCard({
           Aguardando carga processual
         </p>
       ) : (
-        <p className="mt-1 text-2xl font-bold text-gray-900 dark:text-white">
-          {formatarNumero(valor)}
-        </p>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {(valor ?? 0) > 0 ? (
+            <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-600 dark:bg-red-900/30 dark:text-red-400">
+              <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
+              {formatarNumero(valor)} processo{(valor ?? 0) !== 1 ? "s" : ""}
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-xs font-semibold text-green-600 dark:bg-green-900/30 dark:text-green-400">
+              Tudo em dia
+            </span>
+          )}
+        </div>
       )}
-      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+      <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
         {descricao}
       </p>
       <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -465,8 +458,6 @@ export default function AlertasGabineteClient() {
     supabaseDisponivel ? null : "Supabase não configurado."
   );
   const [resumoRemessas, setResumoRemessas] = useState<RemessaResumoRow[]>([]);
-  const [alertasRemessas, setAlertasRemessas] = useState<RemessaAlertaRow[]>([]);
-  const [modalRemessas, setModalRemessas] = useState(false);
   const [carregandoRemessas, setCarregandoRemessas] = useState(true);
   const [resumoSaude, setResumoSaude] = useState<SaudeResumoRow | null>(null);
   const [carregandoSaude, setCarregandoSaude] = useState(true);
@@ -483,13 +474,15 @@ export default function AlertasGabineteClient() {
         ]);
         if (cancelado) return;
         if (res && typeof res === "object" && !res.error) {
-          const cnt = contagem && typeof contagem === "object" ? contagem as Record<string, { criticos: number; altos: number }> : {};
-          const totalCriticos = Object.values(cnt).reduce((s, f) => s + f.criticos, 0);
-          const totalAltos    = Object.values(cnt).reduce((s, f) => s + f.altos,    0);
+          const cnt = (contagem && typeof contagem === "object" && !Array.isArray(contagem))
+            ? contagem as Record<string, { criticos: number; altos: number }>
+            : {};
+          const totalCriticos = Object.values(cnt).reduce((s, f) => s + (f?.criticos ?? 0), 0);
+          const totalAltos    = Object.values(cnt).reduce((s, f) => s + (f?.altos    ?? 0), 0);
           setResumoSaude({ ...(res as SaudeResumoRow), total_criticos: totalCriticos, total_altos: totalAltos });
         }
-      } catch {
-        // silencioso — card mostrará sem dados
+      } catch (e) {
+        console.error("[saude] erro ao carregar resumo:", e);
       } finally {
         if (!cancelado) setCarregandoSaude(false);
       }
@@ -504,13 +497,9 @@ export default function AlertasGabineteClient() {
     async function carregarRemessas() {
       try {
         const anoAtual = new Date().getFullYear();
-        const [resResumo, resAlertas] = await Promise.all([
-          fetch(`/api/remessas/resumo?ano=${anoAtual}`).then((r) => r.json()),
-          fetch(`/api/remessas/alertas?ano=${anoAtual}&limit=50`).then((r) => r.json()),
-        ]);
+        const resResumo = await fetch(`/api/remessas/resumo?ano=${anoAtual}`).then((r) => r.json());
         if (cancelado) return;
         if (Array.isArray(resResumo)) setResumoRemessas(resResumo as RemessaResumoRow[]);
-        if (Array.isArray(resAlertas)) setAlertasRemessas(resAlertas as RemessaAlertaRow[]);
       } catch {
         // silencioso — card mostrará sem dados
       } finally {
@@ -637,13 +626,19 @@ export default function AlertasGabineteClient() {
               {maiorNivel ? <NivelBadge nivel={maiorNivel} /> : null}
             </div>
             <p className="mt-3 text-sm font-bold text-gray-900 dark:text-white">Regularidade CAUC</p>
-            <p className="mt-1 text-2xl font-bold text-gray-900 dark:text-white">
-              {comPendencia.length}
-              <span className="ml-1 text-sm font-normal text-gray-400">
-                de {alertas.length} municípios
-              </span>
-            </p>
-            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            <div className="mt-2 flex flex-wrap gap-2">
+              {comPendencia.length > 0 ? (
+                <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-600 dark:bg-red-900/30 dark:text-red-400">
+                  <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
+                  {comPendencia.length} município{comPendencia.length !== 1 ? "s" : ""} com pendência
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-xs font-semibold text-green-600 dark:bg-green-900/30 dark:text-green-400">
+                  Tudo em dia
+                </span>
+              )}
+            </div>
+            <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
               {totalPendencias} pendências totais. Detalhamento por município e item no painel CAUC.
             </p>
             <p className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
@@ -653,7 +648,7 @@ export default function AlertasGabineteClient() {
               href="/painel-cauc"
               className="mt-3 inline-flex items-center gap-1 rounded-lg bg-blue-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
             >
-              Ver detalhes
+              Ver Painel
               <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M5 12h14" />
                 <path d="m12 5 7 7-7 7" />
@@ -673,7 +668,7 @@ export default function AlertasGabineteClient() {
             <ProcessoCard
               titulo="Processos sensíveis"
               descricao="Cautelares, denúncias, representações, petições e pedidos de vista no gabinete."
-              prioridade="Processual"
+              prioridade="eProcess TCE/AC"
               valor={resumoProcessos?.processos_sensiveis ?? null}
               icone={<DocumentoAlertaIcon />}
               semDados={semDadosProcessuais}
@@ -682,7 +677,7 @@ export default function AlertasGabineteClient() {
             <ProcessoCard
               titulo="Processos há mais de 15 dias"
               descricao="Processos aguardando movimentação há mais de 15 dias no gabinete atual."
-              prioridade="Prazo processual"
+              prioridade="eProcess TCE/AC"
               valor={resumoProcessos?.processos_mais_15_dias ?? null}
               icone={<RelogioProcessualIcon />}
               semDados={semDadosProcessuais}
@@ -691,7 +686,7 @@ export default function AlertasGabineteClient() {
             <ProcessoCard
               titulo="Prazo regulamentar vencido"
               descricao="Processos cujo tempo de registro ultrapassou o prazo regulamentar da classe."
-              prioridade="Alerta processual"
+              prioridade="eProcess TCE/AC"
               valor={resumoProcessos?.processos_prazo_regulamentar_vencido ?? null}
               icone={<PrazoVencidoIcon />}
               destaque
@@ -706,10 +701,9 @@ export default function AlertasGabineteClient() {
           <CardSkeleton />
         ) : (() => {
           const resumo = resumoRemessas[0];
-          const totalCriticos = resumo?.total_nao_enviadas_prazo ?? 0;
-          const totalAltos = resumo?.total_enviadas_atraso ?? 0;
-          const totalMedios = (resumo?.total_sem_confirmacao ?? 0) + (resumo?.total_sem_processamento ?? 0);
-          const totalAlertas = totalCriticos + totalAltos + totalMedios;
+          const totalCriticos = resumo?.total_criticas ?? 0;
+          const totalAltos = resumo?.total_altas ?? 0;
+          const totalAlertas = totalCriticos + totalAltos;
           const semDados = !resumo;
           return (
             <div className={`rounded-xl border bg-white p-4 dark:bg-gray-800 ${
@@ -743,25 +737,36 @@ export default function AlertasGabineteClient() {
               {semDados ? (
                 <p className="mt-1 text-xs font-medium text-gray-400 dark:text-gray-500">Aguardando carga de dados</p>
               ) : (
-                <p className="mt-1 text-2xl font-bold text-gray-900 dark:text-white">{formatarNumero(totalAlertas)}</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {totalCriticos > 0 && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-600 dark:bg-red-900/30 dark:text-red-400">
+                      <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
+                      {totalCriticos} crítico{totalCriticos !== 1 ? "s" : ""}
+                    </span>
+                  )}
+                  {totalAltos > 0 && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-orange-50 px-2 py-0.5 text-xs font-semibold text-orange-600 dark:bg-orange-900/30 dark:text-orange-400">
+                      <span className="h-1.5 w-1.5 rounded-full bg-orange-400" />
+                      {totalAltos} alto{totalAltos !== 1 ? "s" : ""}
+                    </span>
+                  )}
+                  {totalAlertas === 0 && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-xs font-semibold text-green-600 dark:bg-green-900/30 dark:text-green-400">
+                      Tudo em dia
+                    </span>
+                  )}
+                </div>
               )}
-              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                {semDados
-                  ? "Execute npm run carga-remessas:postgres"
-                  : `${totalCriticos} não enviadas · ${totalAltos} com atraso · ${totalMedios} sem confirmação`}
-              </p>
               <p className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">Prestação de contas</p>
-              <button
-                type="button"
-                disabled={semDados || totalAlertas === 0}
-                onClick={() => setModalRemessas(true)}
-                className="mt-3 inline-flex items-center gap-1 rounded-lg bg-blue-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-blue-500 dark:hover:bg-blue-600"
+              <Link
+                href="/remessas/calendario"
+                className="mt-3 inline-flex items-center gap-1 rounded-lg bg-blue-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
               >
-                Ver detalhes
+                Ver Painel
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M5 12h14" /><path d="m12 5 7 7-7 7" />
                 </svg>
-              </button>
+              </Link>
             </div>
           );
         })()}
@@ -805,22 +810,32 @@ export default function AlertasGabineteClient() {
                 ) : null}
               </div>
               <p className="mt-3 text-sm font-bold text-gray-900 dark:text-white">Saúde Pública</p>
-              <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-                Alertas de aplicação, estrutura da rede, qualidade da água e vigilância epidemiológica.
-              </p>
               {semDados ? (
                 <p className="mt-1 text-xs font-medium text-gray-400 dark:text-gray-500">Dados de saúde ainda não carregados.</p>
               ) : (
-                <>
-                  <div className="mt-2 flex items-baseline gap-2">
-                    <p className="text-2xl font-bold text-gray-900 dark:text-white">{criticos}</p>
-                    <span className="text-xs text-gray-400">críticos</span>
-                    <span className="text-sm font-semibold text-gray-500">·</span>
-                    <p className="text-lg font-bold text-amber-600 dark:text-amber-400">{altos}</p>
-                    <span className="text-xs text-gray-400">altos</span>
-                  </div>
-                </>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {criticos > 0 && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-600 dark:bg-red-900/30 dark:text-red-400">
+                      <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
+                      {criticos} crítico{criticos !== 1 ? "s" : ""}
+                    </span>
+                  )}
+                  {altos > 0 && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-orange-50 px-2 py-0.5 text-xs font-semibold text-orange-600 dark:bg-orange-900/30 dark:text-orange-400">
+                      <span className="h-1.5 w-1.5 rounded-full bg-orange-400" />
+                      {altos} alto{altos !== 1 ? "s" : ""}
+                    </span>
+                  )}
+                  {criticos === 0 && altos === 0 && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-xs font-semibold text-green-600 dark:bg-green-900/30 dark:text-green-400">
+                      Tudo em dia
+                    </span>
+                  )}
+                </div>
               )}
+              <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                Alertas de aplicação, estrutura da rede, qualidade da água e vigilância epidemiológica.
+              </p>
               <p className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">SIOPS · CNES/UBS · SISAGUA · InfoDengue</p>
               <Link
                 href="/painel-saude"
@@ -868,75 +883,6 @@ export default function AlertasGabineteClient() {
       ) : null}
 
 
-      {modalRemessas ? (
-        <div className="fixed inset-0 z-120000 flex items-center justify-center p-3 sm:p-5">
-          <button
-            type="button"
-            aria-label="Fechar detalhes de remessas"
-            className="absolute inset-0 bg-gray-900/70 backdrop-blur-[1px]"
-            onClick={() => setModalRemessas(false)}
-          />
-          <div className="relative z-10 flex max-h-[90vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900">
-            <div className="flex items-start justify-between gap-3 border-b border-gray-100 px-4 py-3 dark:border-gray-700">
-              <div>
-                <h2 className="text-base font-bold text-gray-900 dark:text-white">Alertas de remessas contábeis</h2>
-                <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-                  Remessas obrigatórias de prestação de contas com pendências no ano atual.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setModalRemessas(false)}
-                className="rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
-              >
-                Fechar
-              </button>
-            </div>
-            {alertasRemessas.length === 0 ? (
-              <div className="px-4 py-10 text-center text-sm text-gray-500 dark:text-gray-400">Nenhum alerta encontrado.</div>
-            ) : (
-              <div className="overflow-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-gray-100 bg-gray-50 dark:border-gray-700 dark:bg-gray-900/40">
-                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Nível</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Entidade</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Tipo</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Prazo</th>
-                      <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-gray-500">Dias de atraso</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-50 dark:divide-gray-700/50">
-                    {alertasRemessas.map((a) => (
-                      <tr key={a.id_alerta} className="hover:bg-gray-50 dark:hover:bg-gray-800/60">
-                        <td className="px-4 py-3">
-                          <NivelBadge nivel={a.nivel === "CRITICO" ? "alto" : a.nivel === "ALTO" ? "medio" : "baixo"} />
-                        </td>
-                        <td className="px-4 py-3 text-xs text-gray-700 dark:text-gray-300">
-                          {a.nome_entidade ?? `Entidade ${a.id_entidade}`}
-                          {a.nome_ente ? <span className="ml-1 text-gray-400">({a.nome_ente})</span> : null}
-                        </td>
-                        <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400">{a.descricao}</td>
-                        <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400">
-                          {a.prazo_envio ? new Date(a.prazo_envio).toLocaleDateString("pt-BR") : "—"}
-                        </td>
-                        <td className="px-4 py-3 text-center text-xs font-bold text-red-600 dark:text-red-400">
-                          {a.dias_atraso ?? "—"}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-            {alertasRemessas.length >= 50 ? (
-              <div className="border-t border-gray-100 px-4 py-3 text-xs text-gray-400 dark:border-gray-700">
-                Exibindo os 50 principais alertas do ano atual.
-              </div>
-            ) : null}
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 }

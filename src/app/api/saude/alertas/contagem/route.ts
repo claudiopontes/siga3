@@ -6,8 +6,17 @@ export const runtime = "nodejs";
 const ANO_ATUAL = new Date().getFullYear();
 
 interface ContagemRow { nivel: string; total: number; }
+interface PeriodoRow  { ano: number; periodo: string; }
 
 export async function GET() {
+  // SIOPS: descobre o período mais recente (mesmo comportamento do OrcamentoSaudeClient)
+  const periodos = await dbQuery<PeriodoRow>(
+    `SELECT ano, periodo FROM mart.siops_alertas
+     ORDER BY ano DESC, periodo DESC LIMIT 1`
+  ).catch(() => [] as PeriodoRow[]);
+
+  const periodoRecente = periodos[0] ?? null;
+
   const [pni, mortalidade, siops, sisagua, infodengue, cnes] = await Promise.all([
     // Vacinação (PNI_COBERTURA) — filtro inicial: ano atual (mesmo padrão do VacinacaoClient)
     dbQuery<ContagemRow>(`
@@ -25,13 +34,15 @@ export async function GET() {
       GROUP BY nivel
     `),
 
-    // Orçamento (SIOPS) — sem filtro de período (periodoSel inicia vazio, traz todos)
-    dbQuery<ContagemRow>(`
-      SELECT nivel, COUNT(*)::int AS total
-      FROM mart.siops_alertas
-      WHERE nivel IN ('CRITICO','ALTO')
-      GROUP BY nivel
-    `),
+    // Orçamento (SIOPS) — período mais recente disponível (mesmo comportamento do OrcamentoSaudeClient)
+    periodoRecente
+      ? dbQuery<ContagemRow>(`
+          SELECT nivel, COUNT(*)::int AS total
+          FROM mart.siops_alertas
+          WHERE ano = $1 AND periodo = $2 AND nivel IN ('CRITICO','ALTO')
+          GROUP BY nivel
+        `, [periodoRecente.ano, periodoRecente.periodo])
+      : Promise.resolve([] as ContagemRow[]),
 
     // Qualidade da Água (SISAGUA) — sem filtro de período
     dbQuery<ContagemRow>(`
@@ -41,7 +52,7 @@ export async function GET() {
       GROUP BY nivel
     `),
 
-    // Vigilância Epidemiológica (InfoDengue) — filtro inicial: 6 meses (26 semanas), usa tabela home
+    // Vigilância Epidemiológica (InfoDengue) — tabela home já filtrada pelos alertas recentes
     dbQuery<ContagemRow>(`
       SELECT nivel, COUNT(*)::int AS total
       FROM mart.vigilancia_arboviroses_alertas_home
