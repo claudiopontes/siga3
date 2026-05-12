@@ -10,18 +10,21 @@ const TIPOS_VALIDOS  = new Set([
   "pni_cobertura_muito_baixa",
   "pni_sem_denominador",
 ]);
+const ANOS_VALIDOS = new Set(["2024", "2025", "2026", "2027"]);
 
 export async function GET(req: NextRequest) {
   const sp           = req.nextUrl.searchParams;
   const home         = sp.get("home") === "1";
+  const anoParam     = sp.get("ano");
   const nivelParam   = sp.get("nivel");
   const tipoParam    = sp.get("tipo_alerta");
   const municipio    = sp.get("municipio");
   const vacina       = sp.get("vacina");
   const tipoPeriodo  = sp.get("tipo_periodo");
 
-  const nivel      = nivelParam && NIVEIS_VALIDOS.has(nivelParam) ? nivelParam : null;
-  const tipoAlerta = tipoParam  && TIPOS_VALIDOS.has(tipoParam)   ? tipoParam  : null;
+  const ano        = anoParam    && ANOS_VALIDOS.has(anoParam)    ? parseInt(anoParam, 10) : null;
+  const nivel      = nivelParam  && NIVEIS_VALIDOS.has(nivelParam) ? nivelParam : null;
+  const tipoAlerta = tipoParam   && TIPOS_VALIDOS.has(tipoParam)   ? tipoParam  : null;
 
   const tabela = home ? "mart.pni_cobertura_alertas_home" : "mart.pni_cobertura_alertas";
   const ordem  = home
@@ -31,6 +34,10 @@ export async function GET(req: NextRequest) {
   const conditions: string[] = [];
   const params: unknown[] = [];
 
+  if (ano) {
+    params.push(ano);
+    conditions.push(`ano = $${params.length}`);
+  }
   if (nivel) {
     params.push(nivel);
     conditions.push(`nivel = $${params.length}`);

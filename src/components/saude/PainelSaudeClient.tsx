@@ -234,7 +234,7 @@ export default function PainelSaudeClient() {
           <ModuloCard
             titulo="Vacinação"
             descricao="Doses aplicadas, cobertura vacinal e municípios abaixo da referência."
-            fonte="PNI/RNDS · Cobertura XLSX"
+            fonte="PNI/RNDS"
             icone={<ShieldCheck className="h-5 w-5" />}
             href="/painel-saude/vacinacao"
             status="disponivel"

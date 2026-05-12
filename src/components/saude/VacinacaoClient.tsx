@@ -193,6 +193,11 @@ export default function VacinacaoClient() {
   // Município selecionado (global — afeta KPIs, gráficos e tabela)
   const [munSel, setMunSel] = useState<string>("");
 
+  // Ordenação da tabela de municípios
+  type ColMun = "nome_municipio" | "cobertura_media" | "menor_cobertura" | "total_abaixo_meta";
+  const [sortCol, setSortCol] = useState<ColMun>("cobertura_media");
+  const [sortAsc, setSortAsc] = useState(true);
+
   useEffect(() => {
     setCarregando(true);
     setErro(null);
@@ -234,6 +239,19 @@ export default function VacinacaoClient() {
   const cobAlertasFiltradas = useMemo(() =>
     munSel ? cobAlertas.filter(a => a.nome_municipio === munSel) : cobAlertas,
   [cobAlertas, munSel]);
+
+  const cobMunicOrdenada = useMemo(() => {
+    return [...cobMunicFiltrada].sort((a, b) => {
+      let va: number | string, vb: number | string;
+      if (sortCol === "nome_municipio") {
+        va = a.nome_municipio; vb = b.nome_municipio;
+        return sortAsc ? va.localeCompare(vb, "pt-BR") : vb.localeCompare(va, "pt-BR");
+      }
+      va = Number(a[sortCol] ?? (sortAsc ? Infinity : -Infinity));
+      vb = Number(b[sortCol] ?? (sortAsc ? Infinity : -Infinity));
+      return sortAsc ? va - vb : vb - va;
+    });
+  }, [cobMunicFiltrada, sortCol, sortAsc]);
 
   // KPIs derivados dos dados filtrados
   const kpis = useMemo(() => {
@@ -461,15 +479,25 @@ export default function VacinacaoClient() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-400">
-                  <th className="px-4 py-3">Município</th>
-                  <th className="px-4 py-3 text-right">Cob. média</th>
-                  <th className="px-4 py-3 text-right">Menor cob.</th>
-                  <th className="px-4 py-3">Vacina mais baixa</th>
-                  <th className="px-4 py-3 text-right">Abaixo meta</th>
+                  {(["nome_municipio", "cobertura_media", "menor_cobertura", null, "total_abaixo_meta"] as const).map((col, idx) => {
+                    const labels = ["Município", "Cob. média", "Menor cob.", "Vacina mais baixa", "Abaixo meta"];
+                    const aligns = [false, true, true, false, true];
+                    const ativo = col === sortCol;
+                    return (
+                      <th
+                        key={idx}
+                        className={`px-4 py-3 ${aligns[idx] ? "text-right" : ""} ${col ? "cursor-pointer select-none hover:text-slate-700 dark:hover:text-slate-200" : ""}`}
+                        onClick={col ? () => { if (sortCol === col) setSortAsc(a => !a); else { setSortCol(col); setSortAsc(true); } } : undefined}
+                      >
+                        {labels[idx]}
+                        {col && <span className="ml-1">{ativo ? (sortAsc ? "↑" : "↓") : <span className="opacity-30">↕</span>}</span>}
+                      </th>
+                    );
+                  })}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
-                {cobMunicFiltrada.map((m, i) => {
+                {cobMunicOrdenada.map((m, i) => {
                   const abaixoMeta = m.total_abaixo_meta > 0;
                   return (
                     <tr key={i} className={`hover:bg-slate-50 dark:hover:bg-slate-700/40 ${abaixoMeta ? "" : ""}`}>

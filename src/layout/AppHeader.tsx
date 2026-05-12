@@ -275,7 +275,6 @@ const AppHeader: React.FC = () => {
                 </span>
                 <span className="text-xs text-gray-400 dark:text-gray-500">
                   <span className="font-medium text-emerald-600 dark:text-emerald-400">PNI/RNDS</span>
-                  {" · "}Cobertura XLSX
                 </span>
               </div>
             )}
