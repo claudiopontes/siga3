@@ -2,7 +2,6 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import MapaReceitaPerCapita, { type ReceitaPerCapitaItem } from "@/components/receita-publica/MapaReceitaPerCapita";
 import dynamic from "next/dynamic";
 import type { ApexOptions } from "apexcharts";
@@ -234,31 +233,40 @@ export default function PainelReceitaPublicaClient() {
   const composicaoRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    if (!isSupabaseConfigured || !supabase) return;
-
     let active = true;
 
     async function load() {
       setLoading(true);
       setError(null);
-      const client = supabase!;
 
-      let anoInicio: number;
-      let anoFim: number;
-      const [entesRes, entidadesRes, municipiosRes, naturezaRes] = await Promise.all([
-        client.from("dim_ente").select("id_ente,cod_ibgce,cod_municipio,populacao,nome").range(0, 9999),
-        client.from("dim_entidade").select("id_entidade,id_entidade_cjur,id_ente").range(0, 9999),
-        client.from("aux_dim_municipio").select("codigo,nome,uf_codigo").eq("uf_codigo", "12").range(0, 9999),
-        client.from("aux_dim_natureza_receita_orcamentaria").select("codigo,nivel,nome,rubrica").range(0, 9999),
-      ]);
-      if (entesRes.error) throw entesRes.error;
-      if (entidadesRes.error) throw entidadesRes.error;
-      if (municipiosRes.error) throw municipiosRes.error;
-      if (naturezaRes.error) throw naturezaRes.error;
-      const entes = (entesRes.data ?? []) as DimEnteRow[];
-      const entidades = (entidadesRes.data ?? []) as DimEntidadeRow[];
-      const municipios = (municipiosRes.data ?? []) as AuxMunicipioRow[];
-      const natureza = (naturezaRes.data ?? []) as NaturezaRow[];
+      const params = new URLSearchParams();
+      if (paramAnoInicio) params.set("anoInicio", paramAnoInicio);
+      if (paramAnoFim) params.set("anoFim", paramAnoFim);
+      if (paramMunicipio && paramMunicipio !== "all") params.set("id_ente", paramMunicipio);
+      if (paramEntidade && paramEntidade !== "all") params.set("id_entidade", paramEntidade);
+
+      const res = await fetch(`/api/receita-publica/dados?${params.toString()}`);
+      if (!res.ok) throw new Error("Erro ao carregar dados de receita pública");
+
+      const d = await res.json() as {
+        rows: ReceitaRow[];
+        entes: DimEnteRow[];
+        entidades: DimEntidadeRow[];
+        municipios: AuxMunicipioRow[];
+        natureza: NaturezaRow[];
+      };
+
+      if (!active) return;
+
+      const allRows = (d.rows ?? []) as ReceitaRow[];
+      const entes = (d.entes ?? []) as DimEnteRow[];
+      const entidades = (d.entidades ?? []) as DimEntidadeRow[];
+      const municipios = (d.municipios ?? []) as AuxMunicipioRow[];
+      const natureza = (d.natureza ?? []) as NaturezaRow[];
+
+      setRows(allRows);
+      setNaturezaRows(natureza);
+
       const nomeToCodigo = new Map<string, string>();
       municipios.forEach((m) => {
         const code = normalizeIbgeCode(m.codigo);
@@ -267,62 +275,6 @@ export default function PainelReceitaPublicaClient() {
         if (key && !nomeToCodigo.has(key)) nomeToCodigo.set(key, code);
       });
 
-      if (paramAnoInicio && paramAnoFim) {
-        anoInicio = Number(paramAnoInicio);
-        anoFim    = Number(paramAnoFim);
-      } else {
-        // Fallback: descobre os 2 anos mais recentes
-        const { data: anosData } = await client
-          .from("vw_receita_publica_kpis")
-          .select("ano")
-          .order("ano", { ascending: false })
-          .limit(5000);
-
-        const anos = [...new Set((anosData ?? []).map((r: { ano: number }) => Number(r.ano)))]
-          .filter(Boolean)
-          .sort((a, b) => b - a);
-
-        if (anos.length === 0) {
-          if (active) setLoading(false);
-          return;
-        }
-
-        anoFim    = anos[0]!;
-        anoInicio = anos.length >= 2 ? anos[1]! : anoFim;
-      }
-
-      const idEnteFiltro =
-        paramMunicipio && paramMunicipio !== "all" ? Number(paramMunicipio) : null;
-      const idEntidadeFiltro =
-        paramEntidade && paramEntidade !== "all" ? Number(paramEntidade) : null;
-
-      const pageSize = 1000;
-      let offset = 0;
-      const allRows: ReceitaRow[] = [];
-
-      while (true) {
-        const { data: rowsData, error: rowsError } = await client
-          .rpc("fn_receita_publica_entidade_mensal", {
-            p_ano_inicio: anoInicio,
-            p_ano_fim: anoFim,
-            p_id_ente: idEnteFiltro,
-            p_id_entidade: idEntidadeFiltro,
-          })
-          .range(offset, offset + pageSize - 1);
-
-        if (rowsError) {
-          throw new Error(formatSupabaseError(rowsError));
-        }
-
-        const batch = (rowsData ?? []) as ReceitaRow[];
-        allRows.push(...batch);
-        if (batch.length < pageSize) break;
-        offset += pageSize;
-      }
-
-      if (!active) return;
-      setRows(allRows);
-      setNaturezaRows(natureza);
       const entidadeToEnte = new Map<number, number>();
       entidades.forEach((e) => {
         entidadeToEnte.set(e.id_entidade, e.id_ente);
@@ -330,6 +282,7 @@ export default function PainelReceitaPublicaClient() {
       });
       const enteById = new Map<number, DimEnteRow>();
       entes.forEach((e) => enteById.set(e.id_ente, e));
+
       const receitaPorCod = new Map<string, number>();
       allRows.forEach((row) => {
         const enteId = entidadeToEnte.get(row.id_entidade);
@@ -341,6 +294,7 @@ export default function PainelReceitaPublicaClient() {
         if (!key) return;
         receitaPorCod.set(key, (receitaPorCod.get(key) ?? 0) + toNum(row.receita_realizada));
       });
+
       const out: Record<string, ReceitaPerCapitaItem> = {};
       entes.forEach((ente) => {
         if (!ente.populacao || ente.populacao <= 0) return;

@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
-import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import MapaCauc from "./MapaCauc";
 import type { AlertaMapRow } from "./MapaCaucContent";
 import { getCaucItem } from "./cauc-itens";
@@ -141,23 +140,13 @@ export default function PainelCaucClient() {
   const [carregandoDetalhe, setCarregandoDetalhe] = useState(false);
 
   useEffect(() => {
-    if (!isSupabaseConfigured || !supabase) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setErro("Supabase não configurado.");
-      setCarregando(false);
-      return;
-    }
-    Promise.all([
-      supabase
-        .from("vw_alertas_cauc_ac")
-        .select("*")
-        .order("total_pendencias", { ascending: false }),
-      supabase.from("vw_cauc_ultima_carga").select("*").limit(1).single(),
-    ]).then(([resAlertas, resCarga]) => {
-      if (resAlertas.error) { setErro(resAlertas.error.message); return; }
-      setAlertas((resAlertas.data ?? []) as AlertaRow[]);
-      if (!resCarga.error && resCarga.data) setCarga(resCarga.data as UltimaCarga);
-    }).catch((e) => setErro(String(e)))
+    fetch("/api/cauc/alertas")
+      .then((r) => r.ok ? r.json() : Promise.reject(new Error("Erro ao carregar")))
+      .then((d: { alertas: AlertaRow[]; carga: UltimaCarga | null }) => {
+        setAlertas((d.alertas ?? []) as AlertaRow[]);
+        if (d.carga) setCarga(d.carga as UltimaCarga);
+      })
+      .catch((e) => setErro(String(e)))
       .finally(() => setCarregando(false));
   }, []);
 
@@ -165,13 +154,15 @@ export default function PainelCaucClient() {
     setMunicipioDetalhe(row);
     setItensDetalhe([]);
     setCarregandoDetalhe(true);
-    const { data } = await supabase!
-      .from("vw_cauc_ac_ultima_situacao")
-      .select("id,nome_ente,item_codigo,item_descricao,grupo,situacao,situacao_normalizada")
-      .eq("codigo_ibge", row.codigo_ibge)
-      .order("item_codigo");
-    setItensDetalhe((data ?? []) as SituacaoItem[]);
-    setCarregandoDetalhe(false);
+    try {
+      const res = await fetch(`/api/cauc/situacao?codigo_ibge=${encodeURIComponent(row.codigo_ibge)}`);
+      const data = res.ok ? await res.json() : [];
+      setItensDetalhe((data ?? []) as SituacaoItem[]);
+    } catch {
+      setItensDetalhe([]);
+    } finally {
+      setCarregandoDetalhe(false);
+    }
   }
 
   const dadosMapa = useMemo<Record<string, AlertaMapRow>>(() => {

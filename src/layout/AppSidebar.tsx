@@ -4,7 +4,6 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useSidebar } from "../context/SidebarContext";
-import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import {
   CalenderIcon,
   ChevronDownIcon,
@@ -102,25 +101,14 @@ const AppSidebar: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (!isSupabaseConfigured || !supabase) return;
-
-    const tabelas = ["combustivel_mensal", "combustivel_empenho_mensal", "receita_publica_categoria_mensal"];
-
-    Promise.all(
-      tabelas.map((tabela) =>
-        supabase!
-          .from(tabela)
-          .select("atualizado_em")
-          .order("atualizado_em", { ascending: false })
-          .limit(1)
-          .then(({ data }) => (data?.[0] as { atualizado_em?: string } | undefined)?.atualizado_em ?? null)
-      )
-    ).then((datas) => {
-      const validas = datas.filter(Boolean) as string[];
-      if (validas.length === 0) return;
-      const mais_recente = validas.sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0];
-      setLastUpdate(new Date(mais_recente).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" }));
-    });
+    fetch("/api/dados/ultima-atualizacao")
+      .then(r => r.ok ? r.json() : null)
+      .then((d: { ultimaAtualizacao?: string | null } | null) => {
+        if (d?.ultimaAtualizacao) {
+          setLastUpdate(new Date(d.ultimaAtualizacao).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" }));
+        }
+      })
+      .catch(() => null);
   }, []);
 
   const renderMenuItems = (

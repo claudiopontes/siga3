@@ -1,6 +1,5 @@
 ﻿"use client";
 
-import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import { normalizeName } from "@/components/combustivel/filter-utils";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -323,56 +322,22 @@ export default function EmpenhoHeaderFilters() {
     async function load() {
       setLoading(true);
       setError(null);
-
-      if (!isSupabaseConfigured || !supabase) {
-        setLoading(false);
-        setError("Supabase não configurado");
-        return;
-      }
-
       try {
-        const pageSize = 1000;
-        let offset = 0;
-        const entidadeSet = new Set<string>();
-        const tipoSet = new Set<string>();
-        const credorSet = new Set<string>();
-        const formaSet = new Set<string>();
-        const anoSet = new Set<number>();
-
-        while (true) {
-          const { data, error } = await supabase
-            .from("combustivel_empenho_mensal")
-            .select("entidade, tipo_combustivel, nome_credor, forma_fornecimento, ano")
-            .order("entidade", { ascending: true })
-            .range(offset, offset + pageSize - 1);
-
-          if (error) throw error;
-          const batch = (data ?? []) as Array<{
-            entidade: string;
-            tipo_combustivel: string;
-            nome_credor: string;
-            forma_fornecimento: string;
-            ano: number;
-          }>;
-
-          batch.forEach((row) => {
-            if (row.entidade) entidadeSet.add(row.entidade);
-            if (row.tipo_combustivel) tipoSet.add(row.tipo_combustivel);
-            if (row.nome_credor) credorSet.add(row.nome_credor);
-            if (row.forma_fornecimento) formaSet.add(row.forma_fornecimento);
-            if (row.ano) anoSet.add(row.ano);
-          });
-
-          if (batch.length < pageSize) break;
-          offset += pageSize;
-        }
-
+        const res = await fetch("/api/combustivel/empenhos/filtros");
         if (!active) return;
-        setEntidades([...entidadeSet].sort((a, b) => a.localeCompare(b, "pt-BR")));
-        setTipos([...tipoSet].sort((a, b) => a.localeCompare(b, "pt-BR")));
-        setCredores([...credorSet].sort((a, b) => a.localeCompare(b, "pt-BR")));
-        setFormas([...formaSet].sort());
-        setAnos([...anoSet].sort((a, b) => a - b));
+        if (!res.ok) throw new Error("Falha ao carregar filtros");
+        const d = await res.json() as {
+          entidades: string[];
+          tipos: string[];
+          credores: string[];
+          formas: string[];
+          anos: number[];
+        };
+        setEntidades(d.entidades ?? []);
+        setTipos(d.tipos ?? []);
+        setCredores(d.credores ?? []);
+        setFormas(d.formas ?? []);
+        setAnos(d.anos ?? []);
         setLoading(false);
       } catch (err) {
         if (!active) return;

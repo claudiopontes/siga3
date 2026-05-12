@@ -1,6 +1,5 @@
 "use client";
 
-import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import {
   buildMunicipioIndex,
   inferMunicipioCodeFromEntidade,
@@ -13,14 +12,6 @@ type MunicipioRow = {
   codigo: string;
   nome: string;
   uf_codigo: string | null;
-};
-
-type TipoRow = {
-  entidade: string;
-  tipo_combustivel: string;
-  emitente: string;
-  ano?: number;
-  mes?: number;
 };
 
 type Option = {
@@ -54,18 +45,6 @@ function extractErrorMessage(error: unknown): string {
     return typeof msg === "string" ? msg : String(msg);
   }
   return String(error);
-}
-
-function isMissingEmitenteColumnError(error: unknown): boolean {
-  const message = extractErrorMessage(error).toLowerCase();
-  return (
-    message.includes("emitente") &&
-    (message.includes("column") ||
-      message.includes("coluna") ||
-      message.includes("schema cache") ||
-      message.includes("does not exist") ||
-      message.includes("nao existe"))
-  );
 }
 
 function normalizeText(value: string): string {
@@ -425,157 +404,27 @@ export default function CombustivelHeaderFilters() {
   useEffect(() => {
     let active = true;
 
-    async function fetchMensalMeta(): Promise<{
-      tipos: string[];
-      entidades: string[];
-      emitentes: string[];
-      latestMonthLabel: string | null;
-    }> {
-      if (!supabase) return { tipos: [], entidades: [], emitentes: [], latestMonthLabel: null };
-
-      const pageSize = 1000;
-      let offset = 0;
-      const tipoSet = new Set<string>();
-      const entidadeSet = new Set<string>();
-      const emitenteSet = new Set<string>();
-      let latestYear = 0;
-      let latestMonth = 0;
-
-      while (true) {
-        const { data, error } = await supabase
-          .from("combustivel_mensal")
-          .select("entidade, tipo_combustivel, emitente, ano, mes")
-          .order("entidade", { ascending: true })
-          .range(offset, offset + pageSize - 1);
-
-        if (error) throw error;
-        const batch = (data ?? []) as TipoRow[];
-        batch.forEach((row) => {
-          if (row.tipo_combustivel) tipoSet.add(row.tipo_combustivel);
-          if (row.entidade) entidadeSet.add(row.entidade);
-          if (row.emitente) emitenteSet.add(row.emitente);
-          if (typeof row.ano === "number" && typeof row.mes === "number") {
-            if (row.ano > latestYear || (row.ano === latestYear && row.mes > latestMonth)) {
-              latestYear = row.ano;
-              latestMonth = row.mes;
-            }
-          }
-        });
-
-        if (batch.length < pageSize || offset >= 9000) break;
-        offset += pageSize;
-      }
-
-      return {
-        tipos: [...tipoSet].sort((a, b) => a.localeCompare(b, "pt-BR")),
-        entidades: [...entidadeSet].sort((a, b) => a.localeCompare(b, "pt-BR")),
-        emitentes: [...emitenteSet].sort((a, b) => a.localeCompare(b, "pt-BR")),
-        latestMonthLabel: latestYear > 0 ? `${String(latestMonth).padStart(2, "0")}/${latestYear}` : null,
-      };
-    }
-
-    async function fetchMensalMetaLegacy(): Promise<{
-      tipos: string[];
-      entidades: string[];
-      emitentes: string[];
-      latestMonthLabel: string | null;
-    }> {
-      if (!supabase) return { tipos: [], entidades: [], emitentes: [], latestMonthLabel: null };
-
-      const pageSize = 1000;
-      let offset = 0;
-      const tipoSet = new Set<string>();
-      const entidadeSet = new Set<string>();
-      let latestYear = 0;
-      let latestMonth = 0;
-
-      while (true) {
-        const { data, error } = await supabase
-          .from("combustivel_mensal")
-          .select("entidade, tipo_combustivel, ano, mes")
-          .order("entidade", { ascending: true })
-          .range(offset, offset + pageSize - 1);
-
-        if (error) throw error;
-        const batch = (data ?? []) as Array<{ entidade: string; tipo_combustivel: string; ano?: number; mes?: number }>;
-        batch.forEach((row) => {
-          if (row.tipo_combustivel) tipoSet.add(row.tipo_combustivel);
-          if (row.entidade) entidadeSet.add(row.entidade);
-          if (typeof row.ano === "number" && typeof row.mes === "number") {
-            if (row.ano > latestYear || (row.ano === latestYear && row.mes > latestMonth)) {
-              latestYear = row.ano;
-              latestMonth = row.mes;
-            }
-          }
-        });
-
-        if (batch.length < pageSize || offset >= 9000) break;
-        offset += pageSize;
-      }
-
-      const emitenteRes = await supabase
-        .from("combustivel_emitente")
-        .select("emitente")
-        .order("emitente", { ascending: true })
-        .range(0, 9999);
-
-      if (emitenteRes.error) throw emitenteRes.error;
-      const emitentes = (emitenteRes.data ?? [])
-        .map((row) => row.emitente)
-        .filter((value): value is string => Boolean(value))
-        .sort((a, b) => a.localeCompare(b, "pt-BR"));
-
-      return {
-        tipos: [...tipoSet].sort((a, b) => a.localeCompare(b, "pt-BR")),
-        entidades: [...entidadeSet].sort((a, b) => a.localeCompare(b, "pt-BR")),
-        emitentes,
-        latestMonthLabel: latestYear > 0 ? `${String(latestMonth).padStart(2, "0")}/${latestYear}` : null,
-      };
-    }
-
     async function load() {
       setLoading(true);
       setError(null);
 
-      if (!isSupabaseConfigured || !supabase) {
-        if (!active) return;
-        setLoading(false);
-        setError("Supabase não configurado");
-        return;
-      }
-
       try {
-        const [municipioRes, mensalMeta] = await Promise.all([
-          supabase
-            .from("aux_dim_municipio")
-            .select("codigo, nome, uf_codigo")
-            .eq("uf_codigo", "12")
-            .order("nome", { ascending: true }),
-          (async () => {
-            try {
-              return await fetchMensalMeta();
-            } catch (error) {
-              if (isMissingEmitenteColumnError(error)) {
-                return fetchMensalMetaLegacy();
-              }
-              throw error;
-            }
-          })(),
-        ]);
-
+        const res = await fetch("/api/combustivel/filtros");
         if (!active) return;
+        if (!res.ok) throw new Error("Falha ao carregar filtros");
+        const d = await res.json() as {
+          municipios: MunicipioRow[];
+          entidades: string[];
+          tipos: string[];
+          emitentes: string[];
+          anos: number[];
+          meses: number[];
+        };
 
-        if (municipioRes.error) {
-          setError(municipioRes.error.message ?? "Falha ao carregar filtros");
-          setLoading(false);
-          return;
-        }
-
-        setMunicipios((municipioRes.data ?? []) as MunicipioRow[]);
-        setEntidades(mensalMeta.entidades);
-        setTipos(mensalMeta.tipos);
-        setEmitentes(mensalMeta.emitentes);
-        setLatestMonthLabel(mensalMeta.latestMonthLabel);
+        setMunicipios(d.municipios ?? []);
+        setEntidades(d.entidades ?? []);
+        setTipos(d.tipos ?? []);
+        setEmitentes(d.emitentes ?? []);
         setLoading(false);
       } catch (error) {
         if (!active) return;

@@ -6,7 +6,6 @@ import type { ApexOptions } from "apexcharts";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { normalizeName } from "@/components/combustivel/filter-utils";
-import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 
 const Chart = dynamic(() => import("react-apexcharts"), { ssr: false });
 
@@ -108,38 +107,13 @@ export default function PainelEmpenhoClient() {
       setLoading(true);
       setError(null);
 
-      if (!isSupabaseConfigured || !supabase) {
-        setError("Supabase não configurado. Defina NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_ANON_KEY.");
-        setLoading(false);
-        return;
-      }
-
       try {
-        const pageSize = 1000;
-        let offset = 0;
-        const out: EmpenhoRow[] = [];
-
-        while (true) {
-          const { data, error } = await supabase
-            .from("combustivel_empenho_mensal")
-            .select("ano, mes, entidade, tipo_combustivel, forma_fornecimento, nome_credor, valor_empenho, valor_liquidado, qtd_empenhos, atualizado_em")
-            .order("ano", { ascending: true })
-            .order("mes", { ascending: true })
-            .range(offset, offset + pageSize - 1);
-
-          if (error) throw error;
-
-          const batch = (data ?? []) as EmpenhoRow[];
-          out.push(...batch);
-
-          if (batch.length < pageSize) break;
-          offset += pageSize;
-        }
-
+        const res = await fetch("/api/combustivel/empenhos");
         if (!active) return;
+        if (!res.ok) throw new Error("Falha ao carregar dados");
+        const out = (await res.json()) as EmpenhoRow[];
 
         setRows(out);
-
 
         // Auto-seleciona os últimos 2 anos se nenhum filtro de ano estiver definido
         const params = new URLSearchParams(window.location.search);

@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type React from "react";
 import Link from "next/link";
-import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 
 type AlertaRow = {
   codigo_ibge: string;
@@ -658,15 +657,12 @@ function ModalProcessual({
 }
 
 export default function AlertasGabineteClient() {
-  const supabaseDisponivel = Boolean(isSupabaseConfigured && supabase);
   const [alertas, setAlertas] = useState<AlertaRow[]>([]);
   const [resumoProcessos, setResumoProcessos] = useState<ProcessoResumoRow | null>(null);
   const [alertasProcessos, setAlertasProcessos] = useState<ProcessoAlertaRow[]>([]);
   const [modalProcessual, setModalProcessual] = useState<TipoModalProcessual | null>(null);
-  const [carregando, setCarregando] = useState(supabaseDisponivel);
-  const [erro, setErro] = useState<string | null>(
-    supabaseDisponivel ? null : "Supabase não configurado."
-  );
+  const [carregando, setCarregando] = useState(true);
+  const [erro, setErro] = useState<string | null>(null);
   const [resumoRemessas, setResumoRemessas] = useState<RemessaResumoRow[]>([]);
   const [carregandoRemessas, setCarregandoRemessas] = useState(true);
   const [resumoSaude, setResumoSaude] = useState<SaudeResumoRow | null>(null);
@@ -721,53 +717,24 @@ export default function AlertasGabineteClient() {
   }, []);
 
   useEffect(() => {
-    if (!isSupabaseConfigured || !supabase) {
-      return;
-    }
-
-    const clienteSupabase = supabase;
     let cancelado = false;
 
     async function carregarAlertas() {
       try {
-        const [resAlertas, resResumoProcessos, resAlertasProcessos] = await Promise.all([
-          clienteSupabase
-            .from("vw_alertas_cauc_ac")
-            .select("codigo_ibge,nome_ente,total_pendencias,nivel_alerta")
-            .order("total_pendencias", { ascending: false }),
-          clienteSupabase
-            .from("vw_processos_gabinete_por_gabinete")
-            .select("id_grupo,grupo_atual,total_processos,processos_mais_15_dias,processos_sensiveis,processos_prazo_regulamentar_vencido,maior_duracao_setor,media_dias_setor,atualizado_em")
-            .eq("id_grupo", GABINETE_ATUAL_ID)
-            .limit(1)
-            .maybeSingle(),
-          clienteSupabase
-            .from("vw_alertas_processos_gabinete")
-            .select("tipo_alerta,titulo_alerta,nivel_alerta,processo,grupo_atual,id_grupo,relator,classe,assunto,orgao,atividade_atual,duracao_setor_dias,dias_em_atraso,data_chegada_setor_atual,atualizado_em")
-            .eq("id_grupo", GABINETE_ATUAL_ID),
-        ]);
-
+        const res = await fetch("/api/alertas-gabinete");
         if (cancelado) return;
-
-        if (resAlertas.error) {
-          setErro(resAlertas.error.message);
+        if (!res.ok) {
+          setErro("Erro ao carregar dados.");
           return;
         }
-
-        setAlertas((resAlertas.data ?? []) as AlertaRow[]);
-        if (!resResumoProcessos.error && resResumoProcessos.data) {
-          setResumoProcessos(resResumoProcessos.data as ProcessoResumoRow);
-        } else {
-          setResumoProcessos(null);
-          if (resResumoProcessos.error) console.error("Erro ao carregar resumo processual:", resResumoProcessos.error.message);
-        }
-
-        if (!resAlertasProcessos.error) {
-          setAlertasProcessos((resAlertasProcessos.data ?? []) as ProcessoAlertaRow[]);
-        } else {
-          setAlertasProcessos([]);
-          console.error("Erro ao carregar alertas processuais:", resAlertasProcessos.error.message);
-        }
+        const d = await res.json() as {
+          alertas: AlertaRow[];
+          resumoProcessos: ProcessoResumoRow | null;
+          alertasProcessos: ProcessoAlertaRow[];
+        };
+        setAlertas(d.alertas ?? []);
+        setResumoProcessos(d.resumoProcessos ?? null);
+        setAlertasProcessos(d.alertasProcessos ?? []);
       } catch (e) {
         if (!cancelado) setErro(String(e));
       } finally {

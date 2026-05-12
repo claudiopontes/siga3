@@ -1,6 +1,5 @@
 ﻿"use client";
 
-import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
@@ -162,37 +161,27 @@ export default function ReceitaPublicaHeaderFilters() {
 
     async function load() {
       setLoading(true);
-      if (!isSupabaseConfigured || !supabase) {
-        if (active) {
-          setLoading(false);
-          setHasLoadedOnce(true);
-        }
-        return;
-      }
 
       try {
-        const [periodosResult, rowsResult, dimEntidadeResult, combustivelEntidadeResult, dimEnteResult] = await Promise.allSettled([
-          supabase.from("vw_receita_publica_kpis").select("ano, mes").order("ano", { ascending: true }).order("mes", { ascending: true }),
-          supabase
-            .from("receita_publica_categoria_mensal")
-            .select("ano, mes, id_entidade, id_entidade_cjur")
-            .order("ano", { ascending: false })
-            .order("mes", { ascending: false })
-            .range(0, 4999),
-          supabase.from("dim_entidade").select("id_entidade, id_entidade_cjur, id_ente, nome").range(0, 9999),
-          supabase.from("tb_despesa_combustivel_polanco").select("id_entidade, entidade").range(0, 9999),
-          supabase.from("dim_ente").select("id_ente, nome").order("nome", { ascending: true }).range(0, 9999),
-        ]);
+        const res = await fetch("/api/receita-publica/filtros");
+        if (!active) return;
 
-        const periodosData = periodosResult.status === "fulfilled" ? ((periodosResult.value.data ?? []) as PeriodoRow[]) : [];
-        const rowsData = rowsResult.status === "fulfilled" ? ((rowsResult.value.data ?? []) as ReceitaFiltroRow[]) : [];
-        const dimEntidadeData = dimEntidadeResult.status === "fulfilled" ? ((dimEntidadeResult.value.data ?? []) as EntidadeNomeRow[]) : [];
-        const combustivelEntidadeData = combustivelEntidadeResult.status === "fulfilled" ? ((combustivelEntidadeResult.value.data ?? []) as EntidadeNomeRow[]) : [];
-        const dimEnteData = dimEnteResult.status === "fulfilled" ? ((dimEnteResult.value.data ?? []) as EnteRow[]) : [];
+        const d = res.ok
+          ? await res.json() as {
+              periodos: PeriodoRow[];
+              entidades: Array<{ id_entidade: number | string | null; id_entidade_cjur?: number | string | null; id_ente?: number | string | null; nome?: string | null }>;
+              entes: EnteRow[];
+            }
+          : { periodos: [], entidades: [], entes: [] };
+
+        const periodosData = (d.periodos ?? []) as PeriodoRow[];
+        const dimEntidadeData = (d.entidades ?? []) as EntidadeNomeRow[];
+        const dimEnteData = (d.entes ?? []) as EnteRow[];
 
         const nomeMap = new Map<string, string>();
         const dimOptionsMap = new Map<string, string>();
-        const enteMap = new Map<string, string>(); // id_entidade → id_ente
+        const enteMap = new Map<string, string>();
+
         dimEntidadeData.forEach((r) => {
           const idEnt  = toStringValue(r.id_entidade).trim();
           const idCjur = toStringValue(r.id_entidade_cjur).trim();
@@ -203,11 +192,6 @@ export default function ReceitaPublicaHeaderFilters() {
           if (idCjur && !nomeMap.has(idCjur)) nomeMap.set(idCjur, nome);
           if (idEnt && !dimOptionsMap.has(idEnt)) dimOptionsMap.set(idEnt, nome);
           if (idEnt && idEnte) enteMap.set(idEnt, idEnte);
-        });
-        combustivelEntidadeData.forEach((r) => {
-          const idEnt = toStringValue(r.id_entidade).trim();
-          const nome = toStringValue(r.entidade).trim();
-          if (idEnt && nome && !nomeMap.has(idEnt)) nomeMap.set(idEnt, nome);
         });
 
         const seenNames = new Set<string>();
@@ -227,9 +211,8 @@ export default function ReceitaPublicaHeaderFilters() {
           .filter((e) => e.id_ente != null && e.nome && !isTestName(String(e.nome)))
           .map((e) => ({ value: String(e.id_ente), label: String(e.nome) }));
 
-        if (!active) return;
         setPeriodos(periodosData);
-        setRows(rowsData);
+        setRows([]);
         setEntidadeNomes(nomeMap);
         setEntidadeOptions(dimOptions);
         setEntidadeEnteMap(enteMap);

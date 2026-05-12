@@ -13,7 +13,6 @@ import {
   normalizeCode,
   normalizeName,
 } from "@/components/combustivel/filter-utils";
-import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 
 const Chart = dynamic(() => import("react-apexcharts"), { ssr: false });
 
@@ -27,8 +26,6 @@ type MensalRow = {
   valor_total: number;
   qtd_notas: number;
 };
-
-type LegacyMensalRow = Omit<MensalRow, "emitente">;
 
 type MunicipioRow = {
   nome: string;
@@ -82,18 +79,6 @@ function extractErrorMessage(error: unknown): string {
   return String(error);
 }
 
-function isMissingEmitenteColumnError(error: unknown): boolean {
-  const message = extractErrorMessage(error).toLowerCase();
-  return (
-    message.includes("emitente") &&
-    (message.includes("column") ||
-      message.includes("coluna") ||
-      message.includes("schema cache") ||
-      message.includes("does not exist") ||
-      message.includes("nao existe"))
-  );
-}
-
 export default function PainelCombustivelClient() {
   "use no memo";
 
@@ -116,126 +101,25 @@ export default function PainelCombustivelClient() {
   useEffect(() => {
     let active = true;
 
-    async function fetchAllMensalRows(
-      client: NonNullable<typeof supabase>,
-    ): Promise<{ rows: MensalRow[]; hasEmitente: boolean }> {
-      const pageSize = 1000;
-      let offset = 0;
-      const out: MensalRow[] = [];
-
-      while (true) {
-        const { data, error } = await client
-          .from("combustivel_mensal")
-          .select("ano, mes, entidade, emitente, tipo_combustivel, litros, valor_total, qtd_notas")
-          .order("ano", { ascending: true })
-          .order("mes", { ascending: true })
-          .range(offset, offset + pageSize - 1);
-
-        if (error) throw error;
-
-        const batch = (data ?? []) as MensalRow[];
-        out.push(...batch);
-
-        if (batch.length < pageSize) break;
-        offset += pageSize;
-      }
-
-      return { rows: out, hasEmitente: true };
-    }
-
-    async function fetchAllMunicipioRows(
-      client: NonNullable<typeof supabase>,
-    ): Promise<MunicipioRow[]> {
-      const pageSize = 1000;
-      let offset = 0;
-      const out: MunicipioRow[] = [];
-
-      while (true) {
-        const { data, error } = await client
-          .from("aux_dim_municipio")
-          .select("codigo, nome, uf_codigo")
-          .eq("uf_codigo", "12")
-          .order("nome", { ascending: true })
-          .range(offset, offset + pageSize - 1);
-
-        if (error) throw error;
-
-        const batch = (data ?? []) as MunicipioRow[];
-        out.push(...batch);
-
-        if (batch.length < pageSize) break;
-        offset += pageSize;
-      }
-
-      return out;
-    }
-
-    async function fetchAllMensalRowsLegacy(
-      client: NonNullable<typeof supabase>,
-    ): Promise<{ rows: MensalRow[]; hasEmitente: boolean }> {
-      const pageSize = 1000;
-      let offset = 0;
-      const out: MensalRow[] = [];
-
-      while (true) {
-        const { data, error } = await client
-          .from("combustivel_mensal")
-          .select("ano, mes, entidade, tipo_combustivel, litros, valor_total, qtd_notas")
-          .order("ano", { ascending: true })
-          .order("mes", { ascending: true })
-          .range(offset, offset + pageSize - 1);
-
-        if (error) throw error;
-
-        const batch = (data ?? []) as LegacyMensalRow[];
-        out.push(
-          ...batch.map((row) => ({
-            ...row,
-            emitente: "",
-          })),
-        );
-
-        if (batch.length < pageSize) break;
-        offset += pageSize;
-      }
-
-      return { rows: out, hasEmitente: false };
-    }
-
     async function load() {
       setLoading(true);
       setError(null);
 
-      if (!isSupabaseConfigured || !supabase) {
-        setError(
-          "Supabase n\u00e3o configurado. Defina NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_ANON_KEY no arquivo .env.local.",
-        );
-        setLoading(false);
-        return;
-      }
-
-      const client = supabase;
-
       try {
-        const [mensalResult, municipioData] = await Promise.all([
-          (async () => {
-            try {
-              return await fetchAllMensalRows(client);
-            } catch (error) {
-              if (isMissingEmitenteColumnError(error)) {
-                return fetchAllMensalRowsLegacy(client);
-              }
-              throw error;
-            }
-          })(),
-          fetchAllMunicipioRows(client),
-        ]);
-
+        const res = await fetch("/api/combustivel/dados");
         if (!active) return;
+        if (!res.ok) throw new Error("Falha ao carregar dados");
+        const d = await res.json() as {
+          dados: MensalRow[];
+          municipios: MunicipioRow[];
+        };
 
-        setMensalRows(mensalResult.rows);
-        setHasMensalEmitente(mensalResult.hasEmitente);
-        setMunicipios(municipioData);
+        // Detecta se emitente est\u00e1 presente nos dados
+        const hasEmitente = d.dados.length > 0 && "emitente" in d.dados[0]! && d.dados[0]!.emitente !== "";
+
+        setMensalRows(d.dados ?? []);
+        setHasMensalEmitente(hasEmitente);
+        setMunicipios(d.municipios ?? []);
 
         setLoading(false);
       } catch (error) {
