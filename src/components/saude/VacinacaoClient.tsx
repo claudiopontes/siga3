@@ -1,10 +1,9 @@
 "use client";
 
 import React, { useEffect, useState, useMemo } from "react";
-import Link from "next/link";
 import dynamic from "next/dynamic";
 import { ApexOptions } from "apexcharts";
-import { ArrowLeft, ShieldCheck, Info } from "lucide-react";
+import { Info } from "lucide-react";
 
 const Chart = dynamic(() => import("react-apexcharts"), { ssr: false });
 
@@ -206,32 +205,37 @@ function SkeletonCard() {
 // Componente principal
 // ---------------------------------------------------------------------------
 
+const ANO_ATUAL = new Date().getFullYear();
+
 export default function VacinacaoClient() {
-  // Estado
-  const [cobResumo,  setCobResumo]  = useState<CoberturaResumo | null>(null);
-  const [cobMunic,   setCobMunic]   = useState<CoberturaMunicipio[]>([]);
-  const [cobImuno,   setCobImuno]   = useState<CoberturaImunobiologico[]>([]);
+  // Seleção de ano
+  const [anoSel, setAnoSel] = useState<number>(ANO_ATUAL);
+
+  // Estado de dados
+  const [cobMunic,    setCobMunic]    = useState<CoberturaMunicipio[]>([]);
+  const [cobImuno,    setCobImuno]    = useState<CoberturaImunobiologico[]>([]);
   const [cobEvolucao, setCobEvolucao] = useState<CoberturaEvolucao[]>([]);
-  const [cobAlertas, setCobAlertas] = useState<CoberturaAlerta[]>([]);
+  const [cobAlertas,  setCobAlertas]  = useState<CoberturaAlerta[]>([]);
   const [dosesResumo, setDosesResumo] = useState<DosesResumo | null>(null);
   const [dosesAlertas, setDosesAlertas] = useState<DosesAlerta[]>([]);
-  const [doseserie,  setDoseSerie]  = useState<SeriePonto[]>([]);
-  const [carregando, setCarregando] = useState(true);
-  const [erro,       setErro]       = useState<string | null>(null);
+  const [doseserie,   setDoseSerie]   = useState<SeriePonto[]>([]);
+  const [carregando,  setCarregando]  = useState(true);
+  const [erro,        setErro]        = useState<string | null>(null);
 
-  // Filtros de tabela
-  const [filtroMun,    setFiltroMun]    = useState("");
-  const [filtroAno,    setFiltroAno]    = useState<string>("");
+  // Filtros de tabela (municipios)
+  const [filtroMun,     setFiltroMun]     = useState("");
   const [filtroPeriodo, setFiltroPeriodo] = useState<string>("");
-  const [apenasAbaixo, setApenasAbaixo]  = useState(false);
+  const [apenasAbaixo,  setApenasAbaixo]  = useState(false);
 
   useEffect(() => {
+    setCarregando(true);
+    setErro(null);
+    const a = anoSel;
     Promise.allSettled([
-      fetch("/api/saude/pni/cobertura/resumo").then(r => r.ok ? r.json() : null),
-      fetch("/api/saude/pni/cobertura/municipios").then(r => r.ok ? r.json() : []),
-      fetch("/api/saude/pni/cobertura/imunobiologicos").then(r => r.ok ? r.json() : []),
-      fetch("/api/saude/pni/cobertura/evolucao").then(r => r.ok ? r.json() : []),
-      fetch("/api/saude/pni/cobertura/alertas?home=1").then(r => r.ok ? r.json() : []),
+      fetch(`/api/saude/pni/cobertura/municipios?ano=${a}`).then(r => r.ok ? r.json() : []),
+      fetch(`/api/saude/pni/cobertura/imunobiologicos?ano=${a}`).then(r => r.ok ? r.json() : []),
+      fetch(`/api/saude/pni/cobertura/evolucao?ano=${a}`).then(r => r.ok ? r.json() : []),
+      fetch(`/api/saude/pni/cobertura/alertas?ano=${a}`).then(r => r.ok ? r.json() : []),
       fetch("/api/saude/pni/resumo").then(r => r.ok ? r.json() : null),
       fetch("/api/saude/pni/alertas?home=1").then(r => r.ok ? r.json() : []),
       fetch("/api/saude/pni/serie").then(r => r.ok ? r.json() : []),
@@ -239,35 +243,40 @@ export default function VacinacaoClient() {
       const val = <T,>(r: PromiseSettledResult<T>, fallback: T): T =>
         r.status === "fulfilled" ? (r.value ?? fallback) : fallback;
 
-      setCobResumo(val(results[0], null));
-      setCobMunic(Array.isArray(val(results[1], [])) ? val(results[1], []) : []);
-      setCobImuno(Array.isArray(val(results[2], [])) ? val(results[2], []) : []);
-      setCobEvolucao(Array.isArray(val(results[3], [])) ? val(results[3], []) : []);
-      setCobAlertas(Array.isArray(val(results[4], [])) ? val(results[4], []) : []);
-      setDosesResumo(val(results[5], null));
-      setDosesAlertas(Array.isArray(val(results[6], [])) ? val(results[6], []) : []);
-      setDoseSerie(Array.isArray(val(results[7], [])) ? val(results[7], []) : []);
+      setCobMunic(Array.isArray(val(results[0], [])) ? val(results[0], []) : []);
+      setCobImuno(Array.isArray(val(results[1], [])) ? val(results[1], []) : []);
+      setCobEvolucao(Array.isArray(val(results[2], [])) ? val(results[2], []) : []);
+      setCobAlertas(Array.isArray(val(results[3], [])) ? val(results[3], []) : []);
+      setDosesResumo(val(results[4], null));
+      setDosesAlertas(Array.isArray(val(results[5], [])) ? val(results[5], []) : []);
+      setDoseSerie(Array.isArray(val(results[6], [])) ? val(results[6], []) : []);
     }).catch((e: unknown) => {
       setErro(e instanceof Error ? e.message : "Erro ao carregar dados.");
     }).finally(() => setCarregando(false));
-  }, []);
+  }, [anoSel]);
 
   // ── Derivações ──
 
-  const anosDisponiveis = useMemo(() => {
-    const s = new Set(cobMunic.map(m => String(m.ano)));
-    return Array.from(s).sort();
-  }, [cobMunic]);
+  // KPIs derivados dos dados do ano selecionado
+  const kpis = useMemo(() => {
+    const tipoPeriodo   = cobMunic[0]?.tipo_periodo ?? null;
+    const dataRef       = cobMunic[0]?.data_referencia ?? null;
+    const munAbaixo     = cobMunic.filter(m => m.total_abaixo_meta > 0).length;
+    const coberturas    = cobMunic.map(m => Number(m.cobertura_media)).filter(v => !isNaN(v));
+    const cobMedia      = coberturas.length > 0 ? coberturas.reduce((s, v) => s + v, 0) / coberturas.length : null;
+    const criticos      = cobAlertas.filter(a => a.nivel === "CRITICO").length;
+    const altos         = cobAlertas.filter(a => a.nivel === "ALTO").length;
+    return { tipoPeriodo, dataRef, munAbaixo, cobMedia, criticos, altos };
+  }, [cobMunic, cobAlertas]);
 
   const municipiosFiltrados = useMemo(() => {
     return cobMunic.filter(m => {
       if (filtroMun && !m.nome_municipio.toLowerCase().includes(filtroMun.toLowerCase())) return false;
-      if (filtroAno && String(m.ano) !== filtroAno) return false;
       if (filtroPeriodo && m.tipo_periodo !== filtroPeriodo) return false;
       if (apenasAbaixo && m.total_abaixo_meta === 0) return false;
       return true;
     });
-  }, [cobMunic, filtroMun, filtroAno, filtroPeriodo, apenasAbaixo]);
+  }, [cobMunic, filtroMun, filtroPeriodo, apenasAbaixo]);
 
   // Todos alertas combinados (cobertura + doses)
   const todosAlertas = useMemo(() => {
@@ -292,7 +301,7 @@ export default function VacinacaoClient() {
 
   // Imunobiológicos ordenados por cobertura (menor primeiro)
   const imunoOrdenado = useMemo(() =>
-    [...cobImuno].sort((a, b) => (a.cobertura_media ?? 999) - (b.cobertura_media ?? 999)).slice(0, 20),
+    [...cobImuno].sort((a, b) => Number(a.cobertura_media ?? 999) - Number(b.cobertura_media ?? 999)).slice(0, 20),
   [cobImuno]);
 
   // Evolução: agrupa por status_arquivo/ano/data_referencia e imunobiológico
@@ -302,7 +311,7 @@ export default function VacinacaoClient() {
     for (const e of cobEvolucao) {
       const k = `${e.ano}|${e.data_referencia}|${e.imunobiologico}`;
       const cur = map.get(k) ?? { soma: 0, cnt: 0, abaixo: 0, total: 0, tipo_periodo: e.tipo_periodo };
-      if (e.cobertura_percentual !== null) { cur.soma += e.cobertura_percentual; cur.cnt++; }
+      if (e.cobertura_percentual !== null) { cur.soma += Number(e.cobertura_percentual); cur.cnt++; }
       if (e.abaixo_meta) cur.abaixo++;
       cur.total++;
       cur.tipo_periodo = e.tipo_periodo;
@@ -329,7 +338,7 @@ export default function VacinacaoClient() {
 
   const opcoesImuno: ApexOptions = useMemo(() => ({
     chart: { type: "bar", toolbar: { show: false }, fontFamily: "inherit" },
-    colors: imunoOrdenado.map(i => (i.cobertura_media ?? 100) < 80 ? "#ef4444" : (i.cobertura_media ?? 100) < 95 ? "#f97316" : "#10b981"),
+    colors: imunoOrdenado.map(i => Number(i.cobertura_media ?? 100) < 80 ? "#ef4444" : Number(i.cobertura_media ?? 100) < 95 ? "#f97316" : "#10b981"),
     plotOptions: { bar: { borderRadius: 4, horizontal: true, distributed: true } },
     dataLabels: {
       enabled: true,
@@ -372,48 +381,40 @@ export default function VacinacaoClient() {
     );
   }
 
-  const isParcial = cobResumo?.tipo_periodo === "PARCIAL";
+  const isParcial = kpis.tipoPeriodo === "PARCIAL";
 
   return (
     <div className="space-y-5">
 
-      {/* ── Cabeçalho ── */}
-      <div className="rounded-2xl border border-emerald-200 bg-white px-5 py-4 shadow-sm dark:border-emerald-800/40 dark:bg-gray-800">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="flex items-start gap-3">
-            <div className="mt-0.5 rounded-lg bg-emerald-50 p-2 dark:bg-emerald-900/20">
-              <ShieldCheck className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
-            </div>
-            <div>
-              <h1 className="text-lg font-bold text-gray-800 dark:text-white">Vacinação</h1>
-              <p className="mt-0.5 text-sm text-gray-500 dark:text-gray-400">
-                Acompanhamento de cobertura vacinal, doses aplicadas e sinais de queda nos municípios.
-              </p>
-              <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
-                Fontes: PNI/RNDS · Cobertura vacinal XLSX
-              </p>
-            </div>
-          </div>
-          <Link
-            href="/painel-saude"
-            className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs font-medium text-gray-600 transition hover:bg-gray-100 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600"
+      {/* ── Seleção de ano ── */}
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Exercício:</span>
+        {[ANO_ATUAL, ANO_ATUAL - 1].map(ano => (
+          <button
+            key={ano}
+            type="button"
+            onClick={() => { setAnoSel(ano); setFiltroMun(""); setFiltroPeriodo(""); setApenasAbaixo(false); }}
+            className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
+              anoSel === ano
+                ? "border-2 border-emerald-600 bg-emerald-600 font-bold text-white shadow-sm dark:border-emerald-500 dark:bg-emerald-500 dark:text-white"
+                : "border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+            }`}
           >
-            <ArrowLeft className="h-3.5 w-3.5" />
-            Saúde Pública
-          </Link>
-        </div>
-
-        {/* Aviso parcial */}
-        {isParcial && (
-          <div className="mt-3 flex items-start gap-2 rounded-lg bg-blue-50 px-3 py-2 dark:bg-blue-900/20">
-            <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-blue-500 dark:text-blue-400" />
-            <p className="text-xs text-blue-700 dark:text-blue-300">
-              Dados parciais do ano corrente são tratados como acompanhamento e podem mudar até o fechamento do exercício.
-              Alertas de período parcial não indicam descumprimento definitivo da meta.
-            </p>
-          </div>
-        )}
+            {ano}
+          </button>
+        ))}
       </div>
+
+      {/* Aviso parcial */}
+      {!carregando && isParcial && (
+        <div className="flex items-start gap-2 rounded-lg bg-blue-50 px-3 py-2 dark:bg-blue-900/20">
+          <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-blue-500 dark:text-blue-400" />
+          <p className="text-xs text-blue-700 dark:text-blue-300">
+            Dados parciais do ano corrente são tratados como acompanhamento e podem mudar até o fechamento do exercício.
+            Alertas de período parcial não indicam descumprimento definitivo da meta.
+          </p>
+        </div>
+      )}
 
       {/* ── Cards principais ── */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-7">
@@ -423,39 +424,39 @@ export default function VacinacaoClient() {
           <>
             <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-800/40 dark:bg-emerald-900/10">
               <p className="text-xs font-medium uppercase tracking-wide text-emerald-600 dark:text-emerald-400">Cobertura média</p>
-              <p className="mt-1 text-2xl font-bold text-emerald-700 dark:text-emerald-300">{fmtPct(cobResumo?.cobertura_media)}</p>
+              <p className="mt-1 text-2xl font-bold text-emerald-700 dark:text-emerald-300">{fmtPct(kpis.cobMedia)}</p>
               <p className="text-xs text-gray-400">meta 95%</p>
             </div>
 
             <div className="rounded-xl border border-orange-200 bg-orange-50 p-4 dark:border-orange-800/40 dark:bg-orange-900/10">
               <p className="text-xs font-medium uppercase tracking-wide text-orange-600 dark:text-orange-400">Mun. abaixo da meta</p>
-              <p className="mt-1 text-2xl font-bold text-orange-700 dark:text-orange-300">{fmtNum(cobResumo?.total_municipios_abaixo_meta)}</p>
+              <p className="mt-1 text-2xl font-bold text-orange-700 dark:text-orange-300">{fmtNum(kpis.munAbaixo)}</p>
               <p className="text-xs text-gray-400">de 22 municípios</p>
             </div>
 
             <div className="rounded-xl border border-red-200 bg-red-50 p-4 dark:border-red-800/40 dark:bg-red-900/10">
               <p className="text-xs font-medium uppercase tracking-wide text-red-600 dark:text-red-400">Alertas críticos</p>
-              <p className="mt-1 text-2xl font-bold text-red-700 dark:text-red-300">{fmtNum(cobResumo?.total_criticos)}</p>
+              <p className="mt-1 text-2xl font-bold text-red-700 dark:text-red-300">{fmtNum(kpis.criticos)}</p>
               <p className="text-xs text-gray-400">cobertura</p>
             </div>
 
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-800/40 dark:bg-amber-900/10">
               <p className="text-xs font-medium uppercase tracking-wide text-amber-600 dark:text-amber-400">Alertas altos</p>
-              <p className="mt-1 text-2xl font-bold text-amber-700 dark:text-amber-300">{fmtNum(cobResumo?.total_altos)}</p>
+              <p className="mt-1 text-2xl font-bold text-amber-700 dark:text-amber-300">{fmtNum(kpis.altos)}</p>
               <p className="text-xs text-gray-400">cobertura</p>
             </div>
 
             <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
               <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Tipo de período</p>
               <div className="mt-2">
-                <PeriodoBadge tipo={cobResumo?.tipo_periodo ?? "—"} />
+                <PeriodoBadge tipo={kpis.tipoPeriodo ?? "—"} />
               </div>
-              <p className="mt-1 text-xs text-gray-400">{cobResumo?.ano ?? "—"}</p>
+              <p className="mt-1 text-xs text-gray-400">{anoSel}</p>
             </div>
 
             <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
               <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">Referência</p>
-              <p className="mt-1 text-base font-bold text-gray-700 dark:text-gray-200">{fmtData(cobResumo?.data_referencia)}</p>
+              <p className="mt-1 text-base font-bold text-gray-700 dark:text-gray-200">{fmtData(kpis.dataRef)}</p>
               <p className="text-xs text-gray-400">data base</p>
             </div>
 
@@ -484,14 +485,6 @@ export default function VacinacaoClient() {
               onChange={e => setFiltroMun(e.target.value)}
               className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
             />
-            <select
-              value={filtroAno}
-              onChange={e => setFiltroAno(e.target.value)}
-              className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
-            >
-              <option value="">Todos os anos</option>
-              {anosDisponiveis.map(a => <option key={a} value={a}>{a}</option>)}
-            </select>
             <select
               value={filtroPeriodo}
               onChange={e => setFiltroPeriodo(e.target.value)}
@@ -549,8 +542,8 @@ export default function VacinacaoClient() {
                         {m.nome_municipio}
                       </td>
                       <td className={`whitespace-nowrap px-4 py-3 text-right font-semibold ${
-                        (m.cobertura_media ?? 100) < 80 ? "text-red-600 dark:text-red-400"
-                        : (m.cobertura_media ?? 100) < 95 ? "text-orange-600 dark:text-orange-400"
+                        Number(m.cobertura_media ?? 100) < 80 ? "text-red-600 dark:text-red-400"
+                        : Number(m.cobertura_media ?? 100) < 95 ? "text-orange-600 dark:text-orange-400"
                         : "text-emerald-600 dark:text-emerald-400"
                       }`}>
                         {fmtPct(m.cobertura_media)}
@@ -603,7 +596,7 @@ export default function VacinacaoClient() {
               type="bar"
               height={Math.max(220, imunoOrdenado.length * 28)}
               options={opcoesImuno}
-              series={[{ name: "Cobertura (%)", data: imunoOrdenado.map(i => parseFloat((i.cobertura_media ?? 0).toFixed(1))) }]}
+              series={[{ name: "Cobertura (%)", data: imunoOrdenado.map(i => parseFloat(Number(i.cobertura_media ?? 0).toFixed(1))) }]}
             />
           </div>
         </div>

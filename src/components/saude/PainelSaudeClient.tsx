@@ -155,9 +155,10 @@ export default function PainelSaudeClient() {
     return acc;
   }, [alertas]);
 
-  const sisaguaCount    = contagemPorFonte["SISAGUA"]    ?? { criticos: 0, altos: 0 };
-  const cnesUbsCount    = contagemPorFonte["CNES_UBS"]   ?? { criticos: 0, altos: 0 };
-  const infodengueCount = contagemPorFonte["INFODENGUE"] ?? { criticos: 0, altos: 0 };
+  const sisaguaCount      = contagemPorFonte["SISAGUA"]       ?? { criticos: 0, altos: 0 };
+  const cnesUbsCount      = contagemPorFonte["CNES_UBS"]      ?? { criticos: 0, altos: 0 };
+  const infodengueCount   = contagemPorFonte["INFODENGUE"]    ?? { criticos: 0, altos: 0 };
+  const pniCoberturaCount = contagemPorFonte["PNI_COBERTURA"] ?? { criticos: 0, altos: 0 };
   // SIOPS: usa o resumo do painel de detalhe (mesma fonte, mesmo período)
   const siopsCount      = { criticos: siopsResumo?.total_criticos ?? 0, altos: siopsResumo?.total_altos ?? 0 };
 
@@ -232,10 +233,16 @@ export default function PainelSaudeClient() {
 
           <ModuloCard
             titulo="Vacinação"
-            descricao="Doses aplicadas, cobertura vacinal e queda de imunização."
-            fonte="SI-PNI"
+            descricao="Doses aplicadas, cobertura vacinal e municípios abaixo da referência."
+            fonte="PNI/RNDS · Cobertura XLSX"
             icone={<ShieldCheck className="h-5 w-5" />}
-            status="preparacao"
+            href="/painel-saude/vacinacao"
+            status="disponivel"
+            criticos={pniCoberturaCount.criticos}
+            altos={pniCoberturaCount.altos}
+            corIcone="text-emerald-500 dark:text-emerald-400"
+            corBorda="border-emerald-200 dark:border-emerald-800/40"
+            corFonteBadge="bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
           />
 
           <ModuloCard

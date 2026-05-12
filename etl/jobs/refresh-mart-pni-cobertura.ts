@@ -154,7 +154,7 @@ export async function executarMartPniCobertura(): Promise<void> {
     }
 
     if (f.cobertura_percentual === null) continue;
-    const cob = f.cobertura_percentual;
+    const cob = Number(f.cobertura_percentual);
 
     // Cobertura muito baixa (<50%) — independe de FECHADO/PARCIAL
     if (cob < 50) {
@@ -248,7 +248,7 @@ export async function executarMartPniCobertura(): Promise<void> {
     }
     const m = munMap.get(key)!;
     if (f.cobertura_percentual !== null) {
-      m.coberturas.push(f.cobertura_percentual);
+      m.coberturas.push(Number(f.cobertura_percentual));
       m.nomes_imuno.push(f.imunobiologico);
     }
     if (f.abaixo_meta) m.abaixo_meta++;
@@ -271,7 +271,7 @@ export async function executarMartPniCobertura(): Promise<void> {
       });
     }
     const im = imunoMap.get(key)!;
-    if (f.cobertura_percentual !== null) im.coberturas.push(f.cobertura_percentual);
+    if (f.cobertura_percentual !== null) im.coberturas.push(Number(f.cobertura_percentual));
     im.total_mun++;
     if (f.abaixo_meta) im.abaixo_meta++;
     im.num_total += f.numerador ?? 0;
@@ -283,7 +283,7 @@ export async function executarMartPniCobertura(): Promise<void> {
   const totalCriticos     = alertas.filter(a => a.nivel === "CRITICO").length;
   const totalAltos        = alertas.filter(a => a.nivel === "ALTO").length;
   const totalMedios       = alertas.filter(a => a.nivel === "MEDIO").length;
-  const todasCoberturas   = fatos.filter(f => f.cobertura_percentual !== null).map(f => f.cobertura_percentual as number);
+  const todasCoberturas   = fatos.filter(f => f.cobertura_percentual !== null).map(f => Number(f.cobertura_percentual));
   const coberturaMedia    = todasCoberturas.length > 0
     ? parseFloat((todasCoberturas.reduce((s, c) => s + c, 0) / todasCoberturas.length).toFixed(2))
     : null;

@@ -63,18 +63,18 @@ function hashArquivo(caminho: string): string {
 
 /** Infere ano, tipo_periodo e data_referencia pelo nome do arquivo. */
 function parseNomeArquivo(nome: string): { ano: number; dataReferencia: string; tipoPeriodo: "FECHADO" | "PARCIAL" } | null {
-  // "Cobertura Vacina 2025.xlsx" — fechado
-  const matchFechado = nome.match(/(\d{4})\.xlsx$/i);
-  if (matchFechado) {
-    const ano = parseInt(matchFechado[1], 10);
-    return { ano, dataReferencia: `${ano}-12-31`, tipoPeriodo: "FECHADO" };
-  }
-  // "Cobertura Vacina 01-04-2026.xlsx" — parcial DD-MM-YYYY
+  // "Cobertura Vacina 01-04-2026.xlsx" — parcial DD-MM-YYYY (testado primeiro)
   const matchParcial = nome.match(/(\d{2})-(\d{2})-(\d{4})\.xlsx$/i);
   if (matchParcial) {
     const [, dd, mm, yyyy] = matchParcial;
     const ano = parseInt(yyyy, 10);
     return { ano, dataReferencia: `${yyyy}-${mm}-${dd}`, tipoPeriodo: "PARCIAL" };
+  }
+  // "Cobertura Vacina 2025.xlsx" — fechado (apenas ano)
+  const matchFechado = nome.match(/(\d{4})\.xlsx$/i);
+  if (matchFechado) {
+    const ano = parseInt(matchFechado[1], 10);
+    return { ano, dataReferencia: `${ano}-12-31`, tipoPeriodo: "FECHADO" };
   }
   return null;
 }

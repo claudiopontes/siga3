@@ -45,6 +45,7 @@ const AppHeader: React.FC = () => {
     "/painel-saude/qualidade-agua": { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "Saúde Pública", href: "/painel-saude" }, { label: "Qualidade da Água" }] },
     "/painel-saude/vigilancia": { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "Saúde Pública", href: "/painel-saude" }, { label: "Vigilância Epidemiológica" }] },
     "/painel-saude/orcamento": { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "Saúde Pública", href: "/painel-saude" }, { label: "Orçamento e Aplicação" }] },
+    "/painel-saude/vacinacao": { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "Saúde Pública", href: "/painel-saude" }, { label: "Vacinação" }] },
     "/gabinete-digital/mapa": { crumbs: [{ label: "Home", href: "/" }, { label: "Mapa IDEB" }] },
     "/remessas/calendario": { crumbs: [{ label: "Home", href: "/" }, { label: "Remessas" }, { label: "Envio Contabilidade" }] },
     "/calendar": { crumbs: [{ label: "Home", href: "/" }, { label: "Agenda" }] },
@@ -264,6 +265,17 @@ const AppHeader: React.FC = () => {
                 <span className="text-xs text-gray-400 dark:text-gray-500">
                   <span className="font-medium text-blue-600 dark:text-blue-400">SIOPS</span>
                   {" · "}Aplicação em saúde
+                </span>
+              </div>
+            )}
+            {pathname === "/painel-saude/vacinacao" && (
+              <div className="flex flex-col">
+                <span className="truncate text-sm text-gray-600 dark:text-gray-300">
+                  Doses aplicadas, cobertura vacinal e municípios abaixo da referência.
+                </span>
+                <span className="text-xs text-gray-400 dark:text-gray-500">
+                  <span className="font-medium text-emerald-600 dark:text-emerald-400">PNI/RNDS</span>
+                  {" · "}Cobertura XLSX
                 </span>
               </div>
             )}
