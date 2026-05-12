@@ -653,7 +653,7 @@ SISAGUA_POPULACAO_ABASTECIDA_RESOURCE_ID=
 
 ## Painel da Saúde — Consolidação
 
-O Painel da Saúde consolida dados de **quatro fontes** em `mart.saude_resumo_municipio`:
+O Painel da Saúde consolida dados de **cinco fontes** em `mart.saude_resumo_municipio`:
 
 | Fonte | Script de carga | Mart própria |
 |---|---|---|
@@ -661,11 +661,12 @@ O Painel da Saúde consolida dados de **quatro fontes** em `mart.saude_resumo_mu
 | **CNES/UBS** — estrutura física | `carga-cnes-ubs:postgres` | `mart.saude_estrutura_municipio`, `mart.saude_estrutura_alertas` |
 | **SISAGUA** — qualidade da água | `carga-sisagua:postgres` | `mart.sisagua_resumo_municipio`, `mart.sisagua_alertas` |
 | **InfoDengue** — vigilância epidemiológica | `carga-infodengue:postgres` | `mart.vigilancia_arboviroses_resumo_municipio`, `mart.vigilancia_arboviroses_alertas` |
+| **PNI** — doses de vacinação aplicadas | `carga-pni:postgres` | `mart.pni_resumo_municipio`, `mart.pni_alertas` |
 
-O job `mart:saude-consolidado` lê das quatro fontes e gera:
-- `mart.saude_alertas` — todos os alertas unificados (SIOPS + CNES/UBS + SISAGUA + InfoDengue)
+O job `mart:saude-consolidado` lê das cinco fontes e gera:
+- `mart.saude_alertas` — todos os alertas unificados (SIOPS + CNES/UBS + SISAGUA + InfoDengue + PNI)
 - `mart.saude_alertas_home` — máx 30 alertas CRITICO/ALTO para a home
-- `mart.saude_resumo_municipio` — score de risco combinado por município (inclui campos `vigilancia_*`)
+- `mart.saude_resumo_municipio` — score de risco combinado por município (inclui campos `vigilancia_*` e `pni_*`)
 - `mart.saude_resumo_home` — totais para o card da home
 
 ---
@@ -752,3 +753,94 @@ INFODENGUE_DOENCAS=dengue,chikungunya,zika
 INFODENGUE_TIMEOUT_MS=30000
 INFODENGUE_RATE_LIMIT_MS=500
 ```
+
+---
+
+## PNI — Vacinação / Doses Aplicadas
+
+**Finalidade:** Monitorar o volume de doses de vacinas aplicadas nos municípios do Acre com base no PNI/RNDS (Programa Nacional de Imunizações / Rede Nacional de Dados em Saúde). Detectar municípios sem dado recente, quedas abruptas de aplicação e baixa cobertura relativa.
+
+**Fonte:** API oficial — `https://apidadosabertos.saude.gov.br/v1/vacinacao/doses-aplicadas/pni-{ano}`
+**Parâmetros de filtro:** `co_uf` (ex: `"12"` para Acre), `page`, `pageSize`
+**Periodicidade:** atualização semanal pelo DPNI/DATASUS.
+
+**Privacidade:** campos `co_paciente`, `co_documento` e similares **não são gravados** em nenhuma camada.
+
+### Tabelas
+
+| Camada | Tabela | Descrição |
+|--------|--------|-----------|
+| raw    | `raw.pni_doses_raw` | Payload bruto por dose (sem dados pessoais) |
+| stage  | `stage.pni_doses_stg` | Dados normalizados: IBGE 6 dígitos, datas tipadas, idade calculada |
+| dw     | `dw.fato_pni_dose` | Fatos analíticos, deduplicado por `(co_dose_id, ano)` |
+| mart   | `mart.pni_resumo_municipio` | Totais por município × ano |
+| mart   | `mart.pni_resumo_vacina` | Totais por imunobiológico × ano |
+| mart   | `mart.pni_serie_mensal` | Série temporal mensal por município |
+| mart   | `mart.pni_alertas` | Todos os alertas gerados |
+| mart   | `mart.pni_alertas_home` | Máx 30 alertas CRITICO/ALTO para a home |
+| mart   | `mart.pni_resumo_home` | Totais para o card da home |
+
+Os campos `pni_*` foram adicionados a `mart.saude_resumo_municipio` para consolidação no Painel da Saúde.
+
+### Alertas gerados
+
+| Tipo | Nível | Descrição |
+|------|-------|-----------|
+| `pni_sem_dado_recente` | ALTO | Município sem dose registrada no mês de referência |
+| `pni_queda_mes_anterior` | MEDIO/ALTO | Queda ≥ 50% de doses vs. mês anterior (ALTO se ≥ 70%) |
+| `pni_queda_ano_anterior` | ALTO | Queda ≥ 30% vs. mesmo mês do ano anterior |
+| `pni_baixa_aplicacao_relativa` | MEDIO | Doses no mês < 50% da média estadual |
+
+### Comandos
+
+```bash
+cd etl
+
+# Aplicar schema (primeira vez ou após atualização)
+npm run postgres:migrate
+
+# Inspecionar API — verifica endpoints, paginação, campos retornados
+npm run pni:api:inspecionar
+
+# Carga completa (todos os anos configurados, filtrado por UF)
+npm run pni:ingest
+
+# Reconstruir marts PNI (alertas, resumos, série mensal)
+npm run mart:pni
+
+# Carga + mart + consolidado em sequência
+npm run carga-pni:postgres
+
+# Carga completa de todas as fontes de saúde (inclui PNI)
+npm run carga-saude:postgres
+
+# Apenas mart consolidado (após qualquer carga parcial)
+npm run mart:saude-consolidado
+```
+
+### APIs server-side
+
+| Rota | Descrição |
+|------|-----------|
+| `GET /api/saude/pni/resumo` | Totais globais do `mart.pni_resumo_home` |
+| `GET /api/saude/pni/municipios?ano=2025&municipio=Rio+Branco` | Resumo por município com filtros |
+| `GET /api/saude/pni/serie?municipio=120401&ano=2025` | Série mensal de doses |
+| `GET /api/saude/pni/alertas?home=1&nivel=ALTO` | Alertas PNI com filtros |
+
+### Variáveis de ambiente
+
+```env
+PNI_API_BASE_URL=https://apidadosabertos.saude.gov.br/v1
+PNI_ANOS=2025,2026
+PNI_UF=AC
+PNI_PAGE_SIZE=1000
+PNI_MAX_PAGES=        # vazio = sem limite
+PNI_TIMEOUT_MS=30000
+PNI_RATE_LIMIT_MS=500
+```
+
+### Limitações conhecidas
+
+- A API pode retornar HTML (WAF) para requisições sem cookies de sessão — execute `pni:api:inspecionar` para verificar o formato real antes da carga.
+- Registros sem `co_dose_id` são inseridos sem deduplicação — use `PNI_MAX_PAGES` para limitar o volume em cargas de teste.
+- As doses aplicadas (**numerador**) não equivalem à cobertura vacinal percentual, que exige a população-alvo como denominador (disponível via SIGTAP/IBGE ou SIPNI/TABNET).

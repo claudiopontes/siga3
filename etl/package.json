@@ -55,8 +55,14 @@
     "infodengue:inspecionar": "ts-node jobs/infodengue-inspecionar.ts",
     "infodengue:full:postgres": "ts-node jobs/infodengue-full-postgres.ts",
     "mart:infodengue": "ts-node jobs/refresh-mart-infodengue.ts",
-    "carga-infodengue:postgres": "npm run infodengue:full:postgres && npm run mart:infodengue && npm run mart:saude-consolidado",
-    "carga-saude:postgres": "npm run carga-siops:postgres && npm run carga-cnes-ubs:postgres && npm run carga-sisagua:postgres && npm run carga-infodengue:postgres"
+    "carga-infodengue:postgres": "npm run infodengue:full:postgres && npm run mart:infodengue",
+    "pni:inspecionar": "ts-node jobs/pni-inspecionar.ts",
+    "pni:direto:inspecionar": "ts-node jobs/pni-direto-inspecionar.ts",
+    "pni:api:inspecionar": "ts-node jobs/pni-api-inspecionar.ts",
+    "pni:ingest": "ts-node jobs/ingest-pni.ts",
+    "mart:pni": "ts-node jobs/refresh-mart-pni.ts",
+    "carga-pni:postgres": "npm run pni:ingest && npm run mart:pni && npm run mart:saude-consolidado",
+    "carga-saude:postgres": "npm run carga-siops:postgres && npm run carga-cnes-ubs:postgres && npm run carga-sisagua:postgres && npm run carga-infodengue:postgres && npm run carga-pni:postgres"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.8",
