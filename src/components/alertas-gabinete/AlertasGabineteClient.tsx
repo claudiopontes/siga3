@@ -642,7 +642,10 @@ export default function AlertasGabineteClient() {
               {totalPendencias} pendências totais. Detalhamento por município e item no painel CAUC.
             </p>
             <div className="mt-2">
-              <span className="rounded px-1.5 py-0.5 text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300">CAUC / STN</span>
+              <span className="rounded px-1.5 py-0.5 text-xs font-medium bg-gray-100 dark:bg-gray-700">
+                <span className="font-medium text-violet-600 dark:text-violet-400">CAUC</span>
+                <span className="text-gray-400 dark:text-gray-500">{" · "}SICONFI/STN</span>
+              </span>
             </div>
             <Link
               href="/painel-cauc"
