@@ -1,7 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useCallback, useState } from "react";
-import { MapContainer, TileLayer, GeoJSON } from "react-leaflet";
+import { MapContainer, TileLayer, GeoJSON, useMap } from "react-leaflet";
+import { createPortal } from "react-dom";
+
+function MapOverlay({ children }: { children: React.ReactNode }) {
+  const map = useMap();
+  return createPortal(children, map.getContainer());
+}
 import type { GeoJsonObject, Geometry, Feature } from "geojson";
 import type { Layer, Path, LeafletMouseEvent } from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -209,74 +215,85 @@ export default function MapaVacinacaoContent({ dados, munSel, onSelect }: Props)
             onEachFeature={onEachFeature}
           />
         )}
-      </MapContainer>
 
-      {/* Legenda */}
-      <div className="absolute bottom-6 left-4 z-[1000] rounded-lg border border-gray-300 bg-white p-3 shadow-xl dark:border-gray-600 dark:bg-gray-900">
-        <p className="mb-2 text-xs font-semibold text-gray-700 dark:text-gray-200">Cobertura vacinal</p>
-        {legendaItems.map((item) => (
-          <div key={item.label} className="flex items-center gap-2 text-xs text-gray-700 dark:text-gray-200">
-            <span className="inline-block h-3 w-3 shrink-0 rounded-sm border border-gray-300" style={{ backgroundColor: item.color }} />
-            {item.label}
-          </div>
-        ))}
-      </div>
-
-      {/* Painel do município selecionado */}
-      {selected && (
-        <div className="absolute right-4 top-4 z-[1000] w-64 rounded-xl border border-gray-300 bg-white p-4 shadow-xl dark:border-gray-600 dark:bg-gray-900">
-          <div className="mb-3 flex items-start justify-between gap-2">
-            <h3 className="font-bold text-gray-800 dark:text-white">{selected.nome_municipio}</h3>
-            <button
-              onClick={() => handleSelect(selected)}
-              className="shrink-0 rounded p-0.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
-            </button>
-          </div>
-
-          <div className="space-y-2 text-sm text-gray-600 dark:text-gray-300">
-            <div className="flex items-center justify-between">
-              <span>Cobertura média</span>
-              <strong style={{ color: getColor(selected.cobertura_media) }}>
-                {fmtPct(selected.cobertura_media)}
-              </strong>
-            </div>
-
-            {/* Barra de progresso */}
-            <div className="h-2 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-gray-700">
-              <div
-                className="h-2 rounded-full transition-all"
-                style={{
-                  width: `${Math.min(Number(selected.cobertura_media ?? 0), 100)}%`,
-                  backgroundColor: getColor(selected.cobertura_media),
-                }}
-              />
-            </div>
-
-            <div className="flex items-center justify-between">
-              <span>Abaixo da meta</span>
-              <strong className={selected.total_abaixo_meta > 0 ? "text-orange-600 dark:text-orange-400" : "text-emerald-600 dark:text-emerald-400"}>
-                {selected.total_abaixo_meta} vacina(s)
-              </strong>
-            </div>
-            {selected.imunobiologico_menor_cobertura && (
-              <div className="flex items-center justify-between gap-2">
-                <span className="shrink-0">Menor cob.</span>
-                <span className="truncate text-right text-xs text-red-600 dark:text-red-400" title={selected.imunobiologico_menor_cobertura}>
-                  {selected.imunobiologico_menor_cobertura} ({fmtPct(selected.menor_cobertura)})
-                </span>
+        {/* Legenda — dentro do MapContainer via portal, fora da cadeia de opacidade das camadas */}
+        <MapOverlay>
+          <div
+            style={{
+              position: "absolute", bottom: 24, left: 16,
+              zIndex: 2000, borderRadius: 8,
+              border: "1px solid #e5e7eb", padding: 12,
+              boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+              backgroundColor: "#ffffff", opacity: 1,
+            }}
+          >
+            <p style={{ margin: "0 0 8px", fontSize: 11, fontWeight: 600, color: "#374151" }}>Cobertura vacinal</p>
+            {legendaItems.map((item) => (
+              <div key={item.label} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "#374151", marginBottom: 3 }}>
+                <span style={{ display: "inline-block", width: 12, height: 12, borderRadius: 2, border: "1px solid #d1d5db", backgroundColor: item.color, flexShrink: 0 }} />
+                {item.label}
               </div>
-            )}
-            <div className="flex items-center justify-between">
-              <span>Meta (95%)</span>
-              <strong className={Number(selected.cobertura_media ?? 0) >= 95 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}>
-                {Number(selected.cobertura_media ?? 0) >= 95 ? "Atingida" : "Não atingida"}
-              </strong>
-            </div>
+            ))}
           </div>
-        </div>
-      )}
+        </MapOverlay>
+
+        {/* Painel do município selecionado */}
+        {selected && (
+          <MapOverlay>
+            <div
+              style={{
+                position: "absolute", top: 16, right: 16,
+                zIndex: 2000, width: 256, borderRadius: 12,
+                border: "1px solid #e5e7eb", padding: 16,
+                boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+                backgroundColor: "#ffffff", opacity: 1,
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12, gap: 8 }}>
+                <h3 style={{ margin: 0, fontWeight: 700, color: "#1f2937", fontSize: 14 }}>{selected.nome_municipio}</h3>
+                <button
+                  onClick={() => handleSelect(selected)}
+                  style={{ flexShrink: 0, background: "none", border: "none", cursor: "pointer", color: "#9ca3af", padding: 2 }}
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                </button>
+              </div>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: 8, fontSize: 13, color: "#4b5563" }}>
+                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                  <span>Cobertura média</span>
+                  <strong style={{ color: getColor(selected.cobertura_media) }}>{fmtPct(selected.cobertura_media)}</strong>
+                </div>
+
+                <div style={{ height: 8, width: "100%", overflow: "hidden", borderRadius: 9999, backgroundColor: "#f3f4f6" }}>
+                  <div style={{ height: 8, borderRadius: 9999, width: `${Math.min(Number(selected.cobertura_media ?? 0), 100)}%`, backgroundColor: getColor(selected.cobertura_media) }} />
+                </div>
+
+                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                  <span>Abaixo da meta</span>
+                  <strong style={{ color: selected.total_abaixo_meta > 0 ? "#d97706" : "#059669" }}>{selected.total_abaixo_meta} vacina(s)</strong>
+                </div>
+
+                {selected.imunobiologico_menor_cobertura && (
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                    <span style={{ flexShrink: 0 }}>Menor cob.</span>
+                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 11, color: "#dc2626", textAlign: "right" }} title={selected.imunobiologico_menor_cobertura}>
+                      {selected.imunobiologico_menor_cobertura} ({fmtPct(selected.menor_cobertura)})
+                    </span>
+                  </div>
+                )}
+
+                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                  <span>Meta (95%)</span>
+                  <strong style={{ color: Number(selected.cobertura_media ?? 0) >= 95 ? "#059669" : "#dc2626" }}>
+                    {Number(selected.cobertura_media ?? 0) >= 95 ? "Atingida" : "Não atingida"}
+                  </strong>
+                </div>
+              </div>
+            </div>
+          </MapOverlay>
+        )}
+      </MapContainer>
     </div>
   );
 }

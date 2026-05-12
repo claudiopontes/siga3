@@ -677,6 +677,9 @@ export async function executarMartSaudeConsolidado(): Promise<void> {
     ...siopsAlertas,
     ...cnesAlertas,
     ...sisaguaAlertas,
+    ...infodengueAlertas.map(normalizeInfoDengueAlerta),
+    ...pniAlertas.map(normalizeAlerta),
+    ...pniCoberturaAlertas.map(normalizeAlerta),
     ...mortalidadeAlertas,
   ].filter(a => a.nivel === "CRITICO" || a.nivel === "ALTO");
 

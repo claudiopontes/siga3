@@ -472,14 +472,22 @@ export default function AlertasGabineteClient() {
   const [carregandoSaude, setCarregandoSaude] = useState(true);
 
 
-  // Busca resumo consolidado de Saúde Pública (SIOPS + CNES/UBS + SISAGUA)
+  // Busca resumo consolidado de Saúde Pública
   useEffect(() => {
     let cancelado = false;
     async function carregarSaude() {
       try {
-        const res = await fetch("/api/saude/resumo").then((r) => r.json());
+        const [res, contagem] = await Promise.all([
+          fetch("/api/saude/resumo").then((r) => r.json()),
+          fetch("/api/saude/alertas/contagem").then((r) => r.json()),
+        ]);
         if (cancelado) return;
-        if (res && typeof res === "object" && !res.error) setResumoSaude(res as SaudeResumoRow);
+        if (res && typeof res === "object" && !res.error) {
+          const cnt = contagem && typeof contagem === "object" ? contagem as Record<string, { criticos: number; altos: number }> : {};
+          const totalCriticos = Object.values(cnt).reduce((s, f) => s + f.criticos, 0);
+          const totalAltos    = Object.values(cnt).reduce((s, f) => s + f.altos,    0);
+          setResumoSaude({ ...(res as SaudeResumoRow), total_criticos: totalCriticos, total_altos: totalAltos });
+        }
       } catch {
         // silencioso — card mostrará sem dados
       } finally {
@@ -811,17 +819,6 @@ export default function AlertasGabineteClient() {
                     <p className="text-lg font-bold text-amber-600 dark:text-amber-400">{altos}</p>
                     <span className="text-xs text-gray-400">altos</span>
                   </div>
-                  {munCritico > 0 && (
-                    <p className="mt-0.5 text-xs font-semibold text-red-600 dark:text-red-400">
-                      {munCritico} {munCritico === 1 ? "município" : "municípios"} em risco crítico
-                      {(resumoSaude?.municipios_risco_alto ?? 0) > 0 && (
-                        <> · {resumoSaude!.municipios_risco_alto} em risco alto</>
-                      )}
-                    </p>
-                  )}
-                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                    {munAfetados} {munAfetados === 1 ? "município afetado" : "municípios afetados"}
-                  </p>
                 </>
               )}
               <p className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">SIOPS · CNES/UBS · SISAGUA · InfoDengue</p>

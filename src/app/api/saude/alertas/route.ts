@@ -38,8 +38,10 @@ export async function GET(req: NextRequest) {
 
   const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
+  const limite = home ? "LIMIT 30" : "LIMIT 2000";
+
   const rows = await dbQuery(
-    `SELECT * FROM ${tabela} ${where} ${ordem} LIMIT 30`,
+    `SELECT * FROM ${tabela} ${where} ${ordem} ${limite}`,
     params
   );
 

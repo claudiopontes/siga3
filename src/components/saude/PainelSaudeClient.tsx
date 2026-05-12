@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   Droplets,
@@ -17,21 +17,6 @@ import {
 // Tipos
 // ---------------------------------------------------------------------------
 
-interface SaudeAlerta {
-  id_alerta:             number | null;
-  area:                  string;
-  fonte:                 string;
-  codigo_municipio_ibge: string | null;
-  nome_municipio:        string | null;
-  tipo_alerta:           string;
-  nivel:                 string;
-  descricao:             string;
-  valor_observado:       number | null;
-  valor_referencia:      number | null;
-  prioridade:            number | null;
-  detalhe_json:          unknown;
-  atualizado_em:         string;
-}
 
 interface SiopsResumoHub {
   total_criticos: number;
@@ -82,23 +67,28 @@ function ModuloCard({
       <h3 className="mb-1 text-sm font-semibold text-gray-800 dark:text-white">{titulo}</h3>
       <p className="mb-4 flex-1 text-xs leading-relaxed text-gray-500 dark:text-gray-400">{descricao}</p>
 
-      {/* Rodapé: fonte + contadores + ação */}
+      {/* Rodapé: contadores + fonte + ação */}
       <div className="space-y-3">
-        {/* Fonte + contadores de alerta */}
-        <div className="flex flex-wrap items-center gap-2">
+        {/* Contadores de alerta */}
+        {disponivel && (criticos > 0 || altos > 0) && (
+          <div className="flex flex-wrap items-center gap-2">
+            {criticos > 0 && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-600 dark:bg-red-900/30 dark:text-red-400">
+                <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
+                {criticos} crítico{criticos !== 1 ? "s" : ""}
+              </span>
+            )}
+            {altos > 0 && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-orange-50 px-2 py-0.5 text-xs font-semibold text-orange-600 dark:bg-orange-900/30 dark:text-orange-400">
+                <span className="h-1.5 w-1.5 rounded-full bg-orange-400" />
+                {altos} alto{altos !== 1 ? "s" : ""}
+              </span>
+            )}
+          </div>
+        )}
+        {/* Fonte */}
+        <div>
           <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${corFonteBadge}`}>{fonte}</span>
-          {disponivel && criticos > 0 && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-600 dark:bg-red-900/30 dark:text-red-400">
-              <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
-              {criticos} crítico{criticos !== 1 ? "s" : ""}
-            </span>
-          )}
-          {disponivel && altos > 0 && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-orange-50 px-2 py-0.5 text-xs font-semibold text-orange-600 dark:bg-orange-900/30 dark:text-orange-400">
-              <span className="h-1.5 w-1.5 rounded-full bg-orange-400" />
-              {altos} alto{altos !== 1 ? "s" : ""}
-            </span>
-          )}
         </div>
 
         {/* Botão de ação */}
@@ -126,17 +116,17 @@ function ModuloCard({
 // ---------------------------------------------------------------------------
 
 export default function PainelSaudeClient() {
-  const [alertas,     setAlertas]     = useState<SaudeAlerta[]>([]);
+  const [contagem,    setContagem]    = useState<Record<string, { criticos: number; altos: number }>>({});
   const [siopsResumo, setSiopsResumo] = useState<SiopsResumoHub | null>(null);
   const [erro,        setErro]        = useState<string | null>(null);
 
   useEffect(() => {
     Promise.all([
-      fetch("/api/saude/alertas?home=1").then((r) => r.json()),
+      fetch("/api/saude/alertas/contagem").then((r) => r.json()),
       fetch("/api/saude/orcamento/resumo").then((r) => r.json()),
     ])
-      .then(([als, sr]) => {
-        setAlertas(Array.isArray(als) ? als : []);
+      .then(([cnt, sr]) => {
+        setContagem(cnt && typeof cnt === "object" ? cnt : {});
         setSiopsResumo(sr && !sr.error ? (sr as SiopsResumoHub) : null);
       })
       .catch((e: unknown) => {
@@ -144,16 +134,7 @@ export default function PainelSaudeClient() {
       });
   }, []);
 
-  // Contadores por fonte para SISAGUA, CNES/UBS e InfoDengue
-  const contagemPorFonte = useMemo(() => {
-    const acc: Record<string, { criticos: number; altos: number }> = {};
-    for (const a of alertas) {
-      if (!acc[a.fonte]) acc[a.fonte] = { criticos: 0, altos: 0 };
-      if (a.nivel === "CRITICO") acc[a.fonte].criticos++;
-      if (a.nivel === "ALTO")    acc[a.fonte].altos++;
-    }
-    return acc;
-  }, [alertas]);
+  const contagemPorFonte = contagem;
 
   const sisaguaCount      = contagemPorFonte["SISAGUA"]       ?? { criticos: 0, altos: 0 };
   const cnesUbsCount      = contagemPorFonte["CNES_UBS"]      ?? { criticos: 0, altos: 0 };
