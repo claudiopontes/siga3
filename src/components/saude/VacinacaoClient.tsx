@@ -4,6 +4,8 @@ import React, { useEffect, useState, useMemo } from "react";
 import dynamic from "next/dynamic";
 import { ApexOptions } from "apexcharts";
 import { Info } from "lucide-react";
+import MapaVacinacao from "./MapaVacinacao";
+import type { VacinacaoMapRow } from "./MapaVacinacaoContent";
 
 const Chart = dynamic(() => import("react-apexcharts"), { ssr: false });
 
@@ -286,6 +288,24 @@ export default function VacinacaoClient() {
     [...cobImuno].sort((a, b) => Number(a.cobertura_media ?? 999) - Number(b.cobertura_media ?? 999)).slice(0, 20),
   [cobImuno]);
 
+  // Dicionário para o mapa (chave = codigo_municipio_ibge)
+  const dadosMapa = useMemo(() => {
+    const map: Record<string, VacinacaoMapRow> = {};
+    for (const m of cobMunic) {
+      if (!m.codigo_municipio_ibge) continue;
+      map[m.codigo_municipio_ibge] = {
+        codigo_municipio_ibge:         m.codigo_municipio_ibge,
+        nome_municipio:                m.nome_municipio,
+        cobertura_media:               m.cobertura_media !== null ? Number(m.cobertura_media) : null,
+        menor_cobertura:               m.menor_cobertura !== null ? Number(m.menor_cobertura) : null,
+        total_abaixo_meta:             m.total_abaixo_meta,
+        total_imunobiologicos:         m.total_imunobiologicos,
+        imunobiologico_menor_cobertura: m.imunobiologico_menor_cobertura,
+      };
+    }
+    return map;
+  }, [cobMunic]);
+
 
   // ── Config gráficos ──
 
@@ -451,6 +471,26 @@ export default function VacinacaoClient() {
           </>
         )}
       </div>
+
+      {/* ── Mapa de cobertura ── */}
+      {!carregando && Object.keys(dadosMapa).length > 0 && (
+        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-800">
+          <div className="border-b border-slate-200 px-5 py-3 dark:border-slate-700">
+            <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Mapa de cobertura vacinal</h2>
+            <p className="mt-0.5 text-xs text-slate-400">
+              Clique em um município para selecioná-lo e filtrar todos os dados da página
+              {isParcial && <span className="ml-1 text-blue-500">(exercício parcial)</span>}
+            </p>
+          </div>
+          <div style={{ height: 460, isolation: "isolate" }}>
+            <MapaVacinacao
+              dados={dadosMapa}
+              munSel={munSel}
+              onSelect={(nome) => setMunSel(nome ?? "")}
+            />
+          </div>
+        </div>
+      )}
 
       {/* ── Cobertura por município ── */}
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-800">
