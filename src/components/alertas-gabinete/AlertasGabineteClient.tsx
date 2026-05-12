@@ -641,9 +641,9 @@ export default function AlertasGabineteClient() {
             <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
               {totalPendencias} pendências totais. Detalhamento por município e item no painel CAUC.
             </p>
-            <p className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
-              Regularidade fiscal
-            </p>
+            <div className="mt-2">
+              <span className="rounded px-1.5 py-0.5 text-xs font-medium bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300">CAUC / STN</span>
+            </div>
             <Link
               href="/painel-cauc"
               className="mt-3 inline-flex items-center gap-1 rounded-lg bg-blue-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
