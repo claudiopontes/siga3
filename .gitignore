@@ -53,3 +53,6 @@ infra/postgres/data/
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Dados brutos SIM (arquivos grandes)
+etl/data/sim/*.csv
