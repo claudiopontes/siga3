@@ -27,10 +27,10 @@ export async function POST(request: Request) {
     try {
       authorizedUser = await getAuthorizedUser(adUser.username);
     } catch (error) {
-      console.error("Falha ao consultar autorização no Supabase", error);
+      console.error("Falha ao consultar autorização no banco", error);
 
       return NextResponse.json(
-        { message: "Usuário autenticado no AD, mas não foi possível consultar a autorização no Supabase." },
+        { message: "Usuário autenticado no AD, mas não foi possível consultar a autorização." },
         { status: 500 },
       );
     }

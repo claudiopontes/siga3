@@ -1,5 +1,5 @@
 import { requireAdminSession } from "@/lib/auth/access-control";
-import { getAdminSupabase } from "@/lib/supabase-admin";
+import { dbQuery } from "@/lib/db";
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
@@ -11,6 +11,17 @@ type UserPayload = {
   email?: string;
   perfil?: string;
   ativo?: boolean;
+};
+
+type UserRow = {
+  id: string;
+  usuario_ad: string;
+  nome: string | null;
+  email: string | null;
+  perfil: string;
+  ativo: boolean;
+  criado_em: string;
+  atualizado_em: string;
 };
 
 function normalizeUsername(username?: string) {
@@ -32,16 +43,17 @@ export async function GET() {
     return NextResponse.json({ message: "Acesso restrito a administradores." }, { status: 403 });
   }
 
-  const { data, error } = await getAdminSupabase()
-    .from(tableName())
-    .select("id,usuario_ad,nome,email,perfil,ativo,criado_em,atualizado_em")
-    .order("usuario_ad", { ascending: true });
-
-  if (error) {
-    return NextResponse.json({ message: error.message }, { status: 500 });
+  try {
+    const users = await dbQuery<UserRow>(
+      `SELECT id, usuario_ad, nome, email, perfil, ativo, criado_em, atualizado_em
+       FROM ${tableName()}
+       ORDER BY usuario_ad ASC`,
+    );
+    return NextResponse.json({ users });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Erro interno";
+    return NextResponse.json({ message: msg }, { status: 500 });
   }
-
-  return NextResponse.json({ users: data ?? [] });
 }
 
 export async function POST(request: Request) {
@@ -58,23 +70,24 @@ export async function POST(request: Request) {
     return NextResponse.json({ message: "Informe o usuário AD." }, { status: 400 });
   }
 
-  const { data, error } = await getAdminSupabase()
-    .from(tableName())
-    .insert({
-      usuario_ad: usuarioAd,
-      nome: body.nome?.trim() || null,
-      email: body.email?.trim() || null,
-      perfil: normalizeProfile(body.perfil),
-      ativo: body.ativo ?? true,
-    })
-    .select("id,usuario_ad,nome,email,perfil,ativo,criado_em,atualizado_em")
-    .single();
-
-  if (error) {
-    return NextResponse.json({ message: error.message }, { status: 500 });
+  try {
+    const rows = await dbQuery<UserRow>(
+      `INSERT INTO ${tableName()} (usuario_ad, nome, email, perfil, ativo)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id, usuario_ad, nome, email, perfil, ativo, criado_em, atualizado_em`,
+      [
+        usuarioAd,
+        body.nome?.trim() || null,
+        body.email?.trim() || null,
+        normalizeProfile(body.perfil),
+        body.ativo ?? true,
+      ],
+    );
+    return NextResponse.json({ user: rows[0] }, { status: 201 });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Erro interno";
+    return NextResponse.json({ message: msg }, { status: 500 });
   }
-
-  return NextResponse.json({ user: data }, { status: 201 });
 }
 
 export async function PATCH(request: Request) {
@@ -90,22 +103,28 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ message: "Informe o id do usuário." }, { status: 400 });
   }
 
-  const { data, error } = await getAdminSupabase()
-    .from(tableName())
-    .update({
-      nome: body.nome?.trim() || null,
-      email: body.email?.trim() || null,
-      perfil: normalizeProfile(body.perfil),
-      ativo: body.ativo ?? true,
-      atualizado_em: new Date().toISOString(),
-    })
-    .eq("id", body.id)
-    .select("id,usuario_ad,nome,email,perfil,ativo,criado_em,atualizado_em")
-    .single();
+  try {
+    const rows = await dbQuery<UserRow>(
+      `UPDATE ${tableName()}
+       SET nome = $1, email = $2, perfil = $3, ativo = $4, atualizado_em = now()
+       WHERE id = $5
+       RETURNING id, usuario_ad, nome, email, perfil, ativo, criado_em, atualizado_em`,
+      [
+        body.nome?.trim() || null,
+        body.email?.trim() || null,
+        normalizeProfile(body.perfil),
+        body.ativo ?? true,
+        body.id,
+      ],
+    );
 
-  if (error) {
-    return NextResponse.json({ message: error.message }, { status: 500 });
+    if (rows.length === 0) {
+      return NextResponse.json({ message: "Usuário não encontrado." }, { status: 404 });
+    }
+
+    return NextResponse.json({ user: rows[0] });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Erro interno";
+    return NextResponse.json({ message: msg }, { status: 500 });
   }
-
-  return NextResponse.json({ user: data });
 }

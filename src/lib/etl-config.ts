@@ -2,12 +2,49 @@ export type Periodicidade = "diaria" | "semanal" | "mensal" | "bimestral" | "anu
 
 export type StatusCarga = "ok" | "erro" | "pendente" | "desatualizado" | "muito_desatualizado";
 
+export type TipoCarga =
+  | "full"
+  | "incremental"
+  | "incremental_com_janela"
+  | "manual"
+  | "nao_aplicavel";
+
+export type EscopoCarga =
+  | "exercicio_corrente"
+  | "competencia"
+  | "periodo"
+  | "janela"
+  | "tudo"
+  | "variavel";
+
+export interface EtlExecucao {
+  tipoCargaPadrao: TipoCarga;
+  modoCargaPadrao: string;
+  escopoCarga: EscopoCarga;
+  campoReferencia?: string;
+  janelaReprocessamentoDias?: number;
+  preservaHistoricoAnterior: boolean;
+  requerConfirmacaoManual: boolean;
+  observacaoRegraNegocio?: string;
+}
+
+export interface EtlExecucaoManual {
+  permiteExecucaoManual: boolean;
+  permiteFullManual: boolean;
+  permiteIncrementalManual: boolean;
+  labelBotao?: string;
+  mensagemConfirmacao?: string;
+  parametrosObrigatorios?: string[];
+}
+
 export interface EtlConfigEntry {
   nomeExibicao: string;
   periodicidade: Periodicidade;
   toleranciaDias: number;
   ativoPainel: boolean;
   descricaoPeriodicidade?: string;
+  execucao?: EtlExecucao;
+  execucaoManual?: EtlExecucaoManual;
 }
 
 export const ETL_CONFIG: Record<string, EtlConfigEntry> = {
@@ -70,6 +107,24 @@ export const ETL_CONFIG: Record<string, EtlConfigEntry> = {
     periodicidade: "mensal",
     toleranciaDias: 30,
     ativoPainel: true,
+    execucao: {
+      tipoCargaPadrao: "full",
+      modoCargaPadrao: "full_truncate_insert",
+      escopoCarga: "exercicio_corrente",
+      campoReferencia: "exercicio",
+      preservaHistoricoAnterior: false,
+      requerConfirmacaoManual: true,
+      observacaoRegraNegocio:
+        "As remessas contábeis devem sempre refletir o exercício corrente. A carga é full porque não há necessidade de preservar a situação anterior.",
+    },
+    execucaoManual: {
+      permiteExecucaoManual: true,
+      permiteFullManual: true,
+      permiteIncrementalManual: false,
+      labelBotao: "Forçar atualização",
+      mensagemConfirmacao:
+        "Esta ação irá recarregar as remessas contábeis do exercício corrente. Deseja continuar?",
+    },
   },
   mart_siops: {
     nomeExibicao: "Orçamento Saúde (SIOPS)",

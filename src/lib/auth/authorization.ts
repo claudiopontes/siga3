@@ -1,4 +1,4 @@
-import { getAdminSupabase } from "@/lib/supabase-admin";
+import { dbQuery } from "@/lib/db";
 
 export type AuthorizedUser = {
   username: string;
@@ -26,16 +26,16 @@ function normalizeUsername(username: string) {
 export async function getAuthorizedUser(username: string) {
   const table = process.env.AUTH_USERS_TABLE || "usuarios_autorizados";
   const normalizedUsername = normalizeUsername(username);
-  const { data, error } = await getAdminSupabase()
-    .from(table)
-    .select("usuario_ad,nome,email,perfil,foto_url,foto_posicao,ativo")
-    .eq("usuario_ad", normalizedUsername)
-    .eq("ativo", true)
-    .maybeSingle<AuthorizationRow>();
 
-  if (error) {
-    throw new Error(`Falha ao consultar autorização no Supabase: ${error.message}`);
-  }
+  const rows = await dbQuery<AuthorizationRow>(
+    `SELECT usuario_ad, nome, email, perfil, foto_url, foto_posicao, ativo
+     FROM ${table}
+     WHERE usuario_ad = $1 AND ativo = true
+     LIMIT 1`,
+    [normalizedUsername],
+  );
+
+  const data = rows[0] ?? null;
 
   if (!data) {
     return null;

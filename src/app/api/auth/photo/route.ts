@@ -1,7 +1,9 @@
 import { AUTH_COOKIE_NAME, createSessionToken, verifySessionToken } from "@/lib/auth/session";
-import { getAdminSupabase } from "@/lib/supabase-admin";
+import { dbQuery } from "@/lib/db";
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
+import { writeFile, mkdir } from "fs/promises";
+import { join } from "path";
 
 export const runtime = "nodejs";
 
@@ -15,9 +17,11 @@ const ALLOWED_POSITIONS = new Set([
   "right center",
 ]);
 
-function safeFilename(filename: string) {
+function safeFilename(username: string, filename: string) {
   const extension = filename.split(".").pop()?.toLowerCase() || "jpg";
-  return `foto.${extension.replace(/[^a-z0-9]/g, "")}`;
+  const safeExt = extension.replace(/[^a-z0-9]/g, "");
+  const safeUser = username.replace(/[^a-z0-9._-]/g, "_");
+  return `${safeUser}-${Date.now()}.${safeExt}`;
 }
 
 function normalizePosition(position?: string) {
@@ -38,36 +42,16 @@ async function getSessionOrResponse() {
   return { session, response: null };
 }
 
-async function ensureBucket() {
-  const supabase = getAdminSupabase();
-  const bucket = process.env.AUTH_AVATAR_BUCKET || "avatars";
-  const { error } = await supabase.storage.getBucket(bucket);
+async function salvarArquivoLocal(file: File, username: string): Promise<string> {
+  const uploadDir = join(process.cwd(), "public", "uploads", "avatars");
+  await mkdir(uploadDir, { recursive: true });
 
-  if (!error) {
-    return bucket;
-  }
+  const filename = safeFilename(username, file.name);
+  const filepath = join(uploadDir, filename);
+  const buffer = Buffer.from(await file.arrayBuffer());
+  await writeFile(filepath, buffer);
 
-  const { error: createError } = await supabase.storage.createBucket(bucket, {
-    public: true,
-    fileSizeLimit: String(MAX_FILE_SIZE),
-    allowedMimeTypes: ALLOWED_TYPES,
-  });
-
-  if (createError) {
-    throw new Error(createError.message);
-  }
-
-  return bucket;
-}
-
-function missingColumnResponse() {
-  return NextResponse.json(
-    {
-      message:
-        "As colunas foto_url/foto_posicao ainda não existem em usuarios_autorizados. Rode o SQL atualizado no Supabase.",
-    },
-    { status: 500 },
-  );
+  return `/uploads/avatars/${filename}`;
 }
 
 export async function POST(request: Request) {
@@ -92,56 +76,35 @@ export async function POST(request: Request) {
     return NextResponse.json({ message: "A foto deve ter no máximo 4 MB." }, { status: 400 });
   }
 
-  const supabase = getAdminSupabase();
-  const bucket = await ensureBucket();
-  const path = `${session.username}/${Date.now()}-${safeFilename(file.name)}`;
-  const { error: uploadError } = await supabase.storage.from(bucket).upload(path, file, {
-    contentType: file.type,
-    upsert: true,
-  });
+  try {
+    const photoUrl = await salvarArquivoLocal(file, session.username);
+    const photoPosition = "center center";
+    const table = process.env.AUTH_USERS_TABLE || "usuarios_autorizados";
 
-  if (uploadError) {
-    return NextResponse.json({ message: uploadError.message }, { status: 500 });
+    await dbQuery(
+      `UPDATE ${table}
+       SET foto_url = $1, foto_posicao = $2, atualizado_em = now()
+       WHERE usuario_ad = $3`,
+      [photoUrl, photoPosition, session.username],
+    );
+
+    const updatedSession = { ...session, photoUrl, photoPosition };
+    const token = await createSessionToken(updatedSession);
+    const responseJson = NextResponse.json({ photoUrl, photoPosition });
+
+    responseJson.cookies.set(AUTH_COOKIE_NAME, token, {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      maxAge: Math.max(0, Math.floor((session.expiresAt - Date.now()) / 1000)),
+    });
+
+    return responseJson;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Erro interno";
+    return NextResponse.json({ message: msg }, { status: 500 });
   }
-
-  const { data: publicData } = supabase.storage.from(bucket).getPublicUrl(path);
-  const photoUrl = publicData.publicUrl;
-  const photoPosition = "center center";
-  const table = process.env.AUTH_USERS_TABLE || "usuarios_autorizados";
-  const { error: updateError } = await supabase
-    .from(table)
-    .update({
-      foto_url: photoUrl,
-      foto_posicao: photoPosition,
-      atualizado_em: new Date().toISOString(),
-    })
-    .eq("usuario_ad", session.username);
-
-  if (updateError) {
-    if (updateError.code === "42703") {
-      return missingColumnResponse();
-    }
-
-    return NextResponse.json({ message: updateError.message }, { status: 500 });
-  }
-
-  const updatedSession = {
-    ...session,
-    photoUrl,
-    photoPosition,
-  };
-  const token = await createSessionToken(updatedSession);
-  const responseJson = NextResponse.json({ photoUrl, photoPosition });
-
-  responseJson.cookies.set(AUTH_COOKIE_NAME, token, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-    maxAge: Math.max(0, Math.floor((session.expiresAt - Date.now()) / 1000)),
-  });
-
-  return responseJson;
 }
 
 export async function PATCH(request: Request) {
@@ -154,35 +117,29 @@ export async function PATCH(request: Request) {
   const body = (await request.json()) as { photoPosition?: string };
   const photoPosition = normalizePosition(body.photoPosition);
   const table = process.env.AUTH_USERS_TABLE || "usuarios_autorizados";
-  const { error } = await getAdminSupabase()
-    .from(table)
-    .update({
-      foto_posicao: photoPosition,
-      atualizado_em: new Date().toISOString(),
-    })
-    .eq("usuario_ad", session.username);
 
-  if (error) {
-    if (error.code === "42703") {
-      return missingColumnResponse();
-    }
+  try {
+    await dbQuery(
+      `UPDATE ${table}
+       SET foto_posicao = $1, atualizado_em = now()
+       WHERE usuario_ad = $2`,
+      [photoPosition, session.username],
+    );
 
-    return NextResponse.json({ message: error.message }, { status: 500 });
+    const token = await createSessionToken({ ...session, photoPosition });
+    const responseJson = NextResponse.json({ photoPosition });
+
+    responseJson.cookies.set(AUTH_COOKIE_NAME, token, {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      maxAge: Math.max(0, Math.floor((session.expiresAt - Date.now()) / 1000)),
+    });
+
+    return responseJson;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Erro interno";
+    return NextResponse.json({ message: msg }, { status: 500 });
   }
-
-  const token = await createSessionToken({
-    ...session,
-    photoPosition,
-  });
-  const responseJson = NextResponse.json({ photoPosition });
-
-  responseJson.cookies.set(AUTH_COOKIE_NAME, token, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-    maxAge: Math.max(0, Math.floor((session.expiresAt - Date.now()) / 1000)),
-  });
-
-  return responseJson;
 }

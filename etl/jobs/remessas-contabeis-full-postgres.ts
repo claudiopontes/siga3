@@ -22,6 +22,7 @@
 import "dotenv/config";
 import { queryInDatabase } from "../connectors/sqlserver";
 import { pgQuery, withPgTransaction, getPgPool, closePgPool } from "../connectors/postgres";
+import { iniciarCargaEtl, finalizarCargaEtl, registrarLogEtl } from "../lib/auditoria";
 
 // ---------------------------------------------------------------------------
 // Configuração
@@ -176,56 +177,6 @@ async function inserirStageEmLotes(
 }
 
 // ---------------------------------------------------------------------------
-// Auditoria
-// ---------------------------------------------------------------------------
-
-async function iniciarCarga(): Promise<number> {
-  const rows = await pgQuery<{ id_carga: number }>(
-    `INSERT INTO audit.etl_carga
-       (modulo, origem, destino, modo_carga, status)
-     VALUES ($1, $2, $3, $4, $5)
-     RETURNING id_carga`,
-    [
-      MODULO,
-      `${APC_DATABASE}.dbo.REMESSA`,
-      "dw.fato_remessa_contabil (via stage.remessa_contabil_stg)",
-      "full_truncate_insert",
-      "iniciado",
-    ],
-  );
-  return rows[0].id_carga;
-}
-
-async function finalizarCarga(
-  idCarga: number,
-  status: "ok" | "erro",
-  lidos: number,
-  gravados: number,
-  mensagem?: string,
-): Promise<void> {
-  await pgQuery(
-    `UPDATE audit.etl_carga
-     SET status = $1, registros_lidos = $2, registros_gravados = $3,
-         finalizado_em = now(), mensagem = $4
-     WHERE id_carga = $5`,
-    [status, lidos, gravados, mensagem ?? null, idCarga],
-  );
-}
-
-async function registrarLog(
-  status: "ok" | "erro",
-  registros: number,
-  duracao: number,
-  mensagem?: string,
-): Promise<void> {
-  await pgQuery(
-    `INSERT INTO audit.etl_log (modulo, status, registros, duracao_ms, mensagem)
-     VALUES ($1, $2, $3, $4, $5)`,
-    [MODULO, status, registros, duracao, mensagem ?? null],
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 
@@ -238,7 +189,12 @@ export async function executarCargaRemessasFullPostgres(): Promise<void> {
   console.log(`  -> Validação mínima: ${MIN_REGISTROS} registros`);
   console.log(`  -> Batch size: ${BATCH_SIZE}`);
 
-  const idCarga = await iniciarCarga();
+  const idCarga = await iniciarCargaEtl({
+    modulo: MODULO,
+    modoCarga: "full_truncate_insert",
+    origem: `${APC_DATABASE}.dbo.REMESSA`,
+    destino: "dw.fato_remessa_contabil (via stage.remessa_contabil_stg)",
+  });
 
   try {
     // PASSO 1 — contar fonte
@@ -249,8 +205,8 @@ export async function executarCargaRemessasFullPostgres(): Promise<void> {
     if (totalFonte === 0) {
       const duracao = Date.now() - inicio;
       console.log("  -> Fonte vazia. Abortando.");
-      await registrarLog("ok", 0, duracao, "Fonte vazia");
-      await finalizarCarga(idCarga, "ok", 0, 0, "Fonte vazia");
+      await registrarLogEtl({ modulo: MODULO, status: "ok", registros: 0, duracaoMs: duracao, mensagem: "Fonte vazia" });
+      await finalizarCargaEtl({ idCarga, status: "ok", registrosLidos: 0, registrosGravados: 0, mensagem: "Fonte vazia" });
       return;
     }
 
@@ -359,14 +315,14 @@ export async function executarCargaRemessasFullPostgres(): Promise<void> {
       `  OK - ETL concluído em ${duracao}ms | lidos: ${totalLidos} | gravados: ${totalGravado}`,
     );
 
-    await registrarLog("ok", totalGravado, duracao);
-    await finalizarCarga(idCarga, "ok", totalLidos, totalGravado);
+    await registrarLogEtl({ modulo: MODULO, status: "ok", registros: totalGravado, duracaoMs: duracao });
+    await finalizarCargaEtl({ idCarga, status: "ok", registrosLidos: totalLidos, registrosGravados: totalGravado });
   } catch (error) {
     const duracao = Date.now() - inicio;
     const mensagem = error instanceof Error ? error.message : String(error);
     console.error(`  ERRO - ${mensagem}`);
-    await registrarLog("erro", 0, duracao, mensagem).catch(() => void 0);
-    await finalizarCarga(idCarga, "erro", 0, 0, mensagem).catch(() => void 0);
+    await registrarLogEtl({ modulo: MODULO, status: "erro", registros: 0, duracaoMs: duracao, mensagem });
+    await finalizarCargaEtl({ idCarga, status: "erro", registrosLidos: 0, registrosGravados: 0, mensagem });
     throw error;
   }
 }
