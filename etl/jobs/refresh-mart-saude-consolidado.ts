@@ -101,6 +101,31 @@ interface InfoDengueAlertaRow {
   semana_epidemiologica: number | null;
 }
 
+interface PniCoberturaAlertaRow {
+  id_alerta:             number | null;
+  fonte:                 string;
+  codigo_municipio_ibge: string | null;
+  nome_municipio:        string | null;
+  tipo_alerta:           string;
+  nivel:                 string;
+  descricao:             string;
+  valor_observado:       number | null;
+  valor_referencia:      number | null;
+  detalhe_json:          unknown;
+}
+
+interface PniCoberturaResumoRow {
+  codigo_municipio_ibge:         string | null;
+  nome_municipio:                string;
+  ano:                           number;
+  cobertura_media:               number | null;
+  total_abaixo_meta:             number;
+  menor_cobertura:               number | null;
+  imunobiologico_menor_cobertura: string | null;
+  tipo_periodo:                  string;
+  data_referencia:               string | null;
+}
+
 interface PniAlertaRow {
   id_alerta:             number | null;
   fonte:                 string;
@@ -306,6 +331,37 @@ export async function executarMartSaudeConsolidado(): Promise<void> {
     ) cnt USING (codigo_municipio_ibge)
   `).catch(() => [] as InfoDengueResumoRow[]);
 
+  // PNI Cobertura — alertas e resumo por município
+  const pniCoberturaAlertas = await pgQuery<PniCoberturaAlertaRow>(`
+    SELECT
+      id_alerta,
+      'PNI_COBERTURA'  AS fonte,
+      codigo_municipio_ibge,
+      nome_municipio,
+      tipo_alerta,
+      nivel,
+      descricao,
+      valor_observado,
+      valor_referencia,
+      detalhe_json
+    FROM mart.pni_cobertura_alertas
+  `).catch(() => [] as PniCoberturaAlertaRow[]);
+
+  const pniCoberturaResumos = await pgQuery<PniCoberturaResumoRow>(`
+    SELECT DISTINCT ON (nome_municipio)
+      codigo_municipio_ibge,
+      nome_municipio,
+      ano,
+      cobertura_media,
+      total_abaixo_meta,
+      menor_cobertura,
+      imunobiologico_menor_cobertura,
+      tipo_periodo,
+      data_referencia::text
+    FROM mart.pni_cobertura_resumo_municipio
+    ORDER BY nome_municipio, ano DESC
+  `).catch(() => [] as PniCoberturaResumoRow[]);
+
   // PNI — alertas e resumo por município
   const pniAlertas = await pgQuery<PniAlertaRow>(`
     SELECT
@@ -383,6 +439,8 @@ export async function executarMartSaudeConsolidado(): Promise<void> {
   console.log(`[mart:saude-consolidado] Alertas SIOPS:         ${siopsAlertas.length}`);
   console.log(`[mart:saude-consolidado] Alertas CNES/UBS:      ${cnesAlertas.length}`);
   console.log(`[mart:saude-consolidado] PNI municípios:        ${pniResumos.length}`);
+  console.log(`[mart:saude-consolidado] PNI Cobertura mun:    ${pniCoberturaResumos.length}`);
+  console.log(`[mart:saude-consolidado] Alertas PNI Cobertura:${pniCoberturaAlertas.length}`);
   console.log(`[mart:saude-consolidado] Alertas SISAGUA:       ${sisaguaAlertas.length}`);
   console.log(`[mart:saude-consolidado] Alertas PNI:           ${pniAlertas.length}`);
   console.log(`[mart:saude-consolidado] Alertas InfoDengue:    ${infodengueAlertas.length}`);
@@ -456,6 +514,13 @@ export async function executarMartSaudeConsolidado(): Promise<void> {
     pniMap.set(normalizar6(r.codigo_municipio_ibge)!, r);
   }
 
+  // Mapa PNI Cobertura por município (por nome, pois código pode estar ausente)
+  const pniCobMap = new Map<string, PniCoberturaResumoRow>();
+  for (const r of pniCoberturaResumos) {
+    const chave = normalizar6(r.codigo_municipio_ibge) ?? r.nome_municipio.toLowerCase();
+    pniCobMap.set(chave, r);
+  }
+
   // Mapa InfoDengue por município (6 dígitos) para campos de vigilância no resumo_municipio
   // Por município: nível dengue, chikungunya, zika + totais de alerta
   const infodengueMap = new Map<string, {
@@ -514,6 +579,7 @@ export async function executarMartSaudeConsolidado(): Promise<void> {
     ...sisaguaAlertas.map(normalizeAlerta),
     ...infodengueAlertas.map(normalizeInfoDengueAlerta),
     ...pniAlertas.map(normalizeAlerta),
+    ...pniCoberturaAlertas.map(normalizeAlerta),
   ];
 
   // Score por município
@@ -614,6 +680,7 @@ export async function executarMartSaudeConsolidado(): Promise<void> {
       const sg = m.sisagua;
       const vigi = infodengueMap.get(m.codigo) ?? null;
       const pni  = pniMap.get(m.codigo) ?? null;
+      const pniCob = pniCobMap.get(m.codigo) ?? pniCobMap.get(m.nome?.toLowerCase() ?? "") ?? null;
       await client.query(`
         INSERT INTO mart.saude_resumo_municipio (
           codigo_municipio_ibge, nome_municipio, uf,
@@ -633,6 +700,9 @@ export async function executarMartSaudeConsolidado(): Promise<void> {
           vigilancia_semana_epidemiologica, vigilancia_ano_epidemiologico,
           pni_total_doses, pni_doses_ultimo_mes, pni_mes_referencia,
           pni_total_alertas, pni_alertas_criticos, pni_alertas_altos,
+          pni_cobertura_media, pni_cobertura_total_abaixo_meta,
+          pni_cobertura_menor, pni_cobertura_imunobiologico_menor,
+          pni_cobertura_tipo_periodo, pni_cobertura_data_referencia,
           atualizado_em
         ) VALUES (
           $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
@@ -640,7 +710,8 @@ export async function executarMartSaudeConsolidado(): Promise<void> {
           $18,$19,$20,$21,$22,$23,
           $24,$25,$26,$27,$28,$29,
           $30,$31,$32,$33,$34,$35,$36,$37,
-          $38,$39,$40,$41,$42,$43,now()
+          $38,$39,$40,$41,$42,$43,
+          $44,$45,$46,$47,$48,$49,now()
         )
         ON CONFLICT (codigo_municipio_ibge) DO UPDATE SET
           nome_municipio                = EXCLUDED.nome_municipio,
@@ -684,8 +755,14 @@ export async function executarMartSaudeConsolidado(): Promise<void> {
           pni_mes_referencia            = EXCLUDED.pni_mes_referencia,
           pni_total_alertas             = EXCLUDED.pni_total_alertas,
           pni_alertas_criticos          = EXCLUDED.pni_alertas_criticos,
-          pni_alertas_altos             = EXCLUDED.pni_alertas_altos,
-          atualizado_em                 = now()
+          pni_alertas_altos                  = EXCLUDED.pni_alertas_altos,
+          pni_cobertura_media                = EXCLUDED.pni_cobertura_media,
+          pni_cobertura_total_abaixo_meta    = EXCLUDED.pni_cobertura_total_abaixo_meta,
+          pni_cobertura_menor                = EXCLUDED.pni_cobertura_menor,
+          pni_cobertura_imunobiologico_menor = EXCLUDED.pni_cobertura_imunobiologico_menor,
+          pni_cobertura_tipo_periodo         = EXCLUDED.pni_cobertura_tipo_periodo,
+          pni_cobertura_data_referencia      = EXCLUDED.pni_cobertura_data_referencia,
+          atualizado_em                      = now()
       `, [
         m.codigo, m.nome, m.uf,
         s?.ano ?? null, s?.periodo ?? null,
@@ -729,6 +806,12 @@ export async function executarMartSaudeConsolidado(): Promise<void> {
         pni?.total_alertas      ?? null,
         pni?.total_criticos     ?? null,
         pni?.total_altos        ?? null,
+        pniCob?.cobertura_media               ?? null,
+        pniCob?.total_abaixo_meta             ?? null,
+        pniCob?.menor_cobertura               ?? null,
+        pniCob?.imunobiologico_menor_cobertura ?? null,
+        pniCob?.tipo_periodo                  ?? null,
+        pniCob?.data_referencia               ?? null,
       ]);
     }
     console.log(`[mart:saude-consolidado] ✓ saude_resumo_municipio (${municipios.length} municípios)`);

@@ -212,3 +212,93 @@ O job `pni-direto-inspecionar.ts` agora suporta:
 *Jobs:*
 - *`etl/jobs/pni-inspecionar.ts` → `npm run pni:inspecionar` (via API CKAN)*
 - *`etl/jobs/pni-direto-inspecionar.ts` → `npm run pni:direto:inspecionar` (via URLs diretas)*
+
+---
+
+## 11. Cobertura Vacinal — Planilhas XLSX (DPNI/DATASUS)
+
+### Diferença entre doses aplicadas e cobertura vacinal
+
+| Conceito | Fonte | Descrição |
+|----------|-------|-----------|
+| **Doses aplicadas** | API `apidadosabertos.saude.gov.br/v1/vacinacao/doses-aplicadas/pni-{ano}` | Contagem de registros RNDS individuais — **numerador bruto** |
+| **Cobertura vacinal (%)** | Planilhas XLSX DPNI | Proporção da população-alvo vacinada — já inclui denominador oficial |
+
+As planilhas de cobertura são a fonte oficial para análise de meta atingida.
+
+### Arquivos disponíveis
+
+| Arquivo | Ano | Tipo | Data Referência | Localização |
+|---------|-----|------|-----------------|-------------|
+| `Cobertura Vacina 2025.xlsx` | 2025 | FECHADO | 2025-12-31 | `etl/data/pni/cobertura/2025/` |
+| `Cobertura Vacina 01-04-2026.xlsx` | 2026 | PARCIAL | 2026-04-01 | `etl/data/pni/cobertura/2026/` |
+
+### Estrutura das planilhas
+
+- **Aba:** Sheet1
+- **Intervalo:** A1:BH31 (aproximado)
+- **Linha 1:** nomes dos imunobiológicos (repete 3x por bloco)
+- **Linha 2:** métricas (`Cobertura Vacinal (%)`, `Numerador`, `Denominador`)
+- **Colunas A–F:** dimensões geográficas (Região, UF, Macrorregião, Região de Saúde, Município)
+- **Colunas G+:** blocos de 3 colunas por imunobiológico
+- **Cobertura:** armazenada como fração decimal (0.965 = 96,5%) → ETL converte para percentual (96.5)
+- **Filtro Acre:** apenas linhas com `UF Residência = "AC"` são carregadas
+
+### Controle de versão e status
+
+| Status | Descrição |
+|--------|-----------|
+| `ATIVO` | Arquivo mais relevante do ano — usado nas marts e alertas principais |
+| `SUPERADO` | Versão parcial anterior do mesmo ano, substituída por versão mais recente |
+| `RETIFICADO` | Versão fechada substituída por retificação posterior |
+| `ERRO` | Falha no processamento — não propagado para DW |
+
+**Regra de vencedor:** FECHADO > PARCIAL; entre PARCIAIS, maior `data_referencia` vence.
+
+### Meta padrão
+
+- **Meta:** 95% de cobertura vacinal
+- `abaixo_meta = cobertura_percentual < 95`
+- `distancia_meta = cobertura_percentual - 95`
+
+### Regras de alerta por tipo de período
+
+| Tipo | Período | Nível |
+|------|---------|-------|
+| `pni_cobertura_baixa_fechamento` | FECHADO, cobertura < 95% | CRITICO (<80%) / ALTO (80-95%) |
+| `pni_cobertura_baixa_parcial` | PARCIAL, cobertura < 95% | MEDIO — acompanhamento, não conclusivo |
+| `pni_cobertura_muito_baixa` | qualquer, cobertura < 50% | CRITICO (FECHADO) / ALTO (PARCIAL) |
+| `pni_sem_denominador` | denominador null/0 | MEDIO |
+
+**2026 parcial:** alertas gerados como MEDIO, nunca CRITICO de fechamento. O exercício está em aberto.
+
+### Comandos
+
+```bash
+cd etl
+
+# Aplicar schema (primeira vez)
+npm run postgres:migrate
+
+# Ingerir planilhas e recalcular marts + consolidado
+npm run carga-pni-cobertura:postgres
+
+# Ou etapas separadas:
+npm run pni:cobertura:ingest    # lê XLSX → raw → stage → dw
+npm run mart:pni-cobertura      # recalcula marts de cobertura
+npm run mart:saude-consolidado  # integra ao painel consolidado
+```
+
+### Onde colocar novos arquivos
+
+```
+etl/data/pni/cobertura/
+  2025/
+    Cobertura Vacina 2025.xlsx          ← fechado (ano completo)
+  2026/
+    Cobertura Vacina 01-04-2026.xlsx    ← parcial (referência abr/2026)
+    Cobertura Vacina 01-05-2026.xlsx    ← novo parcial (mai/2026) → SUPERADO o anterior
+    Cobertura Vacina 2026.xlsx          ← quando fechado → SUPERADO todos os parciais
+```
+
+O ETL usa **hash SHA-256** para evitar carga duplicada — o mesmo arquivo pode ser reprocessado com segurança.

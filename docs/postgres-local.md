@@ -844,3 +844,96 @@ PNI_RATE_LIMIT_MS=500
 - A API pode retornar HTML (WAF) para requisições sem cookies de sessão — execute `pni:api:inspecionar` para verificar o formato real antes da carga.
 - Registros sem `co_dose_id` são inseridos sem deduplicação — use `PNI_MAX_PAGES` para limitar o volume em cargas de teste.
 - As doses aplicadas (**numerador**) não equivalem à cobertura vacinal percentual, que exige a população-alvo como denominador (disponível via SIGTAP/IBGE ou SIPNI/TABNET).
+
+---
+
+## PNI — Cobertura Vacinal por Planilhas XLSX
+
+**Finalidade:** Monitorar a cobertura vacinal dos municípios do Acre com base nas planilhas XLSX oficiais do DPNI/DATASUS. Detectar imunobiológicos abaixo da meta (95%), comparar exercícios fechados e acompanhar a evolução de exercícios parciais.
+
+**Diferença de doses aplicadas:** As planilhas de cobertura já contêm a proporção (%) da população-alvo vacinada, com denominador oficial. São complementares — não substituem — o pipeline de doses aplicadas via API.
+
+### Planilhas disponíveis
+
+| Arquivo | Ano | Tipo | Referência |
+|---------|-----|------|------------|
+| `Cobertura Vacina 2025.xlsx` | 2025 | FECHADO | 2025-12-31 |
+| `Cobertura Vacina 01-04-2026.xlsx` | 2026 | PARCIAL | 2026-04-01 |
+
+**Local dos arquivos:** `etl/data/pni/cobertura/{ano}/`
+
+### Tabelas
+
+| Camada | Tabela | Descrição |
+|--------|--------|-----------|
+| audit  | `audit.pni_cobertura_arquivo` | Controle de versão: hash, status, datas |
+| raw    | `raw.pni_cobertura_raw` | Linhas brutas da planilha (1 por município × imunobiológico) |
+| stage  | `stage.pni_cobertura_stg` | Dados normalizados: código IBGE, cobertura em %, abaixo_meta |
+| dw     | `dw.fato_pni_cobertura` | Fato analítico com meta e distância |
+| mart   | `mart.pni_cobertura_resumo_municipio` | Resumo por município × ano (ATIVO) |
+| mart   | `mart.pni_cobertura_resumo_imunobiologico` | Resumo por vacina × ano (ATIVO) |
+| mart   | `mart.pni_cobertura_evolucao` | Histórico completo (ATIVO + SUPERADO + RETIFICADO) |
+| mart   | `mart.pni_cobertura_alertas` | Todos os alertas (ATIVO) |
+| mart   | `mart.pni_cobertura_alertas_home` | Máx 30, CRITICO/ALTO, prioriza FECHADO |
+| mart   | `mart.pni_cobertura_resumo_home` | Totais para o card da home |
+
+Os campos `pni_cobertura_*` foram adicionados a `mart.saude_resumo_municipio`.
+
+### Controle de status de arquivo
+
+| Status | Regra |
+|--------|-------|
+| `ATIVO` | Arquivo mais relevante do ano: FECHADO vence PARCIAL; entre PARCIAIS, maior `data_referencia` |
+| `SUPERADO` | Versão parcial anterior substituída |
+| `RETIFICADO` | Versão fechada substituída por retificação |
+| `ERRO` | Falha no processamento |
+
+Hash SHA-256 evita carga duplicada — mesmo arquivo pode ser reprocessado com segurança.
+
+### Alertas gerados
+
+| Tipo | Nível | Condição |
+|------|-------|----------|
+| `pni_cobertura_baixa_fechamento` | CRITICO (<80%) / ALTO (80-95%) | Exercício FECHADO, cobertura < 95% |
+| `pni_cobertura_baixa_parcial` | MEDIO | Exercício PARCIAL, cobertura < 95% — acompanhamento |
+| `pni_cobertura_muito_baixa` | CRITICO/ALTO | Cobertura < 50% |
+| `pni_sem_denominador` | MEDIO | Denominador ausente |
+
+**2026 parcial:** nunca gera `pni_cobertura_baixa_fechamento` — apenas MEDIO de acompanhamento.
+
+### Comandos
+
+```bash
+cd etl
+
+# Aplicar schema (primeira vez ou após migração)
+npm run postgres:migrate
+
+# Carga completa: ingestão + marts + consolidado
+npm run carga-pni-cobertura:postgres
+
+# Etapas separadas:
+npm run pni:cobertura:ingest    # lê XLSX → raw → stage → dw, controla versão
+npm run mart:pni-cobertura      # recalcula marts e alertas de cobertura
+npm run mart:saude-consolidado  # integra ao Painel da Saúde consolidado
+```
+
+### APIs server-side
+
+| Rota | Descrição |
+|------|-----------|
+| `GET /api/saude/pni/cobertura/resumo` | Totais globais (`pni_cobertura_resumo_home`) |
+| `GET /api/saude/pni/cobertura/municipios?ano=2025&municipio=Rio+Branco` | Resumo por município |
+| `GET /api/saude/pni/cobertura/imunobiologicos?ano=2025` | Resumo por vacina |
+| `GET /api/saude/pni/cobertura/evolucao?municipio=120401&vacina=BCG` | Série histórica |
+| `GET /api/saude/pni/cobertura/alertas?home=1&nivel=CRITICO` | Alertas com filtros |
+
+### Para adicionar novos arquivos
+
+```
+etl/data/pni/cobertura/2026/
+  Cobertura Vacina 01-04-2026.xlsx   ← já carregado
+  Cobertura Vacina 01-05-2026.xlsx   ← novo → anterior vira SUPERADO
+```
+
+Execute `npm run carga-pni-cobertura:postgres` após adicionar novos arquivos.

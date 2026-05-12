@@ -61,22 +61,26 @@
     "pni:api:inspecionar": "ts-node jobs/pni-api-inspecionar.ts",
     "pni:ingest": "ts-node jobs/ingest-pni.ts",
     "mart:pni": "ts-node jobs/refresh-mart-pni.ts",
-    "carga-pni:postgres": "npm run pni:ingest && npm run mart:pni && npm run mart:saude-consolidado",
-    "carga-saude:postgres": "npm run carga-siops:postgres && npm run carga-cnes-ubs:postgres && npm run carga-sisagua:postgres && npm run carga-infodengue:postgres && npm run carga-pni:postgres"
+    "carga-pni:postgres": "npm run pni:ingest && npm run mart:pni",
+    "pni:cobertura:ingest": "ts-node jobs/ingest-pni-cobertura-xlsx.ts",
+    "mart:pni-cobertura": "ts-node jobs/refresh-mart-pni-cobertura.ts",
+    "carga-pni-cobertura:postgres": "npm run pni:cobertura:ingest && npm run mart:pni-cobertura && npm run mart:saude-consolidado",
+    "carga-saude:postgres": "npm run carga-siops:postgres && npm run carga-cnes-ubs:postgres && npm run carga-sisagua:postgres && npm run carga-infodengue:postgres && npm run carga-pni:postgres && npm run carga-pni-cobertura:postgres"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.8",
-    "pg": "^8.13.3",
     "dotenv": "^16.5.0",
     "msnodesqlv8": "^4.5.0",
     "mssql": "^11.0.1",
-    "node-cron": "^3.0.3"
+    "node-cron": "^3.0.3",
+    "pg": "^8.13.3",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@types/mssql": "^9.1.5",
-    "@types/pg": "^8.11.11",
     "@types/node": "^20.19.25",
     "@types/node-cron": "^3.0.11",
+    "@types/pg": "^8.11.11",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3"
   }
