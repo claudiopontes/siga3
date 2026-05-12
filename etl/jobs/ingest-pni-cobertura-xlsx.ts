@@ -193,6 +193,7 @@ function parsePlanilha(caminho: string): LinhaCobertura[] {
 
     const { codigo, nome } = parseMunicipio(munCell);
     if (!nome) continue;
+    if (/^total/i.test(nome.trim())) continue;
 
     // Agrega por imunobiológico
     const imunoMap = new Map<string, { cobertura: number | null; numerador: number | null; denominador: number | null }>();

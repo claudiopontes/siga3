@@ -58,21 +58,6 @@ interface CoberturaImunobiologico {
   atualizado_em:               string;
 }
 
-interface CoberturaEvolucao {
-  codigo_municipio_ibge: string | null;
-  nome_municipio:        string;
-  uf:                    string | null;
-  ano:                   number;
-  data_referencia:       string | null;
-  tipo_periodo:          string;
-  status_arquivo:        string;
-  imunobiologico:        string;
-  cobertura_percentual:  number | null;
-  numerador:             number | null;
-  denominador:           number | null;
-  meta_percentual:       number;
-  abaixo_meta:           boolean | null;
-}
 
 interface CoberturaAlerta {
   id_alerta:             number | null;
@@ -164,27 +149,11 @@ function nomesMeses(): string[] {
 // Sub-componentes de badge
 // ---------------------------------------------------------------------------
 
-function NivelBadge({ nivel }: { nivel: string }) {
-  const n = (nivel ?? "").toUpperCase();
-  if (n === "CRITICO")
-    return <span className="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700 dark:bg-red-900/40 dark:text-red-300">Crítico</span>;
-  if (n === "ALTO")
-    return <span className="inline-flex items-center rounded-full bg-orange-100 px-2 py-0.5 text-xs font-semibold text-orange-700 dark:bg-orange-900/40 dark:text-orange-300">Alto</span>;
-  if (n === "MEDIO")
-    return <span className="inline-flex items-center rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-semibold text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300">Médio</span>;
-  return <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-semibold text-gray-600 dark:bg-gray-700 dark:text-gray-300">{nivel}</span>;
-}
 
 function PeriodoBadge({ tipo }: { tipo: string }) {
   if (tipo === "FECHADO")
     return <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">Fechado</span>;
   return <span className="inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">Acompanhamento</span>;
-}
-
-function FonteBadge({ fonte }: { fonte: string }) {
-  if (fonte === "PNI_COBERTURA")
-    return <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">Cobertura</span>;
-  return <span className="inline-flex items-center rounded-full bg-violet-100 px-2 py-0.5 text-xs font-medium text-violet-700 dark:bg-violet-900/40 dark:text-violet-300">Doses aplic.</span>;
 }
 
 // ---------------------------------------------------------------------------
@@ -214,7 +183,6 @@ export default function VacinacaoClient() {
   // Estado de dados
   const [cobMunic,    setCobMunic]    = useState<CoberturaMunicipio[]>([]);
   const [cobImuno,    setCobImuno]    = useState<CoberturaImunobiologico[]>([]);
-  const [cobEvolucao, setCobEvolucao] = useState<CoberturaEvolucao[]>([]);
   const [cobAlertas,  setCobAlertas]  = useState<CoberturaAlerta[]>([]);
   const [dosesResumo, setDosesResumo] = useState<DosesResumo | null>(null);
   const [dosesAlertas, setDosesAlertas] = useState<DosesAlerta[]>([]);
@@ -222,10 +190,8 @@ export default function VacinacaoClient() {
   const [carregando,  setCarregando]  = useState(true);
   const [erro,        setErro]        = useState<string | null>(null);
 
-  // Filtros de tabela (municipios)
-  const [filtroMun,     setFiltroMun]     = useState("");
-  const [filtroPeriodo, setFiltroPeriodo] = useState<string>("");
-  const [apenasAbaixo,  setApenasAbaixo]  = useState(false);
+  // Município selecionado (global — afeta KPIs, gráficos e tabela)
+  const [munSel, setMunSel] = useState<string>("");
 
   useEffect(() => {
     setCarregando(true);
@@ -234,7 +200,6 @@ export default function VacinacaoClient() {
     Promise.allSettled([
       fetch(`/api/saude/pni/cobertura/municipios?ano=${a}`).then(r => r.ok ? r.json() : []),
       fetch(`/api/saude/pni/cobertura/imunobiologicos?ano=${a}`).then(r => r.ok ? r.json() : []),
-      fetch(`/api/saude/pni/cobertura/evolucao?ano=${a}`).then(r => r.ok ? r.json() : []),
       fetch(`/api/saude/pni/cobertura/alertas?ano=${a}`).then(r => r.ok ? r.json() : []),
       fetch("/api/saude/pni/resumo").then(r => r.ok ? r.json() : null),
       fetch("/api/saude/pni/alertas?home=1").then(r => r.ok ? r.json() : []),
@@ -245,11 +210,10 @@ export default function VacinacaoClient() {
 
       setCobMunic(Array.isArray(val(results[0], [])) ? val(results[0], []) : []);
       setCobImuno(Array.isArray(val(results[1], [])) ? val(results[1], []) : []);
-      setCobEvolucao(Array.isArray(val(results[2], [])) ? val(results[2], []) : []);
-      setCobAlertas(Array.isArray(val(results[3], [])) ? val(results[3], []) : []);
-      setDosesResumo(val(results[4], null));
-      setDosesAlertas(Array.isArray(val(results[5], [])) ? val(results[5], []) : []);
-      setDoseSerie(Array.isArray(val(results[6], [])) ? val(results[6], []) : []);
+      setCobAlertas(Array.isArray(val(results[2], [])) ? val(results[2], []) : []);
+      setDosesResumo(val(results[3], null));
+      setDosesAlertas(Array.isArray(val(results[4], [])) ? val(results[4], []) : []);
+      setDoseSerie(Array.isArray(val(results[5], [])) ? val(results[5], []) : []);
     }).catch((e: unknown) => {
       setErro(e instanceof Error ? e.message : "Erro ao carregar dados.");
     }).finally(() => setCarregando(false));
@@ -257,34 +221,34 @@ export default function VacinacaoClient() {
 
   // ── Derivações ──
 
-  // KPIs derivados dos dados do ano selecionado
+  // Lista de municípios disponíveis para o seletor global
+  const listaMunicipios = useMemo(() =>
+    [...cobMunic].sort((a, b) => a.nome_municipio.localeCompare(b.nome_municipio, "pt-BR")),
+  [cobMunic]);
+
+  // Dados filtrados pelo município selecionado
+  const cobMunicFiltrada = useMemo(() =>
+    munSel ? cobMunic.filter(m => m.nome_municipio === munSel) : cobMunic,
+  [cobMunic, munSel]);
+
+  const cobAlertasFiltradas = useMemo(() =>
+    munSel ? cobAlertas.filter(a => a.nome_municipio === munSel) : cobAlertas,
+  [cobAlertas, munSel]);
+
+  // KPIs derivados dos dados filtrados
   const kpis = useMemo(() => {
-    const tipoPeriodo   = cobMunic[0]?.tipo_periodo ?? null;
-    const dataRef       = cobMunic[0]?.data_referencia ?? null;
-    const munAbaixo     = cobMunic.filter(m => m.total_abaixo_meta > 0).length;
-    const coberturas    = cobMunic.map(m => Number(m.cobertura_media)).filter(v => !isNaN(v));
+    const base          = cobMunicFiltrada;
+    const tipoPeriodo   = base[0]?.tipo_periodo ?? null;
+    const dataRef       = base[0]?.data_referencia ?? null;
+    const munAbaixo     = base.filter(m => m.total_abaixo_meta > 0).length;
+    const coberturas    = base.map(m => Number(m.cobertura_media)).filter(v => !isNaN(v));
     const cobMedia      = coberturas.length > 0 ? coberturas.reduce((s, v) => s + v, 0) / coberturas.length : null;
-    const criticos      = cobAlertas.filter(a => a.nivel === "CRITICO").length;
-    const altos         = cobAlertas.filter(a => a.nivel === "ALTO").length;
-    return { tipoPeriodo, dataRef, munAbaixo, cobMedia, criticos, altos };
-  }, [cobMunic, cobAlertas]);
+    const criticos      = cobAlertasFiltradas.filter(a => a.nivel === "CRITICO").length;
+    const altos         = cobAlertasFiltradas.filter(a => a.nivel === "ALTO").length;
+    const totalDoses    = cobImuno.reduce((s, i) => s + Number(i.numerador_total ?? 0), 0) || null;
+    return { tipoPeriodo, dataRef, munAbaixo, cobMedia, criticos, altos, totalDoses };
+  }, [cobMunicFiltrada, cobAlertasFiltradas, cobImuno]);
 
-  const municipiosFiltrados = useMemo(() => {
-    return cobMunic.filter(m => {
-      if (filtroMun && !m.nome_municipio.toLowerCase().includes(filtroMun.toLowerCase())) return false;
-      if (filtroPeriodo && m.tipo_periodo !== filtroPeriodo) return false;
-      if (apenasAbaixo && m.total_abaixo_meta === 0) return false;
-      return true;
-    });
-  }, [cobMunic, filtroMun, filtroPeriodo, apenasAbaixo]);
-
-  // Todos alertas combinados (cobertura + doses)
-  const todosAlertas = useMemo(() => {
-    const cob: (CoberturaAlerta & { _tipo: "cobertura" })[] = cobAlertas.map(a => ({ ...a, _tipo: "cobertura" as const }));
-    const dos: (DosesAlerta & { _tipo: "doses"; ano: number; data_referencia: null; tipo_periodo: string })[] =
-      dosesAlertas.map(a => ({ ...a, _tipo: "doses" as const, ano: dosesResumo?.ano_referencia ?? 0, data_referencia: null, tipo_periodo: "PARCIAL" }));
-    return [...cob, ...dos];
-  }, [cobAlertas, dosesAlertas, dosesResumo]);
 
   // Série mensal agregada (todos imunobiológicos, todos municípios)
   const serieMensal = useMemo(() => {
@@ -304,35 +268,6 @@ export default function VacinacaoClient() {
     [...cobImuno].sort((a, b) => Number(a.cobertura_media ?? 999) - Number(b.cobertura_media ?? 999)).slice(0, 20),
   [cobImuno]);
 
-  // Evolução: agrupa por status_arquivo/ano/data_referencia e imunobiológico
-  const evolucaoSumarizada = useMemo(() => {
-    // Médias por (ano, data_referencia, tipo_periodo, imuno)
-    const map = new Map<string, { soma: number; cnt: number; abaixo: number; total: number; tipo_periodo: string }>();
-    for (const e of cobEvolucao) {
-      const k = `${e.ano}|${e.data_referencia}|${e.imunobiologico}`;
-      const cur = map.get(k) ?? { soma: 0, cnt: 0, abaixo: 0, total: 0, tipo_periodo: e.tipo_periodo };
-      if (e.cobertura_percentual !== null) { cur.soma += Number(e.cobertura_percentual); cur.cnt++; }
-      if (e.abaixo_meta) cur.abaixo++;
-      cur.total++;
-      cur.tipo_periodo = e.tipo_periodo;
-      map.set(k, cur);
-    }
-    // Grupos por imunobiológico para comparação 2025 vs 2026
-    const porImuno = new Map<string, Array<{ ano: number; dataRef: string | null; media: number | null; tipo_periodo: string; abaixo: number; total: number }>>();
-    for (const [k, v] of map) {
-      const [anoS, dataRef, imuno] = k.split("|");
-      if (!porImuno.has(imuno)) porImuno.set(imuno, []);
-      porImuno.get(imuno)!.push({
-        ano: parseInt(anoS), dataRef: dataRef === "null" ? null : dataRef,
-        media: v.cnt > 0 ? v.soma / v.cnt : null,
-        tipo_periodo: v.tipo_periodo, abaixo: v.abaixo, total: v.total,
-      });
-    }
-    return porImuno;
-  }, [cobEvolucao]);
-
-  // Imunobiológicos distintos para comparação
-  const imunosEvolucao = useMemo(() => Array.from(evolucaoSumarizada.keys()).sort(), [evolucaoSumarizada]);
 
   // ── Config gráficos ──
 
@@ -386,23 +321,51 @@ export default function VacinacaoClient() {
   return (
     <div className="space-y-5">
 
-      {/* ── Seleção de ano ── */}
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Exercício:</span>
-        {[ANO_ATUAL, ANO_ATUAL - 1].map(ano => (
-          <button
-            key={ano}
-            type="button"
-            onClick={() => { setAnoSel(ano); setFiltroMun(""); setFiltroPeriodo(""); setApenasAbaixo(false); }}
-            className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
-              anoSel === ano
-                ? "border-2 border-emerald-600 bg-emerald-600 font-bold text-white shadow-sm dark:border-emerald-500 dark:bg-emerald-500 dark:text-white"
-                : "border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
-            }`}
-          >
-            {ano}
-          </button>
-        ))}
+      {/* ── Filtros globais: ano + município ── */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Exercício:</span>
+          {[ANO_ATUAL, ANO_ATUAL - 1].map(ano => (
+            <button
+              key={ano}
+              type="button"
+              onClick={() => { setAnoSel(ano); setMunSel(""); }}
+              style={anoSel === ano ? { backgroundColor: '#059669', color: '#ffffff', borderColor: '#059669' } : {}}
+              className={`rounded-lg border-2 px-3 py-1.5 text-sm font-medium transition ${
+                anoSel === ano
+                  ? "shadow-sm"
+                  : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+              }`}
+            >
+              {ano}
+            </button>
+          ))}
+        </div>
+
+        {listaMunicipios.length > 0 && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Município:</span>
+            <select
+              value={munSel}
+              onChange={e => setMunSel(e.target.value)}
+              className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
+            >
+              <option value="">Todos os municípios</option>
+              {listaMunicipios.map(m => (
+                <option key={m.nome_municipio} value={m.nome_municipio}>{m.nome_municipio}</option>
+              ))}
+            </select>
+            {munSel && (
+              <button
+                type="button"
+                onClick={() => setMunSel("")}
+                className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+              >
+                ✕ limpar
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Aviso parcial */}
@@ -431,7 +394,7 @@ export default function VacinacaoClient() {
             <div className="rounded-xl border border-orange-200 bg-orange-50 p-4 dark:border-orange-800/40 dark:bg-orange-900/10">
               <p className="text-xs font-medium uppercase tracking-wide text-orange-600 dark:text-orange-400">Mun. abaixo da meta</p>
               <p className="mt-1 text-2xl font-bold text-orange-700 dark:text-orange-300">{fmtNum(kpis.munAbaixo)}</p>
-              <p className="text-xs text-gray-400">de 22 municípios</p>
+              <p className="text-xs text-gray-400">meta 95%</p>
             </div>
 
             <div className="rounded-xl border border-red-200 bg-red-50 p-4 dark:border-red-800/40 dark:bg-red-900/10">
@@ -463,9 +426,9 @@ export default function VacinacaoClient() {
             <div className="rounded-xl border border-violet-200 bg-violet-50 p-4 dark:border-violet-800/40 dark:bg-violet-900/10">
               <p className="text-xs font-medium uppercase tracking-wide text-violet-600 dark:text-violet-400">Doses aplicadas</p>
               <p className="mt-1 text-2xl font-bold text-violet-700 dark:text-violet-300">
-                {dosesResumo ? fmtNum(dosesResumo.total_doses_ano_atual) : "—"}
+                {fmtNum(kpis.totalDoses)}
               </p>
-              <p className="text-xs text-gray-400">{dosesResumo?.ano_referencia ?? "—"}</p>
+              <p className="text-xs text-gray-400">{anoSel}</p>
             </div>
           </>
         )}
@@ -475,35 +438,10 @@ export default function VacinacaoClient() {
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-800">
         <div className="border-b border-slate-200 px-5 py-3 dark:border-slate-700">
           <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Cobertura por município</h2>
-          <p className="mt-0.5 text-xs text-slate-400">Vacinas abaixo da meta de 95% por município · Fonte: planilhas DPNI</p>
-
-          <div className="mt-3 flex flex-wrap gap-2">
-            <input
-              type="text"
-              placeholder="Filtrar município..."
-              value={filtroMun}
-              onChange={e => setFiltroMun(e.target.value)}
-              className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
-            />
-            <select
-              value={filtroPeriodo}
-              onChange={e => setFiltroPeriodo(e.target.value)}
-              className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200"
-            >
-              <option value="">Todos os períodos</option>
-              <option value="FECHADO">Fechado</option>
-              <option value="PARCIAL">Parcial</option>
-            </select>
-            <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
-              <input
-                type="checkbox"
-                checked={apenasAbaixo}
-                onChange={e => setApenasAbaixo(e.target.checked)}
-                className="rounded accent-emerald-600"
-              />
-              Somente abaixo da meta
-            </label>
-          </div>
+          <p className="mt-0.5 text-xs text-slate-400">
+            Vacinas abaixo da meta de 95% por município · Fonte: planilhas DPNI
+            {munSel && <span className="ml-1 font-medium text-emerald-600 dark:text-emerald-400">· {munSel}</span>}
+          </p>
         </div>
 
         <div className="overflow-x-auto">
@@ -515,9 +453,9 @@ export default function VacinacaoClient() {
                 ))}
               </div>
             </div>
-          ) : municipiosFiltrados.length === 0 ? (
+          ) : cobMunicFiltrada.length === 0 ? (
             <p className="px-5 py-8 text-center text-sm text-gray-400">
-              {cobMunic.length === 0 ? "Dados de cobertura vacinal não disponíveis. Execute npm run carga-pni-cobertura:postgres para carregar." : "Nenhum município encontrado com os filtros aplicados."}
+              {cobMunic.length === 0 ? "Dados de cobertura vacinal não disponíveis. Execute npm run carga-pni-cobertura:postgres para carregar." : "Nenhum município encontrado."}
             </p>
           ) : (
             <table className="w-full text-sm">
@@ -527,14 +465,11 @@ export default function VacinacaoClient() {
                   <th className="px-4 py-3 text-right">Cob. média</th>
                   <th className="px-4 py-3 text-right">Menor cob.</th>
                   <th className="px-4 py-3">Vacina mais baixa</th>
-                  <th className="px-4 py-3 text-right">Imunobiol.</th>
                   <th className="px-4 py-3 text-right">Abaixo meta</th>
-                  <th className="px-4 py-3">Período</th>
-                  <th className="px-4 py-3">Referência</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
-                {municipiosFiltrados.map((m, i) => {
+                {cobMunicFiltrada.map((m, i) => {
                   const abaixoMeta = m.total_abaixo_meta > 0;
                   return (
                     <tr key={i} className={`hover:bg-slate-50 dark:hover:bg-slate-700/40 ${abaixoMeta ? "" : ""}`}>
@@ -556,21 +491,12 @@ export default function VacinacaoClient() {
                       <td className="px-4 py-3 text-xs text-slate-500 dark:text-slate-400">
                         {m.imunobiologico_menor_cobertura ?? "—"}
                       </td>
-                      <td className="px-4 py-3 text-right text-slate-600 dark:text-slate-300">
-                        {fmtNum(m.total_imunobiologicos)}
-                      </td>
                       <td className="px-4 py-3 text-right">
                         {m.total_abaixo_meta > 0 ? (
                           <span className="font-semibold text-orange-600 dark:text-orange-400">{m.total_abaixo_meta}</span>
                         ) : (
                           <span className="text-emerald-600 dark:text-emerald-400">0</span>
                         )}
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-3">
-                        <PeriodoBadge tipo={m.tipo_periodo} />
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-3 text-xs text-slate-500 dark:text-slate-400">
-                        {fmtData(m.data_referencia)}
                       </td>
                     </tr>
                   );
@@ -589,6 +515,7 @@ export default function VacinacaoClient() {
             <p className="mt-0.5 text-xs text-slate-400">
               Cobertura média estadual por vacina — do menor para o maior · Meta de referência: 95%
               {isParcial && <span className="ml-1 text-blue-500">(exercício parcial)</span>}
+              {munSel && <span className="ml-1 text-amber-500">(visão estadual — dado municipal por vacina não disponível)</span>}
             </p>
           </div>
           <div className="p-4">
@@ -602,86 +529,15 @@ export default function VacinacaoClient() {
         </div>
       )}
 
-      {/* ── Comparação de exercícios (evolução) ── */}
-      {!carregando && imunosEvolucao.length > 0 && (
-        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-800">
-          <div className="border-b border-slate-200 px-5 py-3 dark:border-slate-700">
-            <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Evolução da cobertura</h2>
-            <p className="mt-0.5 text-xs text-slate-400">
-              Comparação entre exercícios disponíveis por imunobiológico
-            </p>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-400">
-                  <th className="px-4 py-3">Imunobiológico</th>
-                  {/* Renderiza colunas dinamicamente para cada ano/referência */}
-                  {(() => {
-                    const cols = new Set<string>();
-                    for (const v of evolucaoSumarizada.values()) {
-                      v.forEach(p => cols.add(`${p.ano}|${p.dataRef}|${p.tipo_periodo}`));
-                    }
-                    return Array.from(cols).sort().map(col => {
-                      const [ano, dataRef, tipo] = col.split("|");
-                      return (
-                        <th key={col} className="px-4 py-3 text-right">
-                          {ano} {tipo === "PARCIAL" ? <span className="text-blue-500">(parcial)</span> : ""}
-                          {dataRef && dataRef !== "null" && <span className="block font-normal normal-case">{fmtData(dataRef)}</span>}
-                        </th>
-                      );
-                    });
-                  })()}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
-                {imunosEvolucao.slice(0, 20).map(imuno => {
-                  const pts = evolucaoSumarizada.get(imuno) ?? [];
-                  const cols = new Set<string>();
-                  for (const v of evolucaoSumarizada.values()) {
-                    v.forEach(p => cols.add(`${p.ano}|${p.dataRef}|${p.tipo_periodo}`));
-                  }
-                  return (
-                    <tr key={imuno} className="hover:bg-slate-50 dark:hover:bg-slate-700/40">
-                      <td className="px-4 py-3 font-medium text-slate-800 dark:text-slate-100 text-xs">{imuno}</td>
-                      {Array.from(cols).sort().map(col => {
-                        const [ano, dataRef, tipo] = col.split("|");
-                        const pt = pts.find(p => String(p.ano) === ano && String(p.dataRef) === dataRef && p.tipo_periodo === tipo);
-                        const media = pt?.media ?? null;
-                        return (
-                          <td key={col} className={`whitespace-nowrap px-4 py-3 text-right font-semibold ${
-                            media === null ? "text-gray-400" :
-                            media < 80 ? "text-red-600 dark:text-red-400" :
-                            media < 95 ? "text-orange-600 dark:text-orange-400" :
-                            "text-emerald-600 dark:text-emerald-400"
-                          }`}>
-                            {media !== null ? fmtPct(media) : "—"}
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
 
-      {/* ── Doses aplicadas ── */}
+      {/* ── Doses aplicadas — só exibe quando há dados da API RNDS ── */}
+      {((dosesResumo?.total_doses_ano_atual ?? 0) > 0 || serieMensal.length > 0) && (
       <div className="rounded-2xl border border-violet-200 bg-white shadow-sm dark:border-violet-800/40 dark:bg-slate-800">
         <div className="border-b border-violet-100 px-5 py-3 dark:border-slate-700">
           <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Doses aplicadas</h2>
           <p className="mt-0.5 text-xs text-slate-400">Registros individuais do RNDS/PNI por município · Fonte: API doses aplicadas</p>
         </div>
-
-        {!carregando && dosesResumo === null && serieMensal.length === 0 ? (
-          <p className="px-5 py-6 text-sm text-gray-400">
-            Dados de doses aplicadas ainda não carregados ou indisponíveis.
-            Execute <code className="rounded bg-gray-100 px-1 dark:bg-gray-700">npm run carga-pni:postgres</code> para carregar.
-          </p>
-        ) : (
-          <div className="p-5 space-y-4">
+        <div className="p-5 space-y-4">
             {/* Mini cards de doses */}
             {!carregando && dosesResumo && (
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -720,83 +576,9 @@ export default function VacinacaoClient() {
               </div>
             )}
           </div>
-        )}
       </div>
-
-      {/* ── Alertas de vacinação ── */}
-      {!carregando && todosAlertas.length > 0 && (
-        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-800">
-          <div className="border-b border-slate-200 px-5 py-3 dark:border-slate-700">
-            <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Alertas de vacinação</h2>
-            <p className="mt-0.5 text-xs text-slate-400">
-              Cobertura vacinal e doses aplicadas · {todosAlertas.length} alerta(s)
-            </p>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-400">
-                  <th className="px-4 py-3">Nível</th>
-                  <th className="px-4 py-3">Fonte</th>
-                  <th className="px-4 py-3">Município</th>
-                  <th className="px-4 py-3">Vacina</th>
-                  <th className="px-4 py-3">Tipo de alerta</th>
-                  <th className="px-4 py-3">Descrição</th>
-                  <th className="px-4 py-3 text-right">Observado</th>
-                  <th className="px-4 py-3 text-right">Referência</th>
-                  <th className="px-4 py-3">Ano</th>
-                  <th className="px-4 py-3">Período</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
-                {todosAlertas.map((a, i) => {
-                  const fonte = "fonte" in a ? a.fonte : "PNI";
-                  const imuno = "imunobiologico" in a ? a.imunobiologico : null;
-                  const ano = "ano" in a ? a.ano : (dosesResumo?.ano_referencia ?? "—");
-                  const tipo_periodo = "tipo_periodo" in a ? a.tipo_periodo : "PARCIAL";
-                  return (
-                    <tr key={i} className="hover:bg-slate-50 dark:hover:bg-slate-700/40">
-                      <td className="whitespace-nowrap px-4 py-3"><NivelBadge nivel={a.nivel} /></td>
-                      <td className="whitespace-nowrap px-4 py-3"><FonteBadge fonte={fonte} /></td>
-                      <td className="whitespace-nowrap px-4 py-3 font-medium text-slate-800 dark:text-slate-100">
-                        {a.nome_municipio ?? "—"}
-                      </td>
-                      <td className="px-4 py-3 text-xs text-slate-500 dark:text-slate-400">
-                        {imuno ?? "—"}
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-3 font-mono text-xs text-slate-500 dark:text-slate-400">
-                        {a.tipo_alerta}
-                      </td>
-                      <td className="px-4 py-3 text-xs text-slate-600 dark:text-slate-300 max-w-xs">
-                        {a.descricao}
-                        {tipo_periodo === "PARCIAL" && (
-                          <span className="ml-1 text-blue-400 dark:text-blue-400">· acompanhamento parcial</span>
-                        )}
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-3 text-right text-slate-600 dark:text-slate-300">
-                        {a.valor_observado !== null ? fmtPct(a.valor_observado) : "—"}
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-3 text-right text-slate-600 dark:text-slate-300">
-                        {a.valor_referencia !== null ? fmtPct(a.valor_referencia) : "—"}
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-3 text-slate-500 dark:text-slate-400">{ano}</td>
-                      <td className="whitespace-nowrap px-4 py-3">
-                        <PeriodoBadge tipo={tipo_periodo} />
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
       )}
 
-      {!carregando && todosAlertas.length === 0 && cobMunic.length > 0 && (
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm text-emerald-700 dark:border-emerald-800/40 dark:bg-emerald-900/10 dark:text-emerald-300">
-          ✓ Nenhum alerta de vacinação no momento.
-        </div>
-      )}
 
     </div>
   );
