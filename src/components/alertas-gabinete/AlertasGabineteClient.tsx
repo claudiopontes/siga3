@@ -44,6 +44,16 @@ type ProcessoAlertaRow = {
 
 type TipoModalProcessual = "processo_sensivel" | "mais_15_dias" | "prazo_regulamentar_vencido";
 
+type AnaliseIA = {
+  resumo_executivo: string;
+  nivel_risco: "alto" | "medio" | "baixo";
+  justificativa_risco: string;
+  pontos_de_atencao: string[];
+  perguntas_para_o_gabinete: string[];
+  sugestao_encaminhamento: string;
+  minuta_despacho: string;
+};
+
 type RemessaResumoRow = {
   ano: number;
   total_remessas: number;
@@ -361,6 +371,146 @@ function ordenarAlertasProcessuais(rows: ProcessoAlertaRow[]) {
   });
 }
 
+function SparklesIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M12 3l1.88 5.63L19.5 9l-5.63 1.88L12 16.5l-1.88-5.63L4.5 9l5.63-1.88z" />
+      <path d="M5 3l.94 2.81L8.75 6l-2.81.94L5 9.75 4.06 6.94 1.25 6l2.81-.94z" />
+      <path d="M19 15l.94 2.81L22.75 18l-2.81.94L19 21.75l-.94-2.81L15.25 18l2.81-.94z" />
+    </svg>
+  );
+}
+
+function ModalAnaliseIA({
+  processo,
+  analise,
+  carregando,
+  erro,
+  onClose,
+}: {
+  processo: ProcessoAlertaRow;
+  analise: AnaliseIA | null;
+  carregando: boolean;
+  erro: string | null;
+  onClose: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-[200000] flex items-center justify-center p-3 sm:p-5">
+      <button
+        type="button"
+        aria-label="Fechar análise de IA"
+        className="absolute inset-0 bg-gray-900/80 backdrop-blur-[2px]"
+        onClick={onClose}
+      />
+      <div className="relative z-10 flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-violet-200 bg-white shadow-2xl dark:border-violet-800/50 dark:bg-gray-900">
+        <div className="flex items-start justify-between gap-3 border-b border-gray-100 bg-gradient-to-r from-violet-50 to-white px-4 py-3 dark:border-gray-700 dark:from-violet-900/20 dark:to-gray-900">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="rounded-full bg-violet-100 p-1 text-violet-600 dark:bg-violet-900/40 dark:text-violet-400">
+                <SparklesIcon />
+              </span>
+              <h2 className="text-sm font-bold text-gray-900 dark:text-white">
+                Análise de IA — Processo {processo.processo ?? "—"}
+              </h2>
+            </div>
+            <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+              {processo.classe ?? "Classe não informada"} · {processo.orgao ?? "Órgão não informado"}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+          >
+            Fechar
+          </button>
+        </div>
+
+        <div className="overflow-auto p-4">
+          {carregando && (
+            <div className="flex flex-col items-center justify-center gap-3 py-16 text-gray-500 dark:text-gray-400">
+              <svg className="h-6 w-6 animate-spin text-violet-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 00-8 8h4z" />
+              </svg>
+              <p className="text-sm">Analisando processo com IA...</p>
+            </div>
+          )}
+
+          {erro && !carregando && (
+            <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400">
+              {erro}
+            </div>
+          )}
+
+          {analise && !carregando && (
+            <div className="space-y-4">
+              <div className="rounded-xl border border-gray-100 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-800/60">
+                <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">Resumo executivo</p>
+                <p className="text-sm text-gray-800 dark:text-gray-200">{analise.resumo_executivo}</p>
+              </div>
+
+              <div className="flex items-start gap-3 rounded-xl border p-4 dark:border-gray-700 dark:bg-gray-800/40" style={{ borderColor: analise.nivel_risco === "alto" ? "#fca5a5" : analise.nivel_risco === "medio" ? "#fcd34d" : "#86efac" }}>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">Nível de risco</p>
+                    <NivelBadge nivel={analise.nivel_risco} />
+                  </div>
+                  <p className="mt-1 text-sm text-gray-700 dark:text-gray-300">{analise.justificativa_risco}</p>
+                </div>
+              </div>
+
+              {analise.pontos_de_atencao.length > 0 && (
+                <div>
+                  <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">Pontos de atenção</p>
+                  <ul className="space-y-1.5">
+                    {analise.pontos_de_atencao.map((ponto, i) => (
+                      <li key={i} className="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-300">
+                        <span className="mt-1.5 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-amber-400" />
+                        {ponto}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {analise.perguntas_para_o_gabinete.length > 0 && (
+                <div>
+                  <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">Perguntas para o gabinete</p>
+                  <ul className="space-y-1.5">
+                    {analise.perguntas_para_o_gabinete.map((pergunta, i) => (
+                      <li key={i} className="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-300">
+                        <span className="mt-0.5 text-violet-400 dark:text-violet-500">?</span>
+                        {pergunta}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              <div className="rounded-xl border border-blue-100 bg-blue-50 p-4 dark:border-blue-900/50 dark:bg-blue-900/20">
+                <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-blue-400 dark:text-blue-500">Sugestão de encaminhamento</p>
+                <p className="text-sm text-blue-800 dark:text-blue-200">{analise.sugestao_encaminhamento}</p>
+              </div>
+
+              <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
+                <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">Minuta de despacho</p>
+                <pre className="whitespace-pre-wrap text-xs leading-relaxed text-gray-700 dark:text-gray-300 font-sans">{analise.minuta_despacho}</pre>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="border-t border-amber-100 bg-amber-50 px-4 py-2.5 dark:border-amber-900/40 dark:bg-amber-900/20">
+          <p className="text-[11px] text-amber-700 dark:text-amber-400">
+            ⚠ Análise gerada por IA. Revise antes de utilizar em manifestação oficial.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ModalProcessual({
   tipo,
   registros,
@@ -375,75 +525,135 @@ function ModalProcessual({
   const registrosVisiveis = registrosOrdenados.slice(0, LIMITE_REGISTROS_MODAL);
   const temMaisRegistros = registrosOrdenados.length > LIMITE_REGISTROS_MODAL;
 
+  const [processoSelecionado, setProcessoSelecionado] = useState<ProcessoAlertaRow | null>(null);
+  const [analiseIA, setAnaliseIA] = useState<AnaliseIA | null>(null);
+  const [carregandoIA, setCarregandoIA] = useState(false);
+  const [erroIA, setErroIA] = useState<string | null>(null);
+
+  async function analisarComIA(alerta: ProcessoAlertaRow) {
+    setProcessoSelecionado(alerta);
+    setAnaliseIA(null);
+    setErroIA(null);
+    setCarregandoIA(true);
+
+    try {
+      const resposta = await fetch("/api/ia/analisar-processo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(alerta),
+      });
+
+      const dados = await resposta.json();
+
+      if (!resposta.ok) {
+        setErroIA(dados?.error ?? "Erro ao analisar processo.");
+        return;
+      }
+
+      setAnaliseIA(dados as AnaliseIA);
+    } catch {
+      setErroIA("Falha na comunicação com o servidor.");
+    } finally {
+      setCarregandoIA(false);
+    }
+  }
+
   return (
-    <div className="fixed inset-0 z-120000 flex items-center justify-center p-3 sm:p-5">
-      <button
-        type="button"
-        aria-label="Fechar detalhes processuais"
-        className="absolute inset-0 bg-gray-900/70 backdrop-blur-[1px]"
-        onClick={onClose}
-      />
-      <div className="relative z-10 flex max-h-[90vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900">
-        <div className="flex items-start justify-between gap-3 border-b border-gray-100 px-4 py-3 dark:border-gray-700">
-          <div>
-            <h2 className="text-base font-bold text-gray-900 dark:text-white">{config.titulo}</h2>
-            <p className="mt-0.5 max-w-3xl text-xs text-gray-500 dark:text-gray-400">{config.subtitulo}</p>
+    <>
+      <div className="fixed inset-0 z-[120000] flex items-center justify-center p-3 sm:p-5">
+        <button
+          type="button"
+          aria-label="Fechar detalhes processuais"
+          className="absolute inset-0 bg-gray-900/70 backdrop-blur-[1px]"
+          onClick={onClose}
+        />
+        <div className="relative z-10 flex max-h-[90vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900">
+          <div className="flex items-start justify-between gap-3 border-b border-gray-100 px-4 py-3 dark:border-gray-700">
+            <div>
+              <h2 className="text-base font-bold text-gray-900 dark:text-white">{config.titulo}</h2>
+              <p className="mt-0.5 max-w-3xl text-xs text-gray-500 dark:text-gray-400">{config.subtitulo}</p>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+            >
+              Fechar
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
-          >
-            Fechar
-          </button>
-        </div>
 
-        {registrosOrdenados.length === 0 ? (
-          <div className="px-4 py-10 text-center text-sm text-gray-500 dark:text-gray-400">
-            Nenhum processo encontrado para este alerta.
-          </div>
-        ) : (
-          <div className="overflow-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-100 bg-gray-50 dark:border-gray-700 dark:bg-gray-900/40">
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Nível</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Processo</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Classe</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Órgão</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Atividade atual</th>
-                  <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Dias no setor</th>
-                  <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Atraso</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50 dark:divide-gray-700/50">
-                {registrosVisiveis.map((alerta) => (
-                  <tr key={`${alerta.tipo_alerta}-${alerta.processo}-${alerta.duracao_setor_dias}`} className="hover:bg-gray-50 dark:hover:bg-gray-800/60">
-                    <td className="px-4 py-3"><NivelBadge nivel={alerta.nivel_alerta} /></td>
-                    <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">{alerta.processo ?? "—"}</td>
-                    <td className="max-w-xs px-4 py-3 text-xs text-gray-700 dark:text-gray-300">{alerta.classe ?? "—"}</td>
-                    <td className="max-w-sm px-4 py-3 text-xs text-gray-500 dark:text-gray-400">{alerta.orgao ?? "Órgão não informado"}</td>
-                    <td className="max-w-xs px-4 py-3 text-xs text-gray-500 dark:text-gray-400">{alerta.atividade_atual ?? "—"}</td>
-                    <td className="px-4 py-3 text-center text-xs font-bold text-gray-700 dark:text-gray-300">
-                      {formatarNumero(alerta.duracao_setor_dias)}
-                    </td>
-                    <td className="px-4 py-3 text-center text-xs font-bold text-red-600 dark:text-red-400">
-                      {formatarNumero(alerta.dias_em_atraso)}
-                    </td>
+          {registrosOrdenados.length === 0 ? (
+            <div className="px-4 py-10 text-center text-sm text-gray-500 dark:text-gray-400">
+              Nenhum processo encontrado para este alerta.
+            </div>
+          ) : (
+            <div className="overflow-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-100 bg-gray-50 dark:border-gray-700 dark:bg-gray-900/40">
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Nível</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Processo</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Classe</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Órgão</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Atividade atual</th>
+                    <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Dias no setor</th>
+                    <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Atraso</th>
+                    <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">IA</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+                </thead>
+                <tbody className="divide-y divide-gray-50 dark:divide-gray-700/50">
+                  {registrosVisiveis.map((alerta) => (
+                    <tr key={`${alerta.tipo_alerta}-${alerta.processo}-${alerta.duracao_setor_dias}`} className="hover:bg-gray-50 dark:hover:bg-gray-800/60">
+                      <td className="px-4 py-3"><NivelBadge nivel={alerta.nivel_alerta} /></td>
+                      <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">{alerta.processo ?? "—"}</td>
+                      <td className="max-w-xs px-4 py-3 text-xs text-gray-700 dark:text-gray-300">{alerta.classe ?? "—"}</td>
+                      <td className="max-w-sm px-4 py-3 text-xs text-gray-500 dark:text-gray-400">{alerta.orgao ?? "Órgão não informado"}</td>
+                      <td className="max-w-xs px-4 py-3 text-xs text-gray-500 dark:text-gray-400">{alerta.atividade_atual ?? "—"}</td>
+                      <td className="px-4 py-3 text-center text-xs font-bold text-gray-700 dark:text-gray-300">
+                        {formatarNumero(alerta.duracao_setor_dias)}
+                      </td>
+                      <td className="px-4 py-3 text-center text-xs font-bold text-red-600 dark:text-red-400">
+                        {formatarNumero(alerta.dias_em_atraso)}
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <button
+                          type="button"
+                          onClick={() => analisarComIA(alerta)}
+                          className="inline-flex items-center gap-1 rounded-lg bg-violet-600 px-2 py-1 text-[11px] font-semibold text-white hover:bg-violet-700 dark:bg-violet-500 dark:hover:bg-violet-600"
+                        >
+                          <SparklesIcon />
+                          Analisar com IA
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
 
-        {temMaisRegistros ? (
-          <div className="border-t border-gray-100 px-4 py-3 text-xs text-gray-400 dark:border-gray-700 dark:text-gray-500">
-            Exibindo os 20 principais registros. A página analítica completa será implementada em etapa futura.
-          </div>
-        ) : null}
+          {temMaisRegistros ? (
+            <div className="border-t border-gray-100 px-4 py-3 text-xs text-gray-400 dark:border-gray-700 dark:text-gray-500">
+              Exibindo os 20 principais registros. A página analítica completa será implementada em etapa futura.
+            </div>
+          ) : null}
+        </div>
       </div>
-    </div>
+
+      {processoSelecionado && (
+        <ModalAnaliseIA
+          processo={processoSelecionado}
+          analise={analiseIA}
+          carregando={carregandoIA}
+          erro={erroIA}
+          onClose={() => {
+            setProcessoSelecionado(null);
+            setAnaliseIA(null);
+            setErroIA(null);
+          }}
+        />
+      )}
+    </>
   );
 }
 

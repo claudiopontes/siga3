@@ -86,7 +86,10 @@ const AppSidebar: React.FC = () => {
       {
         icon: <ShieldCheck className="h-5 w-5" />,
         name: "Segurança",
-        path: "/seguranca/usuarios",
+        subItems: [
+          { name: "Usuários e Perfis", path: "/seguranca/usuarios" },
+          { name: "Status das Bases ETL", path: "/seguranca/etl" },
+        ],
       },
     ];
   }, [profile]);
