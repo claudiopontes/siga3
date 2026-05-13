@@ -88,6 +88,7 @@ const AppSidebar: React.FC = () => {
         subItems: [
           { name: "Usuários e Perfis", path: "/seguranca/usuarios" },
           { name: "Status das Bases ETL", path: "/seguranca/etl" },
+          { name: "Configuração de ETLs", path: "/seguranca/etl/configuracao" },
         ],
       },
     ];

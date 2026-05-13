@@ -31,6 +31,7 @@ const AppHeader: React.FC = () => {
   const isProfilePage        = pathname === "/profile";
   const isUsuariosPage       = pathname === "/seguranca/usuarios";
   const isEtlStatusPage      = pathname === "/seguranca/etl";
+  const isEtlConfigPage      = pathname === "/seguranca/etl/configuracao";
   const isRemessasPage       = pathname.startsWith("/remessas");
 
   const breadcrumbs: Record<string, { crumbs: { label: string; href?: string }[] }> = {
@@ -54,6 +55,7 @@ const AppHeader: React.FC = () => {
     "/profile": { crumbs: [{ label: "Home", href: "/" }, { label: "Perfil" }] },
     "/seguranca/usuarios": { crumbs: [{ label: "Home", href: "/" }, { label: "Segurança" }, { label: "Usuários e perfis" }] },
     "/seguranca/etl": { crumbs: [{ label: "Home", href: "/" }, { label: "Segurança" }, { label: "Status das Bases ETL" }] },
+    "/seguranca/etl/configuracao": { crumbs: [{ label: "Home", href: "/" }, { label: "Segurança" }, { label: "Configuração de ETLs" }] },
   };
 
   const currentCrumbs = (() => {
@@ -218,6 +220,13 @@ const AppHeader: React.FC = () => {
               <div className="flex flex-col">
                 <span className="truncate text-sm text-gray-600 dark:text-gray-300">
                   Monitoramento das últimas execuções e status das cargas ETL.
+                </span>
+              </div>
+            )}
+            {isEtlConfigPage && (
+              <div className="flex flex-col">
+                <span className="truncate text-sm text-gray-600 dark:text-gray-300">
+                  Configuração dos módulos de monitoramento e execução dos jobs ETL.
                 </span>
               </div>
             )}

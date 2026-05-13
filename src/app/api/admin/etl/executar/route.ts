@@ -4,6 +4,7 @@ import type { PoolClient } from "pg";
 import { requireAdminSession } from "@/lib/auth/access-control";
 import { dbQuery, getDb } from "@/lib/db";
 import { ETL_CONFIG, type EtlConfigEntry, type TipoCarga } from "@/lib/etl-config";
+import { ETL_JOB_COMMANDS } from "@/lib/etl-job-commands";
 
 export const runtime = "nodejs";
 
@@ -37,14 +38,6 @@ interface ConfigExecucaoDbRow {
 }
 
 const TIPOS_SUPORTADOS: TipoCarga[] = ["full", "incremental", "incremental_com_janela"];
-const NPM_COMMAND = process.platform === "win32" ? "npm.cmd" : "npm";
-
-const ETL_JOB_COMMANDS: Record<string, { command: string; args: string[] }> = {
-  remessas_full_postgres: {
-    command: NPM_COMMAND,
-    args: ["--prefix", "etl", "run", "remessas:full:postgres"],
-  },
-};
 
 function escaparArgWindows(arg: string) {
   if (!arg.includes(" ") && !arg.includes("\"")) return arg;
