@@ -34,6 +34,7 @@ const baseNavItems: NavItem[] = [
       { name: "CAUC Municípios", path: "/painel-cauc" },
       { name: "IDEB Acre", path: "/gabinete-digital/mapa" },
       { name: "Saúde Pública", path: "/painel-saude" },
+      { name: "Vulnerabilidade Social", path: "/painel-social" },
     ],
   },
   {
