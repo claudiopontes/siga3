@@ -44,22 +44,28 @@ type OrdemColuna = "nome_ente" | "total_pendencias" | "total_regulares" | "nivel
 
 const NIVEL_ORDER: Record<string, number> = { alto: 0, medio: 1, baixo: 2 };
 
+const NIVEL_COR: Record<string, string> = {
+  alto:  "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
+  medio: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400",
+  baixo: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
+};
+const NIVEL_DOT: Record<string, string> = {
+  alto:  "bg-red-500",
+  medio: "bg-orange-400",
+  baixo: "bg-green-500",
+};
+const NIVEL_LABEL: Record<string, string> = {
+  alto:  "Crítico",
+  medio: "Alto",
+  baixo: "Baixo",
+};
+
 function nivelBadge(nivel: string) {
-  if (nivel === "alto")
-    return (
-      <span className="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700 dark:bg-red-900/30 dark:text-red-400">
-        Alto
-      </span>
-    );
-  if (nivel === "medio")
-    return (
-      <span className="inline-flex items-center rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-semibold text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400">
-        Médio
-      </span>
-    );
+  const n = nivel.toLowerCase();
   return (
-    <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700 dark:bg-green-900/30 dark:text-green-400">
-      Baixo
+    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${NIVEL_COR[n] ?? NIVEL_COR.baixo}`}>
+      <span className={`h-1.5 w-1.5 rounded-full ${NIVEL_DOT[n] ?? NIVEL_DOT.baixo}`} />
+      {NIVEL_LABEL[n] ?? nivel}
     </span>
   );
 }
@@ -296,7 +302,7 @@ export default function PainelCaucClient() {
                       : "border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300"
                   }`}
                 >
-                  {n === "todos" ? "Todos" : n.charAt(0).toUpperCase() + n.slice(1)}
+                  {n === "todos" ? "Todos" : (NIVEL_LABEL[n] ?? n.charAt(0).toUpperCase() + n.slice(1))}
                 </button>
               ))}
             </div>

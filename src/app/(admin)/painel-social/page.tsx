@@ -1,25 +1,15 @@
-import type { Metadata } from "next";
+import { Metadata } from "next";
 import { Suspense } from "react";
-import PainelSocialClient from "@/components/social/PainelSocialClient";
+import TransferenciaRendaClient from "@/components/social/TransferenciaRendaClient";
 
 export const metadata: Metadata = {
-  title: "Cadastro Único e Vulnerabilidade Social | Varadouro Digital",
-  description:
-    "Indicadores municipais agregados para apoiar a identificação de risco social, fragilidade cadastral e necessidade de atuação do controle externo.",
+  title: "Vulnerabilidade Social e Transferência de Renda | Varadouro Digital",
 };
 
 export default function PainelSocialPage() {
   return (
-    <div className="min-h-screen min-w-0 overflow-x-hidden bg-gray-50 p-[5px] dark:bg-gray-900">
-      <Suspense
-        fallback={
-          <div className="rounded-xl border border-gray-200 bg-white p-6 text-sm text-gray-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300">
-            Carregando painel...
-          </div>
-        }
-      >
-        <PainelSocialClient />
-      </Suspense>
-    </div>
+    <Suspense fallback={null}>
+      <TransferenciaRendaClient />
+    </Suspense>
   );
 }

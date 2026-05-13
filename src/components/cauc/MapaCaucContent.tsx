@@ -266,12 +266,12 @@ export default function MapaCaucContent({ dados, onSelect, bloqueado = false }: 
             </div>
             <div className="flex items-center justify-between">
               <span>Alerta</span>
-              <span className={`font-semibold capitalize ${
-                selected.nivel_alerta === "alto" ? "text-red-600 dark:text-red-400"
-                : selected.nivel_alerta === "medio" ? "text-yellow-600 dark:text-yellow-400"
+              <span className={`font-semibold ${
+                selected.nivel_alerta === "alto"  ? "text-red-600 dark:text-red-400"
+                : selected.nivel_alerta === "medio" ? "text-orange-600 dark:text-orange-400"
                 : "text-green-600 dark:text-green-400"
               }`}>
-                {selected.nivel_alerta}
+                {selected.nivel_alerta === "alto" ? "Crítico" : selected.nivel_alerta === "medio" ? "Alto" : "Baixo"}
               </span>
             </div>
           </div>

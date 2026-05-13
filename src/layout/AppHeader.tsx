@@ -3,6 +3,7 @@
 import CombustivelHeaderFilters from "@/components/combustivel/CombustivelHeaderFilters";
 import EmpenhoHeaderFilters from "@/components/combustivel/EmpenhoHeaderFilters";
 import ReceitaPublicaHeaderFilters from "@/components/receita-publica/ReceitaPublicaHeaderFilters";
+import SocialHeaderFilters from "@/components/social/SocialHeaderFilters";
 import DespesaHeaderFilters from "@/components/despesa/DespesaHeaderFilters";
 import DespesaSubtitle from "@/components/despesa/DespesaSubtitle";
 import { ThemeToggleButton } from "@/components/common/ThemeToggleButton";
@@ -26,6 +27,7 @@ const AppHeader: React.FC = () => {
   const isCredoresPage       = pathname === "/pesquisa-credores";
   const isFlorestalPage      = pathname === "/painel-cobertura-florestal";
   const isCaucPage           = pathname === "/painel-cauc";
+  const isSocialPage         = pathname === "/painel-social";
   const isMapaPage           = pathname === "/gabinete-digital/mapa";
   const isCalendarPage       = pathname === "/calendar";
   const isProfilePage        = pathname === "/profile";
@@ -41,6 +43,7 @@ const AppHeader: React.FC = () => {
     "/painel-receita-publica": { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "Receita Pública" }] },
     "/painel-despesa": { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "Despesa Pública" }] },
     "/pesquisa-credores": { crumbs: [{ label: "Home", href: "/" }, { label: "Pesquisa de Credores" }] },
+    "/painel-social": { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "Vulnerabilidade Social" }] },
     "/painel-cobertura-florestal": { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "Cobertura Florestal" }] },
     "/painel-cauc": { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "CAUC Municípios" }] },
     "/painel-saude": { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "Saúde Pública" }] },
@@ -177,6 +180,17 @@ const AppHeader: React.FC = () => {
                 <span className="text-xs text-gray-400 dark:text-gray-500">
                   <span className="font-medium text-violet-600 dark:text-violet-400">CAUC</span>
                   {" · "}SICONFI/STN
+                </span>
+              </div>
+            )}
+            {isSocialPage && (
+              <div className="flex flex-col">
+                <span className="truncate text-sm text-gray-600 dark:text-gray-300">
+                  Bolsa Família, BPC e concentração de vulnerabilidade por município do Acre.
+                </span>
+                <span className="text-xs text-gray-400 dark:text-gray-500">
+                  <span className="font-medium text-teal-600 dark:text-teal-400">MIS</span>
+                  {" · "}MDS
                 </span>
               </div>
             )}
@@ -344,6 +358,11 @@ const AppHeader: React.FC = () => {
             {isDespesaPage && (
               <Suspense fallback={<div className="h-11 rounded-lg border border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800" />}>
                 <DespesaHeaderFilters />
+              </Suspense>
+            )}
+            {isSocialPage && (
+              <Suspense fallback={<div className="h-11 rounded-lg border border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-800" />}>
+                <SocialHeaderFilters />
               </Suspense>
             )}
           </div>

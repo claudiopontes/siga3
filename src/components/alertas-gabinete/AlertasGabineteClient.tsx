@@ -81,6 +81,15 @@ type SaudeResumoRow = {
   atualizado_em: string | null;
 };
 
+type SocialAlertaRow = {
+  ano_mes: string;
+  codigo_ibge_municipio: string;
+  nome_municipio: string;
+  tipo_alerta: string;
+  nivel_alerta: string;
+  descricao: string;
+};
+
 
 
 const NIVEL_ORDER: Record<AlertaRow["nivel_alerta"], number> = {
@@ -194,26 +203,28 @@ const ALERTAS_SUGERIDOS = [
   },
 ];
 
+const NIVEL_BADGE_COR: Record<string, string> = {
+  alto:  "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
+  medio: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400",
+  baixo: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
+};
+const NIVEL_BADGE_DOT: Record<string, string> = {
+  alto:  "bg-red-500",
+  medio: "bg-orange-400",
+  baixo: "bg-green-500",
+};
+const NIVEL_BADGE_LABEL: Record<string, string> = {
+  alto:  "Crítico",
+  medio: "Alto",
+  baixo: "Baixo",
+};
+
 function NivelBadge({ nivel }: { nivel: string | null | undefined }) {
-  if (nivel === "alto") {
-    return (
-      <span className="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700 dark:bg-red-900/30 dark:text-red-400">
-        Alto
-      </span>
-    );
-  }
-
-  if (nivel === "medio") {
-    return (
-      <span className="inline-flex items-center rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-semibold text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400">
-        Médio
-      </span>
-    );
-  }
-
+  const n = (nivel ?? "").toLowerCase();
   return (
-    <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700 dark:bg-green-900/30 dark:text-green-400">
-      Baixo
+    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${NIVEL_BADGE_COR[n] ?? NIVEL_BADGE_COR.baixo}`}>
+      <span className={`h-1.5 w-1.5 rounded-full ${NIVEL_BADGE_DOT[n] ?? NIVEL_BADGE_DOT.baixo}`} />
+      {NIVEL_BADGE_LABEL[n] ?? nivel}
     </span>
   );
 }
@@ -667,7 +678,26 @@ export default function AlertasGabineteClient() {
   const [carregandoRemessas, setCarregandoRemessas] = useState(true);
   const [resumoSaude, setResumoSaude] = useState<SaudeResumoRow | null>(null);
   const [carregandoSaude, setCarregandoSaude] = useState(true);
+  const [alertasSocial, setAlertasSocial] = useState<SocialAlertaRow[]>([]);
+  const [carregandoSocial, setCarregandoSocial] = useState(true);
 
+  // Busca alertas de vulnerabilidade social (MIS/MDS)
+  useEffect(() => {
+    let cancelado = false;
+    async function carregarSocial() {
+      try {
+        const res = await fetch("/api/social/mis/alertas").then((r) => r.json());
+        if (cancelado) return;
+        if (Array.isArray(res)) setAlertasSocial(res as SocialAlertaRow[]);
+      } catch {
+        // silencioso
+      } finally {
+        if (!cancelado) setCarregandoSocial(false);
+      }
+    }
+    void carregarSocial();
+    return () => { cancelado = true; };
+  }, []);
 
   // Busca resumo consolidado de Saúde Pública
   useEffect(() => {
@@ -1022,6 +1052,85 @@ export default function AlertasGabineteClient() {
                 className="mt-3 inline-flex items-center gap-1 rounded-lg bg-blue-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
               >
                 Ver painel
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M5 12h14" /><path d="m12 5 7 7-7 7" />
+                </svg>
+              </Link>
+            </div>
+          );
+        })()}
+
+        {/* Card Vulnerabilidade Social — dados MIS/MDS */}
+        {carregandoSocial ? (
+          <CardSkeleton />
+        ) : (() => {
+          const semDados = alertasSocial.length === 0;
+          const totalCriticos = alertasSocial.filter((a) => a.nivel_alerta === "ALTO").length;
+          const totalAltos    = alertasSocial.filter((a) => a.nivel_alerta === "MEDIO").length;
+          const nivelMax = totalCriticos > 0 ? "alto" : totalAltos > 0 ? "medio" : null;
+          const munCritico = alertasSocial.find((a) => a.nivel_alerta === "ALTO")?.nome_municipio ?? null;
+          return (
+            <div className={`rounded-xl border bg-white p-4 dark:bg-gray-800 ${
+              totalCriticos > 0
+                ? "border-red-200 dark:border-red-800/50"
+                : totalAltos > 0
+                  ? "border-amber-200 dark:border-amber-800/50"
+                  : "border-gray-200 dark:border-gray-700"
+            }`}>
+              <div className="flex items-start justify-between gap-3">
+                <span className={`rounded-full p-1.5 ${
+                  totalCriticos > 0
+                    ? "bg-red-50 text-red-500 dark:bg-red-900/20 dark:text-red-400"
+                    : "bg-purple-50 text-purple-500 dark:bg-purple-900/20 dark:text-purple-400"
+                }`}>
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                    <circle cx="9" cy="7" r="4" />
+                    <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                  </svg>
+                </span>
+                {semDados ? (
+                  <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500 dark:bg-gray-700 dark:text-gray-400">Sem dados</span>
+                ) : nivelMax ? (
+                  <NivelBadge nivel={nivelMax} />
+                ) : null}
+              </div>
+              <p className="mt-3 text-sm font-bold text-gray-900 dark:text-white">Vulnerabilidade Social</p>
+              {semDados ? (
+                <p className="mt-1 text-xs font-medium text-gray-400 dark:text-gray-500">Aguardando carga de dados</p>
+              ) : (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {totalCriticos > 0 && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-600 dark:bg-red-900/30 dark:text-red-400">
+                      <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
+                      {totalCriticos} crítico{totalCriticos !== 1 ? "s" : ""}
+                    </span>
+                  )}
+                  {totalAltos > 0 && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-orange-50 px-2 py-0.5 text-xs font-semibold text-orange-600 dark:bg-orange-900/30 dark:text-orange-400">
+                      <span className="h-1.5 w-1.5 rounded-full bg-orange-400" />
+                      {totalAltos} alto{totalAltos !== 1 ? "s" : ""}
+                    </span>
+                  )}
+                  {totalCriticos === 0 && totalAltos === 0 && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-xs font-semibold text-green-600 dark:bg-green-900/30 dark:text-green-400">
+                      Sem alertas ativos
+                    </span>
+                  )}
+                </div>
+              )}
+              {munCritico && (
+                <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                  Destaque: <span className="font-medium text-gray-700 dark:text-gray-300">{munCritico}</span>
+                </p>
+              )}
+              <p className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">MIS · MDS</p>
+              <Link
+                href="/painel-social"
+                className="mt-3 inline-flex items-center gap-1 rounded-lg bg-blue-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
+              >
+                Ver Painel
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M5 12h14" /><path d="m12 5 7 7-7 7" />
                 </svg>

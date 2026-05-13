@@ -37,6 +37,37 @@ const DATA_DIR = process.env.MIS_DATA_DIR
   : path.resolve(__dirname, "../data/mis");
 
 // ---------------------------------------------------------------------------
+// Nomes oficiais dos municípios do Acre por código IBGE
+// Fonte: IBGE — usados para substituir o nome que vem no nome do arquivo,
+// que frequentemente chega sem acentuação ou com capitalização inconsistente.
+// ---------------------------------------------------------------------------
+
+const NOMES_MUNICIPIOS: Record<string, string> = {
+  "1200013": "Acrelândia",
+  "1200054": "Assis Brasil",
+  "1200104": "Brasiléia",
+  "1200138": "Bujari",
+  "1200179": "Capixaba",
+  "1200203": "Cruzeiro do Sul",
+  "1200252": "Epitaciolândia",
+  "1200302": "Feijó",
+  "1200328": "Jordão",
+  "1200336": "Mâncio Lima",
+  "1200344": "Manoel Urbano",
+  "1200351": "Marechal Thaumaturgo",
+  "1200385": "Plácido de Castro",
+  "1200393": "Porto Walter",
+  "1200401": "Rio Branco",
+  "1200427": "Rodrigues Alves",
+  "1200435": "Santa Rosa do Purus",
+  "1200450": "Senador Guiomard",
+  "1200500": "Sena Madureira",
+  "1200609": "Tarauacá",
+  "1200708": "Xapuri",
+  "1200807": "Porto Acre",
+};
+
+// ---------------------------------------------------------------------------
 // Aliases de colunas aceitos (normaliza variações de label)
 // ---------------------------------------------------------------------------
 
@@ -284,8 +315,6 @@ function validarArquivo(filePath: string): ValidacaoResult {
 
 function lerArquivo(filePath: string, colMap: ColMap): MisRow[] {
   const nomeArquivo = path.basename(filePath);
-  // Extrai nome do município do nome do arquivo: "{ibge} - {nome}.xlsx"
-  const nomeMunicipio = nomeArquivo.replace(/^\d+\s*-\s*/, "").replace(/\.xlsx$/i, "").trim();
 
   const wb = XLSX.readFile(filePath);
   const ws = wb.Sheets[wb.SheetNames[0]];
@@ -301,6 +330,10 @@ function lerArquivo(filePath: string, colMap: ColMap): MisRow[] {
 
     const competencia = parseAnoMes(cols[colMap.ano_mes]);
     if (!competencia) continue;
+
+    // Usa nome oficial pelo código IBGE; fallback: extrai do nome do arquivo
+    const nomeMunicipio = NOMES_MUNICIPIOS[ibge]
+      ?? nomeArquivo.replace(/^\d+\s*-\s*/, "").replace(/\.xlsx$/i, "").trim();
 
     const row: MisRow = {
       ...competencia,

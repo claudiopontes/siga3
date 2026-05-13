@@ -43,24 +43,32 @@ interface StatusCarga {
 // ---------------------------------------------------------------------------
 
 const NIVEL_COR: Record<string, string> = {
-  CRITICO: "bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400",
-  ALTO:    "bg-orange-50 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400",
-  MEDIO:   "bg-yellow-50 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400",
-  BAIXO:   "bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
+  CRITICO: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
+  ALTO:    "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400",
+  MEDIO:   "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400",
+  BAIXO:   "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
 };
 
 const NIVEL_DOT: Record<string, string> = {
   CRITICO: "bg-red-500",
   ALTO:    "bg-orange-400",
   MEDIO:   "bg-yellow-400",
-  BAIXO:   "bg-blue-400",
+  BAIXO:   "bg-green-500",
+};
+
+const NIVEL_LABEL: Record<string, string> = {
+  CRITICO: "Crítico",
+  ALTO:    "Alto",
+  MEDIO:   "Médio",
+  BAIXO:   "Baixo",
 };
 
 function NivelBadge({ nivel }: { nivel: string }) {
+  const n = nivel?.toUpperCase();
   return (
-    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${NIVEL_COR[nivel] ?? NIVEL_COR.BAIXO}`}>
-      <span className={`h-1.5 w-1.5 rounded-full ${NIVEL_DOT[nivel] ?? NIVEL_DOT.BAIXO}`} />
-      {nivel}
+    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${NIVEL_COR[n] ?? NIVEL_COR.BAIXO}`}>
+      <span className={`h-1.5 w-1.5 rounded-full ${NIVEL_DOT[n] ?? NIVEL_DOT.BAIXO}`} />
+      {NIVEL_LABEL[n] ?? nivel}
     </span>
   );
 }
