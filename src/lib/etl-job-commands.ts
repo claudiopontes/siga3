@@ -9,6 +9,10 @@ export const ETL_JOB_COMMANDS: Record<string, { command: string; args: string[] 
     command: NPM_COMMAND,
     args: ["--prefix", "etl", "run", "carga-despesa:incremental"],
   },
+  processos_gabinete: {
+    command: NPM_COMMAND,
+    args: ["--prefix", "etl", "run", "processos-gabinete"],
+  },
 };
 
 export function hasEtlJobCommand(modulo: string): boolean {
