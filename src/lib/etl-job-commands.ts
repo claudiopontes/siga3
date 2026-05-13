@@ -1,7 +1,7 @@
 const NPM_COMMAND = process.platform === "win32" ? "npm.cmd" : "npm";
 
 export const ETL_JOB_COMMANDS: Record<string, { command: string; args: string[] }> = {
-  remessas_full_postgres: {
+  mart_remessas: {
     command: NPM_COMMAND,
     args: ["--prefix", "etl", "run", "carga-remessas:postgres"],
   },
@@ -28,6 +28,26 @@ export const ETL_JOB_COMMANDS: Record<string, { command: string; args: string[] 
   cauc: {
     command: NPM_COMMAND,
     args: ["--prefix", "etl", "run", "cauc"],
+  },
+  mart_infodengue: {
+    command: NPM_COMMAND,
+    args: ["--prefix", "etl", "run", "carga-infodengue:postgres"],
+  },
+  mart_siops: {
+    command: NPM_COMMAND,
+    args: ["--prefix", "etl", "run", "carga-siops:postgres"],
+  },
+  mart_sisagua: {
+    command: NPM_COMMAND,
+    args: ["--prefix", "etl", "run", "carga-sisagua:postgres"],
+  },
+  mart_saude_estrutura: {
+    command: NPM_COMMAND,
+    args: ["--prefix", "etl", "run", "carga-cnes-ubs:postgres"],
+  },
+  mart_siconfi_rreo: {
+    command: NPM_COMMAND,
+    args: ["--prefix", "etl", "run", "carga-siconfi-rreo:postgres"],
   },
 };
 

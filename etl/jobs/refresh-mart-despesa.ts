@@ -159,7 +159,7 @@ async function main() {
   const duracao = Date.now() - inicio;
   await pgQuery(
     `INSERT INTO audit.etl_log (modulo, status, mensagem, duracao_ms) VALUES ($1, $2, $3, $4)`,
-    ["mart:despesa", "ok", "Refresh das tabelas mart concluído", duracao]
+    ["mart_despesa", "ok", "Refresh das tabelas mart concluído", duracao]
   );
   console.log(`[mart-despesa] Refresh concluído em ${duracao}ms.`);
   await closePgPool();

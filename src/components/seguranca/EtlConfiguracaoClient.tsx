@@ -209,6 +209,7 @@ export default function EtlConfiguracaoClient() {
   const [error, setError]               = useState("");
   const [sortKey, setSortKey]           = useState<SortKey>("nomeExibicao");
   const [sortDir, setSortDir]           = useState<SortDir>("asc");
+  const [mostrarInativos, setMostrarInativos] = useState(false);
   const [editingConfig, setEditingConfig] = useState<EtlConfig | null>(null);
   const [form, setForm]                 = useState<EditForm | null>(null);
   const [isSaving, setIsSaving]         = useState(false);
@@ -308,7 +309,8 @@ export default function EtlConfiguracaoClient() {
     }
   }
 
-  const sorted = sortConfigs(configs, sortKey, sortDir);
+  const visiveis = mostrarInativos ? configs : configs.filter((c) => c.ativoPainel);
+  const sorted = sortConfigs(visiveis, sortKey, sortDir);
 
   function ThCol({ label, sortK }: { label: string; sortK: SortKey }) {
     return (
@@ -346,8 +348,22 @@ export default function EtlConfiguracaoClient() {
           <>
             <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3 text-xs text-slate-500 dark:border-slate-700 dark:text-slate-400">
               <span>
-                <strong className="text-slate-700 dark:text-slate-200">{configs.length}</strong> módulos ETL configurados
+                <strong className="text-slate-700 dark:text-slate-200">{visiveis.length}</strong> módulos ETL
+                {!mostrarInativos && configs.some((c) => !c.ativoPainel) && (
+                  <span className="ml-1 text-slate-400 dark:text-slate-500">
+                    ({configs.filter((c) => !c.ativoPainel).length} inativo{configs.filter((c) => !c.ativoPainel).length !== 1 ? "s" : ""} oculto{configs.filter((c) => !c.ativoPainel).length !== 1 ? "s" : ""})
+                  </span>
+                )}
               </span>
+              {configs.some((c) => !c.ativoPainel) && (
+                <button
+                  type="button"
+                  onClick={() => setMostrarInativos((v) => !v)}
+                  className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600 hover:border-slate-300 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600"
+                >
+                  {mostrarInativos ? "Ocultar inativos" : "Mostrar inativos"}
+                </button>
+              )}
             </div>
 
             <div className="overflow-x-auto">
@@ -395,9 +411,19 @@ export default function EtlConfiguracaoClient() {
                         </td>
                         <td className="whitespace-nowrap px-4 py-3 text-slate-500 dark:text-slate-400">{cfg.execucao.tipoCargaPadrao ?? "—"}</td>
                         <td className="whitespace-nowrap px-4 py-3">
-                          <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${cfg.execucao.permiteExecucaoManual ? "bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300" : "bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400"}`}>
-                            {cfg.execucao.permiteExecucaoManual ? "Habilitado" : "Desabilitado"}
-                          </span>
+                          {cfg.execucao.permiteExecucaoManual ? (
+                            <span className="rounded-full px-2 py-0.5 text-xs font-semibold bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
+                              Habilitado
+                            </span>
+                          ) : cfg.execucao.tipoCargaPadrao === "nao_aplicavel" ? (
+                            <span className="rounded-full px-2 py-0.5 text-xs font-semibold bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+                              Vinculado
+                            </span>
+                          ) : (
+                            <span className="rounded-full px-2 py-0.5 text-xs font-semibold bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400">
+                              Desabilitado
+                            </span>
+                          )}
                         </td>
                         <td className="whitespace-nowrap px-4 py-3">
                           {cfg.execucaoManualImplementada ? (
