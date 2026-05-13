@@ -111,7 +111,17 @@ export default function PainelEmpenhoClient() {
         const res = await fetch("/api/combustivel/empenhos");
         if (!active) return;
         if (!res.ok) throw new Error("Falha ao carregar dados");
-        const out = (await res.json()) as EmpenhoRow[];
+        const raw = (await res.json()) as EmpenhoRow[];
+
+        // Normaliza tipos numéricos (PostgreSQL numeric/integer chegam como string)
+        const out: EmpenhoRow[] = raw.map((r) => ({
+          ...r,
+          ano:             Number(r.ano),
+          mes:             Number(r.mes),
+          valor_empenho:   Number(r.valor_empenho),
+          valor_liquidado: Number(r.valor_liquidado),
+          qtd_empenhos:    Number(r.qtd_empenhos),
+        }));
 
         setRows(out);
 

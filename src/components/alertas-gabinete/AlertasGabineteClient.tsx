@@ -951,13 +951,13 @@ export default function AlertasGabineteClient() {
                   {totalCriticos > 0 && (
                     <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-600 dark:bg-red-900/30 dark:text-red-400">
                       <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
-                      {totalCriticos} crítico{totalCriticos !== 1 ? "s" : ""}
+                      {totalCriticos} Crítico{totalCriticos !== 1 ? "s" : ""}
                     </span>
                   )}
                   {totalAltos > 0 && (
                     <span className="inline-flex items-center gap-1 rounded-full bg-orange-50 px-2 py-0.5 text-xs font-semibold text-orange-600 dark:bg-orange-900/30 dark:text-orange-400">
                       <span className="h-1.5 w-1.5 rounded-full bg-orange-400" />
-                      {totalAltos} alto{totalAltos !== 1 ? "s" : ""}
+                      {totalAltos} Alto{totalAltos !== 1 ? "s" : ""}
                     </span>
                   )}
                   {totalAlertas === 0 && (
@@ -1027,13 +1027,13 @@ export default function AlertasGabineteClient() {
                   {criticos > 0 && (
                     <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-600 dark:bg-red-900/30 dark:text-red-400">
                       <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
-                      {criticos} crítico{criticos !== 1 ? "s" : ""}
+                      {criticos} Crítico{criticos !== 1 ? "s" : ""}
                     </span>
                   )}
                   {altos > 0 && (
                     <span className="inline-flex items-center gap-1 rounded-full bg-orange-50 px-2 py-0.5 text-xs font-semibold text-orange-600 dark:bg-orange-900/30 dark:text-orange-400">
                       <span className="h-1.5 w-1.5 rounded-full bg-orange-400" />
-                      {altos} alto{altos !== 1 ? "s" : ""}
+                      {altos} Alto{altos !== 1 ? "s" : ""}
                     </span>
                   )}
                   {criticos === 0 && altos === 0 && (
@@ -1104,13 +1104,13 @@ export default function AlertasGabineteClient() {
                   {totalCriticos > 0 && (
                     <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-600 dark:bg-red-900/30 dark:text-red-400">
                       <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
-                      {totalCriticos} crítico{totalCriticos !== 1 ? "s" : ""}
+                      {totalCriticos} Crítico{totalCriticos !== 1 ? "s" : ""}
                     </span>
                   )}
                   {totalAltos > 0 && (
                     <span className="inline-flex items-center gap-1 rounded-full bg-orange-50 px-2 py-0.5 text-xs font-semibold text-orange-600 dark:bg-orange-900/30 dark:text-orange-400">
                       <span className="h-1.5 w-1.5 rounded-full bg-orange-400" />
-                      {totalAltos} alto{totalAltos !== 1 ? "s" : ""}
+                      {totalAltos} Alto{totalAltos !== 1 ? "s" : ""}
                     </span>
                   )}
                   {totalCriticos === 0 && totalAltos === 0 && (

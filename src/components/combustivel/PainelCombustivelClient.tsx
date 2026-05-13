@@ -114,10 +114,20 @@ export default function PainelCombustivelClient() {
           municipios: MunicipioRow[];
         };
 
-        // Detecta se emitente est\u00e1 presente nos dados
-        const hasEmitente = d.dados.length > 0 && "emitente" in d.dados[0]! && d.dados[0]!.emitente !== "";
+        // Normaliza tipos num\u00e9ricos (PostgreSQL numeric/integer chegam como string)
+        const normalizedDados: MensalRow[] = (d.dados ?? []).map((r) => ({
+          ...r,
+          ano:         Number(r.ano),
+          mes:         Number(r.mes),
+          litros:      Number(r.litros),
+          valor_total: Number(r.valor_total),
+          qtd_notas:   Number(r.qtd_notas),
+        }));
 
-        setMensalRows(d.dados ?? []);
+        // Detecta se emitente est\u00e1 presente nos dados
+        const hasEmitente = normalizedDados.length > 0 && "emitente" in normalizedDados[0]! && normalizedDados[0]!.emitente !== "";
+
+        setMensalRows(normalizedDados);
         setHasMensalEmitente(hasEmitente);
         setMunicipios(d.municipios ?? []);
 

@@ -27,9 +27,10 @@ type AcreFeature = Feature<Geometry, { codarea?: string }>;
 
 // ─── Escala de cor: 0 pendências = verde, mais = vermelho ──────────��────────
 
-function getColor(pendencias: number, maxPendencias: number): string {
-  if (pendencias === 0) return "#22c55e";
-  const ratio = Math.min(pendencias / Math.max(maxPendencias, 1), 1);
+function getColor(pendencias: number | string, maxPendencias: number): string {
+  const n = Number(pendencias);
+  if (n === 0) return "#22c55e";
+  const ratio = Math.min(n / Math.max(maxPendencias, 1), 1);
   // Interpola verde → amarelo → laranja → vermelho
   if (ratio < 0.25) return "#a3e635";
   if (ratio < 0.5)  return "#eab308";
@@ -57,7 +58,7 @@ export default function MapaCaucContent({ dados, onSelect, bloqueado = false }: 
   const selectedRef = useRef<AlertaMapRow | null>(null);
   const layersRef = useRef<Record<string, Path>>({});
 
-  const maxPendencias = Math.max(1, ...Object.values(dados).map((d) => d.total_pendencias));
+  const maxPendencias = Math.max(1, ...Object.values(dados).map((d) => Number(d.total_pendencias)));
 
   // Quando o mapa é bloqueado (modal aberto), limpa o painel interno de seleção
   // sem disparar onSelect para não criar loop com o pai.
