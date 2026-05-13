@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS audit.etl_execucao_config (
   permite_full_manual boolean NOT NULL DEFAULT false,
   permite_incremental_manual boolean NOT NULL DEFAULT false,
   label_botao text,
+  hint_botao text,
   mensagem_confirmacao text,
   parametros_obrigatorios text[],
   observacao_regra_negocio text,
@@ -60,7 +61,8 @@ VALUES
   ('mart_siops', 'Orçamento Saúde (SIOPS)', 'bimestral', 60, true, NULL, 11),
   ('mart_siconfi_rreo', 'RREO (SICONFI)', 'bimestral', 60, true, NULL, 12),
   ('mart_pni_cobertura', 'Cobertura Vacinal (PNI)', 'anual', 365, true, NULL, 13),
-  ('mart_mortalidade', 'Mortalidade (SIM/SINASC)', 'anual', 365, true, NULL, 14)
+  ('mart_mortalidade', 'Mortalidade (SIM/SINASC)', 'anual', 365, true, NULL, 14),
+  ('cauc', 'CAUC — Regularidade Municipal', 'diaria', 1, true, NULL, 15)
 ON CONFLICT (modulo) DO UPDATE
 SET
   nome_exibicao = EXCLUDED.nome_exibicao,
