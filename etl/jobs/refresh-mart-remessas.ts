@@ -22,7 +22,7 @@
 import "dotenv/config";
 import { withPgTransaction, pgQuery, closePgPool } from "../connectors/postgres";
 
-const MODULO = "mart:remessas";
+const MODULO = "mart_remessas";
 
 // ---------------------------------------------------------------------------
 // Helpers de nome (resolução com prioridade em cascata)

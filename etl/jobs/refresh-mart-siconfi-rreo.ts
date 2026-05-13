@@ -343,7 +343,7 @@ export async function executarMartSiconfiRreo(): Promise<void> {
 
   await pgQuery(`
     INSERT INTO audit.etl_log (modulo, status, mensagem, registros, duracao_ms)
-    VALUES ('mart:siconfi-rreo', 'OK', 'Refresh completo das marts SICONFI/RREO', $1, $2)
+    VALUES ('mart_siconfi_rreo', 'OK', 'Refresh completo das marts SICONFI/RREO', $1, $2)
   `, [resumos.length, duracao]);
 }
 

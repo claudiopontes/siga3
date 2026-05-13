@@ -935,7 +935,7 @@ export async function executarMartSaudeConsolidado(): Promise<void> {
 
   await pgQuery(`
     INSERT INTO audit.etl_log (modulo, status, mensagem, registros, duracao_ms)
-    VALUES ('mart:saude-consolidado', 'OK', 'Refresh consolidado do Painel da Saúde', $1, $2)
+    VALUES ('mart_saude_consolidado', 'OK', 'Refresh consolidado do Painel da Saúde', $1, $2)
   `, [municipios.length, duracao]);
 }
 

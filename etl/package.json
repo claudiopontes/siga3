@@ -21,6 +21,8 @@
     "mart:despesa": "ts-node jobs/refresh-mart-despesa.ts",
     "dimensoes:postgres": "ts-node jobs/dimensoes-ente-entidade-postgres.ts",
     "despesa:full:postgres": "ts-node jobs/despesa-full-postgres.ts",
+    "despesa:incremental:postgres": "ts-node jobs/fato-empenho.ts",
+    "carga-despesa:incremental": "npm run despesa:incremental:postgres && npm run mart:despesa",
     "remessas:inspecionar": "ts-node jobs/remessas-contabeis-inspecionar.ts",
     "remessas:full:postgres": "ts-node jobs/remessas-contabeis-full-postgres.ts",
     "remessas:dimensoes:postgres": "ts-node jobs/remessas-dimensoes-postgres.ts",

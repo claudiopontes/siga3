@@ -21,7 +21,7 @@
 import "dotenv/config";
 import { withPgTransaction, pgQuery, closePgPool } from "../connectors/postgres";
 
-const MODULO = "mart:siops";
+const MODULO = "mart_siops";
 // Percentual mínimo de aplicação em saúde para municípios (EC 29/2000, LC 141/2012)
 const MINIMO_SAUDE_MUNICIPIO = 15;
 // Variação percentual considerada atípica (±50% em relação ao período anterior)

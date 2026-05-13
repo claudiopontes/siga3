@@ -351,7 +351,7 @@ export async function executarMartInfoDengue(): Promise<void> {
 
   await pgQuery(`
     INSERT INTO audit.etl_log (modulo, status, mensagem, registros, duracao_ms)
-    VALUES ('mart:infodengue', 'OK', 'Refresh mart InfoDengue', $1, $2)
+    VALUES ('mart_infodengue', 'OK', 'Refresh mart InfoDengue', $1, $2)
   `, [semanasMaisRecentes.length, duracao]).catch(() => void 0);
 }
 

@@ -358,7 +358,7 @@ export async function executarMartSaudeEstrutura(): Promise<void> {
 
   await pgQuery(`
     INSERT INTO audit.etl_log (modulo, status, mensagem, registros, duracao_ms)
-    VALUES ('mart:saude-estrutura', 'OK', 'Refresh completo das marts de estrutura de saúde', $1, $2)
+    VALUES ('mart_saude_estrutura', 'OK', 'Refresh completo das marts de estrutura de saúde', $1, $2)
   `, [resumos.length, duracao]);
 }
 

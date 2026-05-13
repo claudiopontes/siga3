@@ -20,6 +20,7 @@
 
 import "dotenv/config";
 import { pgQuery, withPgTransaction, closePgPool } from "../connectors/postgres";
+import { iniciarCargaEtl, finalizarCargaEtl, registrarLogEtl } from "../lib/auditoria";
 
 // ---------------------------------------------------------------------------
 // Configuração
@@ -500,18 +501,22 @@ async function promoverParaDw(): Promise<{ parametros: number; populacao: number
 // Main
 // ---------------------------------------------------------------------------
 
+const MODULO         = "sisagua_full_postgres";
+const MODO_CARGA     = "delete_insert_competencia";
+const ORIGEM         = "API SISAGUA / saude.gov.br";
+const DESTINO        = "dw.fato_sisagua_parametro, dw.fato_sisagua_populacao";
+
 export async function executarSisaguaFull(): Promise<void> {
   const inicio = Date.now();
   console.log("[sisagua:full] Iniciando carga completa SISAGUA...");
   console.log(`[sisagua:full] API: ${API_BASE} | UF: ${UF} | Anos: ${ANO_INICIO}–${ANO_FIM}`);
 
-  // Registra início da carga
-  const [cargaRow] = await pgQuery<{ id: number }>(
-    `INSERT INTO audit.etl_carga (modulo, status, iniciado_em)
-     VALUES ('sisagua:full', 'EM_ANDAMENTO', now())
-     RETURNING id`
-  ).catch(() => [{ id: 0 }] as Array<{ id: number }>);
-  const cargaId = cargaRow?.id ?? 0;
+  const idCarga = await iniciarCargaEtl({
+    modulo:    MODULO,
+    modoCarga: MODO_CARGA,
+    origem:    ORIGEM,
+    destino:   DESTINO,
+  });
 
   // Limpa a stage antes de cada execução para evitar acúmulo de execuções anteriores
   await pgQuery(`TRUNCATE stage.sisagua_parametros_stg`).catch((err) => {
@@ -531,47 +536,55 @@ export async function executarSisaguaFull(): Promise<void> {
     { nome: "vigilancia",      path: `/sisagua/vigilancia-parametros-basicos?uf=${UF}&ano=`      },
   ];
 
-  for (let ano = ANO_INICIO; ano <= ANO_FIM; ano++) {
-    for (const ep of endpointsParametros) {
-      const total = await carregarEndpointPaginado(ep.nome, `${ep.path}${ano}`, ano);
-      totalParametros += total;
+  try {
+    for (let ano = ANO_INICIO; ano <= ANO_FIM; ano++) {
+      for (const ep of endpointsParametros) {
+        const total = await carregarEndpointPaginado(ep.nome, `${ep.path}${ano}`, ano);
+        totalParametros += total;
+        await delay(RATE_LIMIT_MS);
+      }
+
+      // Tenta carregar população abastecida
+      const totalPop = await carregarPopulacao(ano);
+      totalPopulacao += totalPop;
       await delay(RATE_LIMIT_MS);
     }
 
-    // Tenta carregar população abastecida
-    const totalPop = await carregarPopulacao(ano);
-    totalPopulacao += totalPop;
-    await delay(RATE_LIMIT_MS);
+    console.log(`[sisagua:full] Carga raw+stage concluída: ${totalParametros} parâmetros, ${totalPopulacao} populacao.`);
+
+    // Promoção stage → dw
+    const { parametros: dwParametros, populacao: dwPopulacao } = await promoverParaDw();
+
+    const duracao = Date.now() - inicio;
+    const mensagem = `Carga SISAGUA: ${totalParametros} raw, ${dwParametros} parâmetros dw, ${dwPopulacao} populacao dw`;
+
+    await finalizarCargaEtl({
+      idCarga,
+      status:            "sucesso",
+      registrosLidos:    totalParametros,
+      registrosGravados: dwParametros + dwPopulacao,
+      mensagem,
+    });
+
+    await registrarLogEtl({
+      modulo:    MODULO,
+      status:    "ok",
+      registros: dwParametros,
+      duracaoMs: duracao,
+      mensagem,
+    });
+
+    console.log(`[sisagua:full] Carga concluída em ${duracao}ms.`);
+  } catch (err) {
+    const duracao = Date.now() - inicio;
+    const mensagem = err instanceof Error ? err.message : String(err);
+    console.error(`[sisagua:full] Erro: ${mensagem}`);
+
+    await finalizarCargaEtl({ idCarga, status: "erro", mensagem });
+    await registrarLogEtl({ modulo: MODULO, status: "erro", duracaoMs: duracao, mensagem });
+
+    throw err;
   }
-
-  console.log(`[sisagua:full] Carga raw+stage concluída: ${totalParametros} parâmetros, ${totalPopulacao} populacao.`);
-
-  // Promoção stage → dw
-  const { parametros: dwParametros, populacao: dwPopulacao } = await promoverParaDw();
-
-  const duracao = Date.now() - inicio;
-
-  // Auditoria
-  await pgQuery(
-    `INSERT INTO audit.etl_log (modulo, status, mensagem, registros, duracao_ms)
-     VALUES ('sisagua:full', 'OK', $1, $2, $3)`,
-    [
-      `Carga SISAGUA: ${totalParametros} raw, ${dwParametros} parâmetros dw, ${dwPopulacao} populacao dw`,
-      dwParametros,
-      duracao,
-    ]
-  ).catch(() => void 0);
-
-  if (cargaId > 0) {
-    await pgQuery(
-      `UPDATE audit.etl_carga
-       SET status='OK', finalizado_em=now(), registros=$1, duracao_ms=$2
-       WHERE id=$3`,
-      [dwParametros, duracao, cargaId]
-    ).catch(() => void 0);
-  }
-
-  console.log(`[sisagua:full] Carga concluída em ${duracao}ms.`);
 }
 
 if (require.main === module) {

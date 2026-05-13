@@ -484,7 +484,7 @@ export async function executarRefreshMartSisagua(): Promise<void> {
 
   await pgQuery(
     `INSERT INTO audit.etl_log (modulo, status, mensagem, registros, duracao_ms)
-     VALUES ('mart:sisagua', 'OK', 'Refresh marts SISAGUA', $1, $2)`,
+     VALUES ('mart_sisagua', 'OK', 'Refresh marts SISAGUA', $1, $2)`,
     [todosResumosMap.size, duracao]
   ).catch(() => void 0);
 }
