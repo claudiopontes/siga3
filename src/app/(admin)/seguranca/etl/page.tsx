@@ -21,9 +21,7 @@ export default async function EtlStatusPage() {
   if (!isAdminProfile(session.profile)) {
     return (
       <div className="rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-white/[0.03]">
-        <h1 className="text-xl font-semibold text-gray-800 dark:text-white/90">
-          Acesso restrito
-        </h1>
+        <h1 className="text-xl font-semibold text-gray-800 dark:text-white/90">Acesso restrito</h1>
         <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
           Apenas administradores podem visualizar o status das bases de dados.
         </p>

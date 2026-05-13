@@ -778,7 +778,7 @@ export default function PainelCombustivelClient() {
       <div className="rounded-xl border border-amber-200 bg-amber-50 p-6 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-300">
         {`Nenhum dado encontrado para o painel de combust\u00edvel. Verifique se as tabelas `}
         `combustivel_mensal`, `combustivel_emitente`, `aux_dim_municipio` e `aux_dim_entidade`
-        {` est\u00e3o populadas no Supabase.`}
+        {` est\u00e3o populadas no PostgreSQL local.`}
       </div>
     );
   }

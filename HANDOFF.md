@@ -13,18 +13,18 @@
 - UI base:
   - Template TailAdmin, com rotas customizadas no grupo `(admin)`.
 - Backend/Servicos:
-  - Supabase (consumo no frontend e destino das tabelas agregadas).
+  - PostgreSQL local acessado pelo servidor Next.js via `src/lib/db.ts`.
   - ETL Node/TypeScript em `etl/` para carga de fatos e dimensoes.
   - Fonte de dados operacional: SQL Server (no ETL).
 - Variaveis de ambiente essenciais:
-  - Frontend: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
+  - Frontend/Next server: `DATABASE_URL`.
   - ETL: `SUPABASE_SERVICE_ROLE_KEY`, `SQLSERVER_*`, `DIM_*_CSV`, `ETL_TIMEZONE`, `FACT_ETL_CRON`.
 - Como rodar:
   - Frontend: `npm install` e `npm run dev`.
   - ETL: na pasta `etl`, `npm install`, depois `npm run combustivel`, `npm run dimensoes` ou `npm run agendar`.
 
 ## 3) Decisoes Tecnicas (Fonte de Verdade)
-- Uso de Supabase no frontend somente com chave anonima publica; service role fica restrita ao ETL.
+- Componentes client-side consomem dados por rotas API Next.js; acesso ao banco fica restrito ao servidor via `dbQuery`.
 - ETL de combustivel faz substituicao total das tabelas agregadas em cada execucao (estrategia simples e previsivel).
 - Frontend de combustivel possui fallback para schema legado sem coluna `emitente`.
 - Componentes de mapa (Leaflet) e mapas dinâmicos rodam client-side (`ssr: false`) para evitar conflitos de SSR.
@@ -38,7 +38,7 @@
   - `src/components/combustivel/CombustivelHeaderFilters.tsx`
   - `src/layout/AppHeader.tsx` e `src/layout/AppSidebar.tsx`
 - Infra/dados:
-  - `src/lib/supabase.ts`
+  - `src/lib/db.ts`
   - `etl/jobs/combustivel.ts`
   - `etl/jobs/dimensoes-csv.ts`
   - `etl/schedule.ts`

@@ -173,7 +173,7 @@ function naturezaCategoriaPorNivel(row: ReceitaRow, naturezaRows: NaturezaRow[],
   return naturezaByPrefix.get(prefix) ?? composicaoCategoria(row);
 }
 
-function formatSupabaseError(error: unknown): string {
+function formatDataError(error: unknown): string {
   if (!error) return "Erro desconhecido.";
   if (error instanceof Error) return error.message;
   if (typeof error === "string") return error;
@@ -310,7 +310,7 @@ export default function PainelReceitaPublicaClient() {
 
     load().catch((err) => {
       if (!active) return;
-      setError(formatSupabaseError(err));
+      setError(formatDataError(err));
       setLoading(false);
     });
 

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import CombustivelHeaderFilters from "@/components/combustivel/CombustivelHeaderFilters";
 import EmpenhoHeaderFilters from "@/components/combustivel/EmpenhoHeaderFilters";
@@ -30,6 +30,7 @@ const AppHeader: React.FC = () => {
   const isCalendarPage       = pathname === "/calendar";
   const isProfilePage        = pathname === "/profile";
   const isUsuariosPage       = pathname === "/seguranca/usuarios";
+  const isEtlStatusPage      = pathname === "/seguranca/etl";
   const isRemessasPage       = pathname.startsWith("/remessas");
 
   const breadcrumbs: Record<string, { crumbs: { label: string; href?: string }[] }> = {
@@ -52,6 +53,7 @@ const AppHeader: React.FC = () => {
     "/calendar": { crumbs: [{ label: "Home", href: "/" }, { label: "Agenda" }] },
     "/profile": { crumbs: [{ label: "Home", href: "/" }, { label: "Perfil" }] },
     "/seguranca/usuarios": { crumbs: [{ label: "Home", href: "/" }, { label: "Segurança" }, { label: "Usuários e perfis" }] },
+    "/seguranca/etl": { crumbs: [{ label: "Home", href: "/" }, { label: "Segurança" }, { label: "Status das Bases ETL" }] },
   };
 
   const currentCrumbs = (() => {
@@ -209,6 +211,13 @@ const AppHeader: React.FC = () => {
                 <span className="text-xs text-gray-400 dark:text-gray-500">
                   <span className="font-medium text-gray-600 dark:text-gray-400">Segurança</span>
                   {" · "}Varadouro Digital
+                </span>
+              </div>
+            )}
+            {isEtlStatusPage && (
+              <div className="flex flex-col">
+                <span className="truncate text-sm text-gray-600 dark:text-gray-300">
+                  Monitoramento das últimas execuções e status das cargas ETL.
                 </span>
               </div>
             )}

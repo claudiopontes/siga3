@@ -16,10 +16,7 @@ export async function GET(request: Request) {
       `SELECT id_ente, cod_ibgce, cod_municipio, populacao, nome
        FROM public.dim_ente LIMIT 10000`
     ),
-    dbQuery(
-      `SELECT id_entidade, id_entidade_cjur, id_ente
-       FROM public.dim_entidade LIMIT 10000`
-    ),
+    carregarDimEntidade(),
     dbQuery(
       `SELECT codigo, nome, uf_codigo FROM public.aux_dim_municipio
        WHERE uf_codigo = '12' LIMIT 10000`
@@ -74,4 +71,22 @@ export async function GET(request: Request) {
   }
 
   return NextResponse.json({ rows, entes, entidades, municipios, natureza });
+}
+
+async function carregarDimEntidade() {
+  try {
+    return await dbQuery(
+      `SELECT id_entidade, id_entidade_cjur, id_ente
+       FROM public.dim_entidade LIMIT 10000`
+    );
+  } catch {
+    try {
+      return await dbQuery(
+        `SELECT id_entidade, NULL::bigint AS id_entidade_cjur, id_ente
+         FROM public.dim_entidade LIMIT 10000`
+      );
+    } catch {
+      return [];
+    }
+  }
 }

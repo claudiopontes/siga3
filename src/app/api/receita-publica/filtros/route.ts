@@ -19,10 +19,17 @@ export async function GET() {
 
   try {
     entidades = await dbQuery(
-      `SELECT id_entidade, id_entidade_cjur, id_ente FROM public.dim_entidade`
+      `SELECT id_entidade, id_entidade_cjur, id_ente, nome FROM public.dim_entidade`
     );
   } catch {
-    entidades = [];
+    try {
+      entidades = await dbQuery(
+        `SELECT id_entidade, NULL::bigint AS id_entidade_cjur, id_ente, nome
+         FROM public.dim_entidade`
+      );
+    } catch {
+      entidades = [];
+    }
   }
 
   try {
