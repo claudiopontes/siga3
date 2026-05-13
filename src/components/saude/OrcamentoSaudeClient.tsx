@@ -116,15 +116,33 @@ function abreviarMunicipio(nome: string | null): string {
 // Badges
 // ---------------------------------------------------------------------------
 
+const NIVEL_COR: Record<string, string> = {
+  CRITICO: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300",
+  ALTO:    "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300",
+  MEDIO:   "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300",
+  BAIXO:   "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300",
+};
+const NIVEL_DOT: Record<string, string> = {
+  CRITICO: "bg-red-500",
+  ALTO:    "bg-orange-400",
+  MEDIO:   "bg-yellow-400",
+  BAIXO:   "bg-green-500",
+};
+const NIVEL_LABEL: Record<string, string> = {
+  CRITICO: "Crítico",
+  ALTO:    "Alto",
+  MEDIO:   "Médio",
+  BAIXO:   "Normal",
+};
+
 function NivelBadge({ nivel }: { nivel: string }) {
   const n = nivel?.toUpperCase();
-  if (n === "CRITICO")
-    return <span className="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700 dark:bg-red-900/40 dark:text-red-300">Crítico</span>;
-  if (n === "ALTO")
-    return <span className="inline-flex items-center rounded-full bg-orange-100 px-2 py-0.5 text-xs font-semibold text-orange-700 dark:bg-orange-900/40 dark:text-orange-300">Alto</span>;
-  if (n === "MEDIO")
-    return <span className="inline-flex items-center rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-semibold text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300">Médio</span>;
-  return <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700 dark:bg-green-900/40 dark:text-green-300">Normal</span>;
+  return (
+    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${NIVEL_COR[n] ?? NIVEL_COR.BAIXO}`}>
+      <span className={`h-1.5 w-1.5 rounded-full ${NIVEL_DOT[n] ?? NIVEL_DOT.BAIXO}`} />
+      {NIVEL_LABEL[n] ?? nivel}
+    </span>
+  );
 }
 
 function SituacaoBadge({ situacao }: { situacao: string | null }) {

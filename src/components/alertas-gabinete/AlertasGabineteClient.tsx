@@ -792,7 +792,7 @@ export default function AlertasGabineteClient() {
   );
 
   const totalPendencias = useMemo(
-    () => comPendencia.reduce((soma, row) => soma + row.total_pendencias, 0),
+    () => comPendencia.reduce((soma, row) => soma + Number(row.total_pendencias), 0),
     [comPendencia]
   );
 

@@ -71,10 +71,33 @@ interface LoadState {
 
 const ANOS_DISPONIVEIS = [2022, 2023, 2024, 2025];
 
-function nivelBadge(nivel: string) {
-  if (nivel === "CRITICO") return "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300";
-  if (nivel === "ALTO") return "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300";
-  return "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300";
+const NIVEL_COR: Record<string, string> = {
+  CRITICO: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300",
+  ALTO:    "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300",
+  MEDIO:   "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300",
+  BAIXO:   "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300",
+};
+const NIVEL_DOT: Record<string, string> = {
+  CRITICO: "bg-red-500",
+  ALTO:    "bg-orange-400",
+  MEDIO:   "bg-yellow-400",
+  BAIXO:   "bg-green-500",
+};
+const NIVEL_LABEL: Record<string, string> = {
+  CRITICO: "Crítico",
+  ALTO:    "Alto",
+  MEDIO:   "Médio",
+  BAIXO:   "Baixo",
+};
+
+function NivelBadge({ nivel }: { nivel: string }) {
+  const n = nivel?.toUpperCase();
+  return (
+    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${NIVEL_COR[n] ?? NIVEL_COR.MEDIO}`}>
+      <span className={`h-1.5 w-1.5 rounded-full ${NIVEL_DOT[n] ?? NIVEL_DOT.MEDIO}`} />
+      {NIVEL_LABEL[n] ?? nivel}
+    </span>
+  );
 }
 
 function KpiCard({
@@ -384,9 +407,7 @@ npm run carga-sim-api:postgres`}
               {alertasFiltrados.map((a, i) => (
                 <tr key={a.id_alerta ?? i} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
                   <td className="px-4 py-3">
-                    <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${nivelBadge(a.nivel)}`}>
-                      {a.nivel}
-                    </span>
+                    <NivelBadge nivel={a.nivel} />
                   </td>
                   <td className="px-4 py-3 text-gray-700 dark:text-gray-300">
                     {a.nome_municipio ?? "—"}
