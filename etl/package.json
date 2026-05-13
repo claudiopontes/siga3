@@ -14,6 +14,7 @@
     "populacao-ibge": "ts-node jobs/populacao-ibge.ts",
     "cauc": "ts-node jobs/cauc.ts",
     "cadunico:incremental": "ts-node jobs/cadunico-incremental.ts",
+    "mis-bolsa-familia-bpc": "ts-node jobs/mis-bolsa-familia-bpc.ts",
     "processos-gabinete": "ts-node jobs/processos-gabinete.ts",
     "agendar": "ts-node schedule.ts",
     "postgres:check": "ts-node jobs/postgres-check.ts",

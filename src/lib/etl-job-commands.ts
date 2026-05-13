@@ -49,6 +49,10 @@ export const ETL_JOB_COMMANDS: Record<string, { command: string; args: string[] 
     command: NPM_COMMAND,
     args: ["--prefix", "etl", "run", "carga-siconfi-rreo:postgres"],
   },
+  mis_bolsa_familia_bpc: {
+    command: NPM_COMMAND,
+    args: ["--prefix", "etl", "run", "mis-bolsa-familia-bpc"],
+  },
 };
 
 export function hasEtlJobCommand(modulo: string): boolean {
