@@ -16,6 +16,7 @@ import { executarCargaDimensoesEmpenhoSqlServer } from "./jobs/dimensoes-empenho
 import { executarETLFatoEmpenho } from "./jobs/fato-empenho";
 import { executarCargaCauc } from "./jobs/cauc";
 import { executarCargaProcessosGabinete } from "./jobs/processos-gabinete";
+import { executarCargaPautaJulgamento } from "./jobs/pauta-julgamento";
 import { executarCredorEnriquecimentoPreparar } from "./jobs/credor-enriquecimento-preparar";
 import { executarCredorEnriquecerInterno } from "./jobs/credor-enriquecer-interno";
 import { executarCredorEnriquecerCnpj } from "./jobs/credor-enriquecer-cnpj";
@@ -38,6 +39,8 @@ const RUN_FATO_EMPENHO_NIGHTLY = (process.env.RUN_FATO_EMPENHO_NIGHTLY ?? "true"
 const RUN_CAUC_NIGHTLY = (process.env.RUN_CAUC_NIGHTLY ?? "true").toLowerCase() !== "false";
 const RUN_PROCESSOS_GABINETE_NIGHTLY =
   (process.env.RUN_PROCESSOS_GABINETE_NIGHTLY ?? "true").toLowerCase() !== "false";
+const RUN_PAUTA_JULGAMENTO_NIGHTLY =
+  (process.env.RUN_PAUTA_JULGAMENTO_NIGHTLY ?? "true").toLowerCase() !== "false";
 const RUN_CREDOR_ENRIQUECIMENTO_NIGHTLY =
   (process.env.RUN_CREDOR_ENRIQUECIMENTO_NIGHTLY ?? "true").toLowerCase() !== "false";
 
@@ -69,12 +72,21 @@ cron.schedule(
     }
 
     if (RUN_PROCESSOS_GABINETE_NIGHTLY) {
-      console.log("[CRON] Step 2/11: processos gabinete (SQL Server -> Supabase)");
+      console.log("[CRON] Step 2/12: processos gabinete (SQL Server -> PostgreSQL)");
       await executarCargaProcessosGabinete().catch((error) => {
         console.error("[CRON] processos gabinete failed:", error);
       });
     } else {
-      console.log("[CRON] Step 2/11: processos gabinete skipped by RUN_PROCESSOS_GABINETE_NIGHTLY=false");
+      console.log("[CRON] Step 2/12: processos gabinete skipped by RUN_PROCESSOS_GABINETE_NIGHTLY=false");
+    }
+
+    if (RUN_PAUTA_JULGAMENTO_NIGHTLY) {
+      console.log("[CRON] Step 3/12: pauta julgamento (EJURIS/SQL Server -> PostgreSQL)");
+      await executarCargaPautaJulgamento().catch((error) => {
+        console.error("[CRON] pauta julgamento failed:", error);
+      });
+    } else {
+      console.log("[CRON] Step 3/12: pauta julgamento skipped by RUN_PAUTA_JULGAMENTO_NIGHTLY=false");
     }
 
     if (RUN_APC_POLANCO_NIGHTLY) {

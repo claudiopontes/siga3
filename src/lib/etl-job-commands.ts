@@ -13,6 +13,10 @@ export const ETL_JOB_COMMANDS: Record<string, { command: string; args: string[] 
     command: NPM_COMMAND,
     args: ["--prefix", "etl", "run", "processos-gabinete"],
   },
+  pauta_julgamento: {
+    command: NPM_COMMAND,
+    args: ["--prefix", "etl", "run", "pauta-julgamento"],
+  },
   receita_publica: {
     command: NPM_COMMAND,
     args: ["--prefix", "etl", "run", "receita-publica"],

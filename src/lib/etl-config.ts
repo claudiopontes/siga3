@@ -66,6 +66,29 @@ export const ETL_CONFIG: Record<string, EtlConfigEntry> = {
     toleranciaDias: 1,
     ativoPainel: true,
   },
+  pauta_julgamento: {
+    nomeExibicao: "Pautas para Julgamento (EJURIS)",
+    periodicidade: "diaria",
+    toleranciaDias: 1,
+    ativoPainel: true,
+    execucao: {
+      tipoCargaPadrao: "incremental",
+      modoCargaPadrao: "upsert",
+      escopoCarga: "tudo",
+      preservaHistoricoAnterior: true,
+      requerConfirmacaoManual: false,
+      observacaoRegraNegocio:
+        "Carga incremental (upsert) de todas as sessões e seus itens de pauta. A situação da sessão (PARA PAUTA, PARA JULGAMENTO, ENCERRADA etc.) é atualizada a cada execução, refletindo a progressão no EJURIS.",
+    },
+    execucaoManual: {
+      permiteExecucaoManual: true,
+      permiteFullManual: false,
+      permiteIncrementalManual: true,
+      labelBotao: "Forçar atualização",
+      mensagemConfirmacao:
+        "Esta ação irá sincronizar todas as sessões e itens de pauta do EJURIS. Deseja continuar?",
+    },
+  },
   mart_infodengue: {
     nomeExibicao: "Vigilância Epidemiológica (InfoDengue)",
     periodicidade: "semanal",

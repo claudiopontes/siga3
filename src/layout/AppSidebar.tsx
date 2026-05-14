@@ -11,7 +11,7 @@ import {
   HorizontaLDots,
   UserCircleIcon,
 } from "../icons/index";
-import { ShieldCheck, FileStack } from "lucide-react";
+import { ShieldCheck, FileStack, ClipboardList } from "lucide-react";
 
 
 type NavItem = {
@@ -35,6 +35,13 @@ const baseNavItems: NavItem[] = [
       { name: "IDEB Acre", path: "/gabinete-digital/mapa" },
       { name: "Saúde Pública", path: "/painel-saude" },
       { name: "Vulnerabilidade Social", path: "/painel-social" },
+    ],
+  },
+  {
+    icon: <ClipboardList className="h-5 w-5" />,
+    name: "Pautas",
+    subItems: [
+      { name: "Pautas para Julgamento", path: "/pautas-julgamento" },
     ],
   },
   {
