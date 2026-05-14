@@ -64,12 +64,18 @@ const AppHeader: React.FC = () => {
   const currentCrumbs = (() => {
     if (breadcrumbs[pathname]) return breadcrumbs[pathname].crumbs;
     if (pathname.startsWith("/painel-despesa/credor/")) {
-      const doc = pathname.split("/").pop() ?? "";
+      const raw = pathname.split("/").pop() ?? "";
+      const d = raw.replace(/\D/g, "");
+      const docFormatado = d.length === 11
+        ? `${d.slice(0,3)}.${d.slice(3,6)}.${d.slice(6,9)}-${d.slice(9)}`
+        : d.length === 14
+          ? `${d.slice(0,2)}.${d.slice(2,5)}.${d.slice(5,8)}/${d.slice(8,12)}-${d.slice(12)}`
+          : raw;
       return [
         { label: "Home", href: "/" },
         { label: "Painéis" },
         { label: "Despesa Pública", href: "/painel-despesa" },
-        { label: doc ? `Credor ${doc}` : "Detalhe do Credor" },
+        { label: raw ? `Credor ${docFormatado}` : "Detalhe do Credor" },
       ];
     }
     return [{ label: "Home", href: "/" }, { label: pathname.replace(/\//g, " ").trim() }];

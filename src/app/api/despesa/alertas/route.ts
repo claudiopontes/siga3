@@ -41,7 +41,7 @@ export async function GET(req: NextRequest) {
       a.tipo_alerta,
       a.nivel,
       a.descricao,
-      a.cpf_cnpj_credor,
+      a.detalhe_json,
       a.valor_referencia AS valor_principal
     FROM mart.despesa_alertas a
     LEFT JOIN public.dim_entidade dte ON dte.id_entidade = a.id_entidade

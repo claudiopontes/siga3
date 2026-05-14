@@ -43,6 +43,11 @@ interface CadastroRow {
   cep: string | null;
   telefone: string | null;
   email: string | null;
+  capital_social: string | null;
+  porte: string | null;
+  data_abertura: string | null;
+  cnaes_secundarios: unknown;
+  qsa: unknown;
   data_consulta: string | null;
   status_consulta: string | null;
 }
@@ -141,6 +146,11 @@ export async function GET(
             cep,
             telefone,
             email,
+            capital_social::text,
+            porte,
+            data_abertura::text,
+            cnaes_secundarios,
+            qsa,
             data_consulta,
             status_consulta
           FROM dw.dim_credor_enriquecido

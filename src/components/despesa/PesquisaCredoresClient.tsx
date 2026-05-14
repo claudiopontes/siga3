@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Search, ChevronLeft, ChevronRight } from "lucide-react";
+import { Search, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, ChevronsUpDown } from "lucide-react";
 
 // --- Tipos ---
 
@@ -31,7 +31,7 @@ interface SearchResult {
   registros: CredorRow[];
 }
 
-type Tipo = "all" | "CPF" | "CNPJ" | "DESCONHECIDO";
+type Tipo    = "all" | "CPF" | "CNPJ" | "DESCONHECIDO";
 type OrderBy = "valor_pago" | "valor_empenhado_liquido" | "ultimo_empenho" | "nome";
 
 // --- Helpers ---
@@ -84,8 +84,8 @@ function formatCpfCnpj(digits: string): string {
 function tipoBadge(tipo: string | null) {
   if (!tipo) return null;
   const cores: Record<string, string> = {
-    CPF: "bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300",
-    CNPJ: "bg-teal-100 text-teal-700 dark:bg-teal-950/40 dark:text-teal-300",
+    CPF:          "bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300",
+    CNPJ:         "bg-teal-100 text-teal-700 dark:bg-teal-950/40 dark:text-teal-300",
     DESCONHECIDO: "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400",
   };
   return (
@@ -95,33 +95,51 @@ function tipoBadge(tipo: string | null) {
   );
 }
 
+// Ícone de ordenação para cabeçalho de coluna
+function SortIcon({ col, active, dir }: { col: OrderBy; active: OrderBy; dir: "asc" | "desc" }) {
+  if (col !== active) return <ChevronsUpDown className="ml-1 inline h-3.5 w-3.5 text-slate-300 dark:text-slate-600" />;
+  return dir === "asc"
+    ? <ChevronUp   className="ml-1 inline h-3.5 w-3.5 text-teal-500" />
+    : <ChevronDown className="ml-1 inline h-3.5 w-3.5 text-teal-500" />;
+}
+
 // --- Componente principal ---
 
 const PAGE_SIZE = 20;
 
+// Colunas que suportam ordenação server-side
+const COLS_ORDENAVEL: { key: OrderBy; label: string; align: "left" | "right" }[] = [
+  { key: "nome",                   label: "Credor",          align: "left"  },
+  { key: "valor_empenhado_liquido", label: "Empenhado",      align: "right" },
+  { key: "valor_pago",             label: "Pago",            align: "right" },
+  { key: "ultimo_empenho",         label: "Último Emp.",     align: "right" },
+];
+
 export default function PesquisaCredoresClient() {
-  const [q, setQ] = useState("");
-  const [tipo, setTipo] = useState<Tipo>("all");
+  const [q,       setQ]       = useState("");
+  const [tipo,    setTipo]    = useState<Tipo>("all");
   const [orderBy, setOrderBy] = useState<OrderBy>("valor_pago");
-  const [page, setPage] = useState(1);
-  const [result, setResult] = useState<SearchResult | null>(null);
+  const [orderDir, setOrderDir] = useState<"asc" | "desc">("desc");
+  const [page,    setPage]    = useState(1);
+  const [result,  setResult]  = useState<SearchResult | null>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error,   setError]   = useState<string | null>(null);
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef    = useRef<HTMLInputElement>(null);
 
   const fetchResultados = useCallback(
-    (query: string, tipoFiltro: Tipo, ordem: OrderBy, pagina: number) => {
+    (query: string, tipoFiltro: Tipo, ordem: OrderBy, dir: "asc" | "desc", pagina: number) => {
       setLoading(true);
       setError(null);
 
       const sp = new URLSearchParams({
-        q: query,
+        q:             query,
         tipoDocumento: tipoFiltro,
-        orderBy: ordem,
-        page: String(pagina),
-        pageSize: String(PAGE_SIZE),
+        orderBy:       ordem,
+        orderDir:      dir,
+        page:          String(pagina),
+        pageSize:      String(PAGE_SIZE),
       });
 
       fetch(`/api/despesa/credores/search?${sp.toString()}`)
@@ -136,30 +154,26 @@ export default function PesquisaCredoresClient() {
     [],
   );
 
-  // Dispara busca com debounce ao mudar q; imediato ao mudar outros filtros
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
-      fetchResultados(q, tipo, orderBy, page);
+      fetchResultados(q, tipo, orderBy, orderDir, page);
     }, 300);
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    };
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q, tipo, orderBy, page]);
+  }, [q, tipo, orderBy, orderDir, page]);
 
-  function handleQ(value: string) {
-    setQ(value);
-    setPage(1);
-  }
+  function handleQ(value: string) { setQ(value); setPage(1); }
+  function handleTipo(value: Tipo) { setTipo(value); setPage(1); }
 
-  function handleTipo(value: Tipo) {
-    setTipo(value);
-    setPage(1);
-  }
-
-  function handleOrdem(value: OrderBy) {
-    setOrderBy(value);
+  function handleSort(col: OrderBy) {
+    if (col === orderBy) {
+      setOrderDir((d) => (d === "desc" ? "asc" : "desc"));
+    } else {
+      setOrderBy(col);
+      // nome sobe por padrão, valores descem
+      setOrderDir(col === "nome" ? "asc" : "desc");
+    }
     setPage(1);
   }
 
@@ -168,7 +182,7 @@ export default function PesquisaCredoresClient() {
   return (
     <div className="min-h-screen space-y-5 bg-slate-50 p-4 pb-10 dark:bg-slate-900 sm:p-6">
 
-      {/* Barra de busca + filtros */}
+      {/* Barra de busca + filtros por tipo */}
       <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
 
@@ -186,7 +200,7 @@ export default function PesquisaCredoresClient() {
           </div>
 
           {/* Filtro por tipo */}
-          <div className="flex gap-1.5 flex-wrap">
+          <div className="flex flex-wrap gap-1.5">
             {(["all", "CPF", "CNPJ", "DESCONHECIDO"] as Tipo[]).map((t) => (
               <button
                 key={t}
@@ -202,25 +216,12 @@ export default function PesquisaCredoresClient() {
               </button>
             ))}
           </div>
-
-          {/* Ordenação */}
-          <select
-            value={orderBy}
-            onChange={(e) => handleOrdem(e.target.value as OrderBy)}
-            className="rounded-lg border border-slate-200 bg-white py-2.5 pl-3 pr-8 text-sm text-slate-700 outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-100 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200"
-          >
-            <option value="valor_pago">Maior valor pago</option>
-            <option value="valor_empenhado_liquido">Maior valor empenhado</option>
-            <option value="ultimo_empenho">Último empenho</option>
-            <option value="nome">Nome</option>
-          </select>
         </div>
       </div>
 
       {/* Resultados */}
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-800">
 
-        {/* Cabeçalho da tabela / estado */}
         {loading && (
           <div className="flex items-center justify-center py-16 text-sm text-slate-500">
             <div className="mr-3 h-5 w-5 animate-spin rounded-full border-2 border-blue-200 border-t-blue-600" />
@@ -247,9 +248,7 @@ export default function PesquisaCredoresClient() {
               <span>
                 <strong className="text-slate-700 dark:text-slate-200">{fmtNum(result.total)}</strong> credores encontrados
               </span>
-              <span>
-                Página {result.page} de {totalPages}
-              </span>
+              <span>Página {result.page} de {totalPages}</span>
             </div>
 
             {/* Tabela desktop */}
@@ -257,22 +256,67 @@ export default function PesquisaCredoresClient() {
               <table className="w-full text-sm">
                 <thead className="bg-slate-50 text-slate-500 dark:bg-slate-900/60 dark:text-slate-400">
                   <tr>
-                    <th className="px-4 py-3 text-left font-semibold">Credor</th>
+                    {/* Credor — ordenável */}
+                    <th className="px-4 py-3 text-left">
+                      <button
+                        type="button"
+                        onClick={() => handleSort("nome")}
+                        className="inline-flex items-center font-semibold hover:text-teal-600 dark:hover:text-teal-400"
+                      >
+                        Credor
+                        <SortIcon col="nome" active={orderBy} dir={orderDir} />
+                      </button>
+                    </th>
+
                     <th className="px-4 py-3 text-left font-semibold">Documento</th>
                     <th className="px-4 py-3 text-left font-semibold">Município/UF</th>
-                    <th className="px-4 py-3 text-right font-semibold">Empenhado</th>
-                    <th className="px-4 py-3 text-right font-semibold">Pago</th>
+
+                    {/* Empenhado — ordenável */}
+                    <th className="px-4 py-3 text-right">
+                      <button
+                        type="button"
+                        onClick={() => handleSort("valor_empenhado_liquido")}
+                        className="inline-flex items-center font-semibold hover:text-teal-600 dark:hover:text-teal-400"
+                      >
+                        Empenhado
+                        <SortIcon col="valor_empenhado_liquido" active={orderBy} dir={orderDir} />
+                      </button>
+                    </th>
+
+                    {/* Pago — ordenável */}
+                    <th className="px-4 py-3 text-right">
+                      <button
+                        type="button"
+                        onClick={() => handleSort("valor_pago")}
+                        className="inline-flex items-center font-semibold hover:text-teal-600 dark:hover:text-teal-400"
+                      >
+                        Pago
+                        <SortIcon col="valor_pago" active={orderBy} dir={orderDir} />
+                      </button>
+                    </th>
+
                     <th className="px-4 py-3 text-right font-semibold">A Pagar</th>
                     <th className="px-4 py-3 text-right font-semibold">Empenhos</th>
                     <th className="px-4 py-3 text-right font-semibold">Entes</th>
-                    <th className="px-4 py-3 text-right font-semibold">Último Emp.</th>
+
+                    {/* Último Emp. — ordenável */}
+                    <th className="px-4 py-3 text-right">
+                      <button
+                        type="button"
+                        onClick={() => handleSort("ultimo_empenho")}
+                        className="inline-flex items-center font-semibold hover:text-teal-600 dark:hover:text-teal-400"
+                      >
+                        Último Emp.
+                        <SortIcon col="ultimo_empenho" active={orderBy} dir={orderDir} />
+                      </button>
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
                   {result.registros.map((credor, i) => {
                     const docFormatado = formatCpfCnpj(credor.cpf_cnpj_credor);
-                    const nomeExibido = credor.nome_exibicao || docFormatado;
-                    const localizacao = [credor.municipio, credor.uf].filter(Boolean).join("/");
+                    const nomeExibido  = credor.nome_exibicao || docFormatado;
+                    const localizacao  = [credor.municipio, credor.uf].filter(Boolean).join("/");
                     return (
                       <tr
                         key={credor.cpf_cnpj_credor}
@@ -325,8 +369,8 @@ export default function PesquisaCredoresClient() {
             <div className="divide-y divide-slate-100 dark:divide-slate-700 lg:hidden">
               {result.registros.map((credor) => {
                 const docFormatado = formatCpfCnpj(credor.cpf_cnpj_credor);
-                const nomeExibido = credor.nome_exibicao || docFormatado;
-                const localizacao = [credor.municipio, credor.uf].filter(Boolean).join("/");
+                const nomeExibido  = credor.nome_exibicao || docFormatado;
+                const localizacao  = [credor.municipio, credor.uf].filter(Boolean).join("/");
                 return (
                   <Link
                     key={credor.cpf_cnpj_credor}

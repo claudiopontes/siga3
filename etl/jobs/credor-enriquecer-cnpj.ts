@@ -31,6 +31,18 @@ function sleep(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+interface QsaItem {
+  nome: string | null;
+  qualificacao: string | null;
+  cpf_socio?: string | null;
+  cpf_representante?: string | null;
+}
+
+interface CnaeItem {
+  codigo: string | null;
+  descricao: string | null;
+}
+
 interface CnpjDados {
   razao_social?: unknown;
   nome_fantasia?: unknown;
@@ -44,6 +56,11 @@ interface CnpjDados {
   cep?: unknown;
   ddd_telefone_1?: unknown;
   email?: unknown;
+  capital_social?: number | null;
+  porte?: string | null;
+  data_abertura?: string | null;
+  cnaes_secundarios?: CnaeItem[];
+  qsa?: QsaItem[];
 }
 
 function toStr(v: unknown): string | null {
@@ -69,6 +86,30 @@ async function consultarBrasilAPI(cnpj: string): Promise<CnpjDados> {
   const situacaoNum = Number(raw.situacao_cadastral);
   const situacao = situacaoMap[situacaoNum] ?? toStr(raw.situacao_cadastral);
   // cnae_fiscal_descricao pode vir como cnae_fiscal_descricao ou dentro de cnaes_secundarios
+  // CNAEs secundários
+  const cnaesSecRaw = raw.cnaes_secundarios as Array<Record<string, unknown>> | undefined;
+  const cnaesSecundarios: CnaeItem[] = (cnaesSecRaw ?? [])
+    .map((c) => ({ codigo: toStr(c.codigo), descricao: toStr(c.descricao) }))
+    .filter((c) => c.codigo || c.descricao);
+
+  // QSA
+  const qsaRaw = raw.qsa as Array<Record<string, unknown>> | undefined;
+  const qsa: QsaItem[] = (qsaRaw ?? []).map((s) => ({
+    nome:              toStr(s.nome_socio ?? s.nome),
+    qualificacao:      toStr(s.qualificacao_socio ?? s.qualificacao),
+    cpf_socio:         toStr(s.cnpj_cpf_do_socio),
+    cpf_representante: toStr(s.cpf_representante_legal),
+  }));
+
+  // Porte
+  const porteMap: Record<string, string> = {
+    "MICRO EMPRESA": "ME", "ME": "ME",
+    "EMPRESA DE PEQUENO PORTE": "EPP", "EPP": "EPP",
+    "DEMAIS": "DEMAIS",
+  };
+  const porteRaw = toStr(raw.porte)?.toUpperCase() ?? "";
+  const porte = porteMap[porteRaw] ?? (porteRaw || null);
+
   return {
     razao_social:          raw.razao_social,
     nome_fantasia:         raw.nome_fantasia,
@@ -82,6 +123,11 @@ async function consultarBrasilAPI(cnpj: string): Promise<CnpjDados> {
     cep:                   raw.cep,
     ddd_telefone_1:        raw.ddd_telefone_1,
     email:                 raw.email,
+    capital_social:        typeof raw.capital_social === "number" ? raw.capital_social : null,
+    porte:                 porte,
+    data_abertura:         toStr(raw.data_inicio_atividade),
+    cnaes_secundarios:     cnaesSecundarios.length > 0 ? cnaesSecundarios : undefined,
+    qsa:                   qsa.length > 0 ? qsa : undefined,
   };
 }
 
@@ -94,8 +140,20 @@ async function consultarReceitaWS(cnpj: string): Promise<CnpjDados> {
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
   const data = await resp.json() as Record<string, unknown>;
   if (data.status === "ERROR") throw new Error(String(data.message) || "CNPJ não encontrado");
-  const atividadePrincipal = data.atividade_principal as Array<{ text?: string }> | undefined;
-  // Normaliza para estrutura comum
+  const atividadePrincipal  = data.atividade_principal  as Array<{ code?: string; text?: string }> | undefined;
+  const atividadesSecundarias = data.atividades_secundarias as Array<{ code?: string; text?: string }> | undefined;
+  const qsaRaw = data.qsa as Array<Record<string, unknown>> | undefined;
+
+  const cnaesSecundarios: CnaeItem[] = (atividadesSecundarias ?? [])
+    .map((c) => ({ codigo: toStr(c.code), descricao: toStr(c.text) }))
+    .filter((c) => c.codigo || c.descricao);
+
+  const qsa: QsaItem[] = (qsaRaw ?? []).map((s) => ({
+    nome:              toStr(s.nome),
+    qualificacao:      toStr(s.qual),
+    cpf_representante: null,
+  }));
+
   return {
     razao_social:          data.nome as string,
     nome_fantasia:         data.fantasia as string,
@@ -109,6 +167,11 @@ async function consultarReceitaWS(cnpj: string): Promise<CnpjDados> {
     cep:                   data.cep as string,
     ddd_telefone_1:        data.telefone as string,
     email:                 data.email as string,
+    capital_social:        data.capital_social ? Number(data.capital_social) : null,
+    porte:                 toStr(data.porte),
+    data_abertura:         toStr(data.abertura),
+    cnaes_secundarios:     cnaesSecundarios.length > 0 ? cnaesSecundarios : undefined,
+    qsa:                   qsa.length > 0 ? qsa : undefined,
   };
 }
 
@@ -170,11 +233,16 @@ export async function executarCredorEnriquecerCnpj(): Promise<void> {
             cep                  = $10,
             telefone             = $11,
             email                = $12,
+            capital_social       = $13,
+            porte                = $14,
+            data_abertura        = $15,
+            cnaes_secundarios    = $16,
+            qsa                  = $17,
             data_consulta        = now(),
             status_consulta      = 'ENRIQUECIDO',
             erro_consulta        = NULL,
             atualizado_em        = now()
-          WHERE cpf_cnpj = $13
+          WHERE cpf_cnpj = $18
         `, [
           nomeEnriquecido || null,
           PROVIDER.toUpperCase(),
@@ -188,6 +256,11 @@ export async function executarCredorEnriquecerCnpj(): Promise<void> {
           toStr(dados.cep)?.replace(/\D/g, "") || null,
           toStr(dados.ddd_telefone_1),
           toStr(dados.email),
+          dados.capital_social ?? null,
+          dados.porte ?? null,
+          dados.data_abertura ?? null,
+          dados.cnaes_secundarios ? JSON.stringify(dados.cnaes_secundarios) : null,
+          dados.qsa ? JSON.stringify(dados.qsa) : null,
           cnpj,
         ]);
 

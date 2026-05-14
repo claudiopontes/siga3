@@ -2,9 +2,10 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import type { ApexOptions } from "apexcharts";
-import { ArrowLeft, Building2, MapPin, Phone, Mail, Hash, Briefcase, AlertTriangle } from "lucide-react";
+import { ArrowLeft, Building2, MapPin, Phone, Mail, Hash, Briefcase, AlertTriangle, Users, Calendar, DollarSign, RefreshCw, Search, ChevronsUpDown, ChevronUp, ChevronDown } from "lucide-react";
 
 const Chart = dynamic(() => import("react-apexcharts"), { ssr: false });
 
@@ -29,6 +30,18 @@ interface Resumo {
   ultimo_empenho: string | null;
 }
 
+interface QsaItem {
+  nome: string | null;
+  qualificacao: string | null;
+  cpf_socio?: string | null;
+  cpf_representante?: string | null;
+}
+
+interface CnaeItem {
+  codigo: string | null;
+  descricao: string | null;
+}
+
 interface Cadastro {
   tipo_documento: string | null;
   nome_original: string | null;
@@ -45,6 +58,11 @@ interface Cadastro {
   cep: string | null;
   telefone: string | null;
   email: string | null;
+  capital_social: string | null;
+  porte: string | null;
+  data_abertura: string | null;
+  cnaes_secundarios: CnaeItem[] | null;
+  qsa: QsaItem[] | null;
   data_consulta: string | null;
   status_consulta: string | null;
 }
@@ -158,11 +176,48 @@ function tipoBadge(tipo: string | null) {
 
 // --- Componente principal ---
 
+// Variável de módulo: definida de forma síncrona antes da navegação,
+// lida no useEffect após remount. Evita race conditions do sessionStorage/router cache.
+let _pendingFrom: string | null = null;
+
 export default function CredorDespesaDetalheClient({ cpfCnpj }: { cpfCnpj: string }) {
+  const router = useRouter();
+  const [voltarPara, setVoltarPara] = useState("/painel-despesa");
+
+  useEffect(() => {
+    if (_pendingFrom !== null) {
+      setVoltarPara(_pendingFrom);
+      _pendingFrom = null;
+    } else {
+      const fromUrl = new URLSearchParams(window.location.search).get("from");
+      setVoltarPara(fromUrl ?? "/painel-despesa");
+    }
+  }, [cpfCnpj]);
   const [data, setData] = useState<CredorData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [historicoExpandido, setHistoricoExpandido] = useState<Set<string>>(new Set());
+  const [abaCadastral, setAbaCadastral] = useState<"geral" | "endereco" | "atividades" | "socios">("geral");
+  const [revalidando, setRevalidando] = useState(false);
+  const [revalidacaoMsg, setRevalidacaoMsg] = useState<{ tipo: "ok" | "erro"; texto: string } | null>(null);
+
+  async function handleRevalidar() {
+    setRevalidando(true);
+    setRevalidacaoMsg(null);
+    try {
+      const resp = await fetch(`/api/despesa/credor/${cpfCnpj}/revalidar`, { method: "POST" });
+      const json = await resp.json() as { ok?: boolean; fonte?: string; error?: string };
+      if (!resp.ok) throw new Error(json.error ?? "Erro desconhecido");
+      setRevalidacaoMsg({ tipo: "ok", texto: `Dados atualizados via ${json.fonte}.` });
+      // Recarrega os dados do credor
+      const r2 = await fetch(`/api/despesa/credor/${cpfCnpj}`);
+      if (r2.ok) setData(await r2.json());
+    } catch (e) {
+      setRevalidacaoMsg({ tipo: "erro", texto: e instanceof Error ? e.message : "Falha na revalidação." });
+    } finally {
+      setRevalidando(false);
+    }
+  }
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -251,9 +306,9 @@ export default function CredorDespesaDetalheClient({ cpfCnpj }: { cpfCnpj: strin
   if (error) {
     return (
       <div className="m-6 space-y-4">
-        <Link href="/painel-despesa" className="inline-flex items-center gap-1.5 text-sm text-teal-600 hover:underline dark:text-teal-400">
-          <ArrowLeft className="h-4 w-4" /> Voltar para Despesa Pública
-        </Link>
+        <button type="button" onClick={() => router.push(voltarPara)} className="inline-flex items-center gap-1.5 text-sm text-teal-600 hover:underline dark:text-teal-400">
+          <ArrowLeft className="h-4 w-4" /> Voltar
+        </button>
         <div className="rounded-xl border border-red-200 bg-red-50 p-5 text-sm text-red-700 dark:border-red-800 dark:bg-red-950/30 dark:text-red-300">
           <div className="flex items-center gap-2">
             <AlertTriangle className="h-4 w-4" />
@@ -271,7 +326,8 @@ export default function CredorDespesaDetalheClient({ cpfCnpj }: { cpfCnpj: strin
   const nomeExibido = resumo.nome_exibicao || docFormatado;
   const temCadastro = !!cadastro && (
     cadastro.situacao_cadastral || cadastro.natureza_juridica || cadastro.cnae_principal ||
-    cadastro.municipio || cadastro.endereco || cadastro.telefone || cadastro.email
+    cadastro.municipio || cadastro.endereco || cadastro.telefone || cadastro.email ||
+    cadastro.capital_social || cadastro.porte || cadastro.data_abertura
   );
 
   return (
@@ -279,9 +335,13 @@ export default function CredorDespesaDetalheClient({ cpfCnpj }: { cpfCnpj: strin
 
       {/* Volta */}
       <div>
-        <Link href="/painel-despesa" className="inline-flex items-center gap-1.5 text-sm text-teal-600 hover:underline dark:text-teal-400">
-          <ArrowLeft className="h-4 w-4" /> Voltar para Despesa Pública
-        </Link>
+        <button
+          type="button"
+          onClick={() => router.push(voltarPara)}
+          className="inline-flex items-center gap-1.5 text-sm text-teal-600 hover:underline dark:text-teal-400"
+        >
+          <ArrowLeft className="h-4 w-4" /> Voltar
+        </button>
       </div>
 
       {/* Cabeçalho do credor */}
@@ -311,47 +371,155 @@ export default function CredorDespesaDetalheClient({ cpfCnpj }: { cpfCnpj: strin
               </p>
             )}
           </div>
-          {resumo.status_consulta && (
-            <span className="shrink-0 rounded-full border border-slate-200 bg-slate-100 px-2.5 py-0.5 text-xs text-slate-500 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-400">
-              {resumo.status_consulta}
-            </span>
+
+          {/* Botão de revalidação — apenas CNPJ */}
+          {resumo.tipo_documento === "CNPJ" && (
+            <div className="flex shrink-0 flex-col items-end gap-2">
+              <button
+                type="button"
+                onClick={handleRevalidar}
+                disabled={revalidando}
+                className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 shadow-sm transition hover:border-teal-400 hover:text-teal-600 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300 dark:hover:border-teal-500 dark:hover:text-teal-400"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${revalidando ? "animate-spin" : ""}`} />
+                {revalidando ? "Consultando..." : "Revalidar dados"}
+              </button>
+              {revalidacaoMsg && (
+                <span className={`text-xs ${revalidacaoMsg.tipo === "ok" ? "text-teal-600 dark:text-teal-400" : "text-red-500 dark:text-red-400"}`}>
+                  {revalidacaoMsg.texto}
+                </span>
+              )}
+            </div>
           )}
         </div>
       </div>
 
-      {/* Dados cadastrais */}
-      {temCadastro && (
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-800">
-          <h2 className="mb-3 text-sm font-semibold text-slate-700 dark:text-slate-200">Dados Cadastrais</h2>
-          <dl className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
-            {cadastro?.situacao_cadastral && (
-              <CadastroItem icon={<Hash className="h-3.5 w-3.5" />} label="Situação Cadastral" value={cadastro.situacao_cadastral} />
-            )}
-            {cadastro?.natureza_juridica && (
-              <CadastroItem icon={<Briefcase className="h-3.5 w-3.5" />} label="Natureza Jurídica" value={cadastro.natureza_juridica} />
-            )}
-            {cadastro?.cnae_principal && (
-              <CadastroItem icon={<Building2 className="h-3.5 w-3.5" />} label="CNAE Principal" value={cadastro.cnae_principal} />
-            )}
-            {(cadastro?.municipio || cadastro?.uf) && (
-              <CadastroItem
-                icon={<MapPin className="h-3.5 w-3.5" />}
-                label="Município/UF"
-                value={[cadastro.municipio, cadastro.uf].filter(Boolean).join(" / ")}
-              />
-            )}
-            {cadastro?.endereco && (
-              <CadastroItem icon={<MapPin className="h-3.5 w-3.5" />} label="Endereço" value={[cadastro.endereco, cadastro.bairro, cadastro.cep].filter(Boolean).join(", ")} />
-            )}
-            {cadastro?.telefone && (
-              <CadastroItem icon={<Phone className="h-3.5 w-3.5" />} label="Telefone" value={cadastro.telefone} />
-            )}
-            {cadastro?.email && (
-              <CadastroItem icon={<Mail className="h-3.5 w-3.5" />} label="E-mail" value={cadastro.email} />
-            )}
-          </dl>
-        </div>
-      )}
+      {/* Dados cadastrais em abas */}
+      {temCadastro && cadastro && (() => {
+        const temAtividades = !!(cadastro.cnae_principal || (cadastro.cnaes_secundarios && cadastro.cnaes_secundarios.length > 0));
+        const temSocios     = !!(cadastro.qsa && cadastro.qsa.length > 0);
+        const temEndereco   = !!(cadastro.municipio || cadastro.uf || cadastro.endereco || cadastro.telefone || cadastro.email);
+
+        type Aba = "geral" | "endereco" | "atividades" | "socios";
+        const abas: { id: Aba; label: string; icone: React.ReactNode; visivel: boolean }[] = [
+          { id: "geral",       label: "Cadastral",          icone: <Hash className="h-3.5 w-3.5" />,     visivel: true },
+          { id: "endereco",    label: "Endereço & Contato", icone: <MapPin className="h-3.5 w-3.5" />,   visivel: temEndereco },
+          { id: "atividades",  label: "Atividades",         icone: <Building2 className="h-3.5 w-3.5" />, visivel: temAtividades },
+          { id: "socios",      label: `Sócios${temSocios ? ` (${cadastro.qsa!.length})` : ""}`, icone: <Users className="h-3.5 w-3.5" />, visivel: temSocios },
+        ].filter((a) => a.visivel);
+
+        const abaAtiva = abas.some((a) => a.id === abaCadastral) ? abaCadastral : abas[0]?.id ?? "geral";
+
+        return (
+          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-800">
+            <div className="border-b border-slate-100 px-5 pt-4 dark:border-slate-700">
+              <nav className="flex gap-0.5">
+                {abas.map((aba) => (
+                  <button
+                    key={aba.id}
+                    type="button"
+                    onClick={() => setAbaCadastral(aba.id)}
+                    className={`inline-flex items-center gap-1.5 border-b-2 px-3 py-2.5 text-xs font-semibold transition-colors ${
+                      abaAtiva === aba.id
+                        ? "border-teal-500 text-teal-600 dark:border-teal-400 dark:text-teal-400"
+                        : "border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+                    }`}
+                  >
+                    {aba.icone}
+                    {aba.label}
+                  </button>
+                ))}
+              </nav>
+            </div>
+
+            <div className="p-5">
+              {/* Aba: Cadastral */}
+              {abaAtiva === "geral" && (
+                <dl className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
+                  {cadastro.situacao_cadastral && (
+                    <CadastroItem icon={<Hash className="h-3.5 w-3.5" />} label="Situação Cadastral" value={cadastro.situacao_cadastral} />
+                  )}
+                  {cadastro.natureza_juridica && (
+                    <CadastroItem icon={<Briefcase className="h-3.5 w-3.5" />} label="Natureza Jurídica" value={cadastro.natureza_juridica} />
+                  )}
+                  {cadastro.porte && (
+                    <CadastroItem icon={<Building2 className="h-3.5 w-3.5" />} label="Porte" value={
+                      cadastro.porte === "ME"  ? "Microempresa (ME)"
+                      : cadastro.porte === "EPP" ? "Empresa de Pequeno Porte (EPP)"
+                      : cadastro.porte
+                    } />
+                  )}
+                  {cadastro.capital_social && (
+                    <CadastroItem icon={<DollarSign className="h-3.5 w-3.5" />} label="Capital Social" value={
+                      Number(cadastro.capital_social).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
+                    } />
+                  )}
+                  {cadastro.data_abertura && (
+                    <CadastroItem icon={<Calendar className="h-3.5 w-3.5" />} label="Data de Abertura" value={fmtData(cadastro.data_abertura)} />
+                  )}
+                  {!cadastro.situacao_cadastral && !cadastro.natureza_juridica && !cadastro.porte && !cadastro.capital_social && !cadastro.data_abertura && (
+                    <p className="col-span-full text-xs text-slate-400 dark:text-slate-500">Nenhum dado cadastral disponível.</p>
+                  )}
+                </dl>
+              )}
+
+              {/* Aba: Endereço & Contato */}
+              {abaAtiva === "endereco" && (
+                <dl className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
+                  {(cadastro.municipio || cadastro.uf) && (
+                    <CadastroItem
+                      icon={<MapPin className="h-3.5 w-3.5" />}
+                      label="Município/UF"
+                      value={[cadastro.municipio, cadastro.uf].filter(Boolean).join(" / ")}
+                    />
+                  )}
+                  {cadastro.endereco && (
+                    <CadastroItem icon={<MapPin className="h-3.5 w-3.5" />} label="Endereço" value={[cadastro.endereco, cadastro.bairro, cadastro.cep].filter(Boolean).join(", ")} />
+                  )}
+                  {cadastro.telefone && (
+                    <CadastroItem icon={<Phone className="h-3.5 w-3.5" />} label="Telefone" value={cadastro.telefone} />
+                  )}
+                  {cadastro.email && (
+                    <CadastroItem icon={<Mail className="h-3.5 w-3.5" />} label="E-mail" value={cadastro.email} />
+                  )}
+                </dl>
+              )}
+
+              {/* Aba: Atividades */}
+              {abaAtiva === "atividades" && (
+                <AbaAtividades
+                  cnae_principal={cadastro.cnae_principal}
+                  cnaes_secundarios={cadastro.cnaes_secundarios ?? []}
+                />
+              )}
+
+              {/* Aba: Sócios (QSA) */}
+              {abaAtiva === "socios" && cadastro.qsa && (
+                <div className="overflow-hidden rounded-xl border border-slate-100 dark:border-slate-700">
+                  <table className="w-full text-sm">
+                    <thead className="bg-slate-50 text-slate-500 dark:bg-slate-900/60 dark:text-slate-400">
+                      <tr>
+                        <th className="px-3 py-2.5 text-left font-semibold">Nome</th>
+                        <th className="px-3 py-2.5 text-left font-semibold">CPF/CNPJ</th>
+                        <th className="px-3 py-2.5 text-left font-semibold">Qualificação</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {cadastro.qsa.map((s, i) => (
+                        <tr key={i} className={`border-t border-slate-100 dark:border-slate-700/50 ${i % 2 !== 0 ? "bg-slate-50/50 dark:bg-slate-800/30" : ""}`}>
+                          <td className="px-3 py-2.5 font-medium text-slate-700 dark:text-slate-200">{s.nome ?? "—"}</td>
+                          <td className="whitespace-nowrap px-3 py-2.5 font-mono text-xs text-slate-500 dark:text-slate-400">{s.cpf_socio ?? "—"}</td>
+                          <td className="px-3 py-2.5 text-slate-500 dark:text-slate-400">{s.qualificacao ?? "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Cards financeiros */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
@@ -439,7 +607,7 @@ export default function CredorDespesaDetalheClient({ cpfCnpj }: { cpfCnpj: strin
                       <td className="max-w-[140px] truncate px-3 py-2 text-xs text-slate-600 dark:text-slate-300" title={emp.nome_entidade ?? ""}>
                         {emp.nome_entidade || `Entidade ${emp.id_entidade}`}
                       </td>
-                      <td className="max-w-[240px] px-3 py-2 text-xs text-slate-500 dark:text-slate-400">
+                      <td className="max-w-60 px-3 py-2 text-xs text-slate-500 dark:text-slate-400">
                         {histExibido}
                         {hist.length > 80 && (
                           <button
@@ -467,6 +635,108 @@ export default function CredorDespesaDetalheClient({ cpfCnpj }: { cpfCnpj: strin
 }
 
 // --- Sub-componentes ---
+
+type CnaeSortKey = "codigo" | "descricao";
+
+function AbaAtividades({ cnae_principal, cnaes_secundarios }: {
+  cnae_principal: string | null;
+  cnaes_secundarios: { codigo: string | null; descricao: string | null }[];
+}) {
+  const [busca,    setBusca]    = useState("");
+  const [sortKey,  setSortKey]  = useState<CnaeSortKey>("codigo");
+  const [sortDir,  setSortDir]  = useState<"asc" | "desc">("asc");
+
+  function handleSort(key: CnaeSortKey) {
+    if (key === sortKey) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    else { setSortKey(key); setSortDir("asc"); }
+  }
+
+  const filtrados = cnaes_secundarios
+    .filter((c) => {
+      if (!busca) return true;
+      const q = busca.toLowerCase();
+      return (c.codigo ?? "").toLowerCase().includes(q) || (c.descricao ?? "").toLowerCase().includes(q);
+    })
+    .sort((a, b) => {
+      const va = (sortKey === "codigo" ? a.codigo : a.descricao) ?? "";
+      const vb = (sortKey === "codigo" ? b.codigo : b.descricao) ?? "";
+      return sortDir === "asc" ? va.localeCompare(vb) : vb.localeCompare(va);
+    });
+
+  function SortIcon({ col }: { col: CnaeSortKey }) {
+    if (col !== sortKey) return <ChevronsUpDown className="ml-1 inline h-3 w-3 text-slate-300 dark:text-slate-600" />;
+    return sortDir === "asc"
+      ? <ChevronUp   className="ml-1 inline h-3 w-3 text-teal-500" />
+      : <ChevronDown className="ml-1 inline h-3 w-3 text-teal-500" />;
+  }
+
+  return (
+    <div className="space-y-3">
+      {/* CNAE principal */}
+      {cnae_principal && (
+        <div className="rounded-lg border border-teal-100 bg-teal-50 px-3 py-2.5 dark:border-teal-900/40 dark:bg-teal-900/20">
+          <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-wide text-teal-600 dark:text-teal-400">CNAE Principal</p>
+          <p className="text-sm text-slate-700 dark:text-slate-200">{cnae_principal}</p>
+        </div>
+      )}
+
+      {/* Tabela de secundários */}
+      {cnaes_secundarios.length > 0 && (
+        <div>
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+              CNAEs Secundários
+              {busca && filtrados.length !== cnaes_secundarios.length
+                ? ` — ${filtrados.length} de ${cnaes_secundarios.length}`
+                : ` (${cnaes_secundarios.length})`}
+            </p>
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                value={busca}
+                onChange={(e) => setBusca(e.target.value)}
+                placeholder="Buscar código ou atividade..."
+                className="w-56 rounded-lg border border-slate-200 bg-slate-50 py-1.5 pl-8 pr-3 text-xs text-slate-700 placeholder-slate-400 outline-none focus:border-teal-400 focus:ring-2 focus:ring-teal-100 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200 dark:placeholder-slate-500"
+              />
+            </div>
+          </div>
+
+          <div className="max-h-56 overflow-auto rounded-xl border border-slate-100 dark:border-slate-700">
+            <table className="w-full text-xs">
+              <thead className="sticky top-0 bg-slate-50 text-slate-500 dark:bg-slate-900/80 dark:text-slate-400">
+                <tr>
+                  <th className="w-28 px-3 py-2 text-left">
+                    <button type="button" onClick={() => handleSort("codigo")} className="inline-flex items-center font-semibold hover:text-teal-600 dark:hover:text-teal-400">
+                      Código <SortIcon col="codigo" />
+                    </button>
+                  </th>
+                  <th className="px-3 py-2 text-left">
+                    <button type="button" onClick={() => handleSort("descricao")} className="inline-flex items-center font-semibold hover:text-teal-600 dark:hover:text-teal-400">
+                      Atividade <SortIcon col="descricao" />
+                    </button>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtrados.length === 0 ? (
+                  <tr><td colSpan={2} className="px-3 py-4 text-center text-slate-400">Nenhuma atividade encontrada.</td></tr>
+                ) : filtrados.map((c, i) => (
+                  <tr key={i} className={`border-t border-slate-100 dark:border-slate-700/50 ${i % 2 !== 0 ? "bg-slate-50/50 dark:bg-slate-800/30" : ""}`}>
+                    <td className="whitespace-nowrap px-3 py-2">
+                      <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] dark:bg-slate-700">{c.codigo ?? "—"}</span>
+                    </td>
+                    <td className="px-3 py-2 text-slate-600 dark:text-slate-300">{c.descricao ?? "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function CadastroItem({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return (

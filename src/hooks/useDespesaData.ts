@@ -69,7 +69,7 @@ export type AlertaRow = {
   id_entidade: number;
   tipo_alerta: string;
   descricao: string;
-  cpf_cnpj_credor: string | null;
+  detalhe_json: Record<string, unknown> | null;
   valor_principal: number;
 };
 

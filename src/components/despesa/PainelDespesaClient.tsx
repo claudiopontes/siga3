@@ -548,7 +548,7 @@ export default function PainelDespesaClient() {
               <ul className="space-y-1.5">
                 {alertasCredoresConcentracao.map((alerta, i) => (
                   <li key={`alerta-credor-${i}`} className="flex items-center justify-between rounded-lg border border-amber-200 bg-white px-3 py-2 text-xs dark:border-amber-900/40 dark:bg-slate-800">
-                    <span className="truncate pr-2 font-medium text-slate-700 dark:text-slate-200" title={alerta.cpf_cnpj_credor ?? ""}>{alerta.descricao}</span>
+                    <span className="truncate pr-2 font-medium text-slate-700 dark:text-slate-200">{alerta.descricao}</span>
                     <span className="shrink-0 font-semibold text-slate-600 dark:text-slate-300">{fmtPct(alerta.pct)}</span>
                   </li>
                 ))}
