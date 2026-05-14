@@ -10,6 +10,10 @@ import {
 } from "lucide-react";
 
 const Chart = dynamic(() => import("react-apexcharts"), { ssr: false });
+const MapaSocialContent = dynamic(
+  () => import("@/components/social/MapaSocialContent"),
+  { ssr: false }
+);
 
 // ---------------------------------------------------------------------------
 // Tipos
@@ -65,6 +69,7 @@ interface Totais {
   var_mensal_bf_qty: number | null;
   var_mensal_bf_qty_pct: number | null;
   var_mensal_bpc_qty: number | null;
+  var_mensal_bpc_qty_pct: number | null;
   media_var_anual_bf_qty_pct: number | null;
   media_var_anual_bpc_qty_pct: number | null;
 }
@@ -109,6 +114,19 @@ interface AlertaRow {
   var_anual_pct: number | null;
   descricao: string;
   justificativa: string;
+}
+
+interface MapaRow {
+  codigo_ibge_municipio: string;
+  nome_municipio:        string;
+  cobertura_por_1000:    number;
+  bf_por_1000:           number;
+  bpc_por_1000:          number;
+  bf_familias:           number;
+  bpc_beneficiarios:     number;
+  populacao_estimada:    number;
+  meses_com_dados:       number;
+  periodo:               { inicio: string; fim: string };
 }
 
 interface DetalheModal {
@@ -599,6 +617,8 @@ export default function TransferenciaRendaClient() {
   const [tabGrafico,      setTabGrafico]      = useState<TabGrafico>("bf");
   const [modalMun,        setModalMun]        = useState<DetalheModal | null>(null);
   const [carregandoModal, setCarregandoModal] = useState(false);
+  const [dadosMapa,       setDadosMapa]       = useState<Record<string, MapaRow>>({});
+  const [carregandoMapa,  setCarregandoMapa]  = useState(false);
 
   const carregarDados = useCallback(async () => {
     setCarregando(true);
@@ -641,6 +661,28 @@ export default function TransferenciaRendaClient() {
   useEffect(() => {
     if (isSingleMun && tabGrafico === "ranking") setTabGrafico("bf");
   }, [isSingleMun, tabGrafico]);
+
+  // Carrega dados do mapa conforme o período do filtro
+  useEffect(() => {
+    let cancelado = false;
+    setCarregandoMapa(true);
+    const params = new URLSearchParams();
+    params.set("compInicio", filtroCompInicio);
+    if (filtroCompFim) params.set("compFim", filtroCompFim);
+    fetch(`/api/social/mis/mapa?${params}`)
+      .then((r) => r.json())
+      .then((d: MapaRow[]) => {
+        if (cancelado) return;
+        if (Array.isArray(d)) {
+          const idx: Record<string, MapaRow> = {};
+          d.forEach((row) => { idx[row.codigo_ibge_municipio] = row; });
+          setDadosMapa(idx);
+        }
+      })
+      .catch(() => { /* silencioso */ })
+      .finally(() => { if (!cancelado) setCarregandoMapa(false); });
+    return () => { cancelado = true; };
+  }, [filtroCompInicio, filtroCompFim]);
 
   useEffect(() => {
     if (!resumo?.competencia) return;
@@ -706,7 +748,7 @@ export default function TransferenciaRendaClient() {
     : (t?.media_var_anual_bf_qty_pct ?? null);
   const varMensalBPC = isSingleMun
     ? (resumo?.municipios?.[0]?.var_mensal_bpc_qty_pct ?? null)
-    : null;
+    : (t?.var_mensal_bpc_qty_pct ?? null);
   const varAnualBPC  = isSingleMun
     ? (resumo?.municipios?.[0]?.var_anual_bpc_qty_pct  ?? null)
     : (t?.media_var_anual_bpc_qty_pct ?? null);
@@ -855,6 +897,37 @@ export default function TransferenciaRendaClient() {
               }
             />
 
+          </div>
+        )}
+
+        {/* Mapa de cobertura social */}
+        {!isSingleMun && (
+          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-800">
+            <div className="flex items-center gap-2 border-b border-slate-100 px-5 py-4 dark:border-slate-700">
+              <Activity className="h-4 w-4 shrink-0 text-teal-600 dark:text-teal-400" />
+              <div className="min-w-0">
+                <h2 className="text-sm font-semibold text-slate-800 dark:text-white">
+                  Bolsa Família por município
+                </h2>
+                <p className="text-xs text-slate-400 dark:text-slate-500">
+                  Famílias BF por 1.000 habitantes · último mês do período selecionado
+                </p>
+              </div>
+            </div>
+            <div className="relative h-[480px] w-full overflow-hidden rounded-b-2xl">
+              {carregandoMapa ? (
+                <div className="flex h-full items-center justify-center gap-3 text-sm text-slate-500 dark:text-slate-400">
+                  <div className="h-5 w-5 animate-spin rounded-full border-2 border-teal-200 border-t-teal-600" />
+                  Carregando mapa...
+                </div>
+              ) : Object.keys(dadosMapa).length === 0 ? (
+                <div className="flex h-full items-center justify-center text-sm text-slate-400 dark:text-slate-500">
+                  Sem dados de cobertura para o período selecionado.
+                </div>
+              ) : (
+                <MapaSocialContent dados={dadosMapa} />
+              )}
+            </div>
           </div>
         )}
 

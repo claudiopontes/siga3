@@ -136,9 +136,17 @@ export async function GET(req: NextRequest) {
       ? comVarAnual.reduce((s, r) => s + Number(r.var_anual_bf_qty_pct ?? 0), 0) / comVarAnual.length
       : null;
 
-    const comVarMensalBPC = cardRows.filter((r) => r.var_mensal_bpc_qty_pct !== null);
+    const comVarMensalBPC = cardRows.filter((r) => r.var_mensal_bpc_qty !== null);
     const varMensalBPCQty = comVarMensalBPC.length > 0
       ? comVarMensalBPC.reduce((s, r) => s + Number(r.var_mensal_bpc_qty ?? 0), 0)
+      : null;
+    const varMensalBPCPct = varMensalBPCQty !== null && totais.bpc_quantidade_total > 0
+      ? (() => {
+          const qtdAnterior = totais.bpc_quantidade_total - varMensalBPCQty;
+          return qtdAnterior > 0
+            ? Math.round((varMensalBPCQty / qtdAnterior) * 1000) / 10
+            : null;
+        })()
       : null;
 
     const comVarAnualBPC = cardRows.filter((r) => r.var_anual_bpc_qty_pct !== null);
@@ -162,6 +170,7 @@ export async function GET(req: NextRequest) {
         var_mensal_bf_qty: varMensalBFQty,
         var_mensal_bf_qty_pct: varMensalBFPct,
         var_mensal_bpc_qty: varMensalBPCQty,
+        var_mensal_bpc_qty_pct: varMensalBPCPct,
         media_var_anual_bf_qty_pct: mediaVarAnualBF,
         media_var_anual_bpc_qty_pct: mediaVarAnualBPC,
       },
