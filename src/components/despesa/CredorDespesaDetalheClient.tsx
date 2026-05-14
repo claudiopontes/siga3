@@ -411,12 +411,13 @@ export default function CredorDespesaDetalheClient({ cpfCnpj }: { cpfCnpj: strin
         const temEndereco   = !!(cadastro.municipio || cadastro.uf || cadastro.endereco || cadastro.telefone || cadastro.email);
 
         type Aba = "geral" | "endereco" | "atividades" | "socios";
-        const abas: { id: Aba; label: string; icone: React.ReactNode; visivel: boolean }[] = [
-          { id: "geral",       label: "Cadastral",          icone: <Hash className="h-3.5 w-3.5" />,     visivel: true },
-          { id: "endereco",    label: "Endereço & Contato", icone: <MapPin className="h-3.5 w-3.5" />,   visivel: temEndereco },
+        const todasAbas: { id: Aba; label: string; icone: React.ReactNode; visivel: boolean }[] = [
+          { id: "geral",       label: "Cadastral",          icone: <Hash className="h-3.5 w-3.5" />,      visivel: true },
+          { id: "endereco",    label: "Endereço & Contato", icone: <MapPin className="h-3.5 w-3.5" />,    visivel: temEndereco },
           { id: "atividades",  label: "Atividades",         icone: <Building2 className="h-3.5 w-3.5" />, visivel: temAtividades },
           { id: "socios",      label: `Sócios${temSocios ? ` (${cadastro.qsa!.length})` : ""}`, icone: <Users className="h-3.5 w-3.5" />, visivel: temSocios },
-        ].filter((a) => a.visivel);
+        ];
+        const abas = todasAbas.filter((a) => a.visivel);
 
         const abaAtiva = abas.some((a) => a.id === abaCadastral) ? abaCadastral : abas[0]?.id ?? "geral";
 

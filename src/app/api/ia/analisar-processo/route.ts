@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { chamarAzureOpenAI } from "@/lib/ia/azureOpenAI";
 
 export const runtime = "nodejs";
 
@@ -39,18 +40,6 @@ function montarPrompt(dados: DadosProcesso): string {
 }
 
 export async function POST(req: NextRequest) {
-  const endpoint = process.env.AZURE_OPENAI_ENDPOINT;
-  const apiKey = process.env.AZURE_OPENAI_KEY;
-  const deployment = process.env.AZURE_OPENAI_DEPLOYMENT;
-  const apiVersion = process.env.AZURE_OPENAI_API_VERSION;
-
-  if (!endpoint || !apiKey || !deployment || !apiVersion) {
-    return NextResponse.json(
-      { error: "Variáveis de ambiente do Azure OpenAI não configuradas." },
-      { status: 500 }
-    );
-  }
-
   let dados: DadosProcesso;
   try {
     dados = await req.json();
@@ -81,50 +70,22 @@ Responda APENAS em JSON válido, sem texto fora do JSON, seguindo exatamente a e
 
   const userPrompt = `Analise o seguinte processo que está sob acompanhamento do gabinete do conselheiro:\n\n${montarPrompt(dados)}`;
 
-  const url = `${endpoint.replace(/\/$/, "")}/openai/deployments/${deployment}/chat/completions?api-version=${apiVersion}`;
-
   try {
-    const resposta = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "api-key": apiKey,
-      },
-      body: JSON.stringify({
-        response_format: { type: "json_object" },
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ],
-        max_completion_tokens: 16384,
-        temperature: 0.3,
-      }),
+    const conteudo = await chamarAzureOpenAI({
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+      temperature: 0.3,
+      maxCompletionTokens: 16384,
+      jsonMode: true,
     });
-
-    if (!resposta.ok) {
-      const erro = await resposta.text();
-      console.error("[api/ia/analisar-processo] erro OpenAI:", erro);
-      return NextResponse.json(
-        { error: "Erro ao chamar a OpenAI API." },
-        { status: 502 }
-      );
-    }
-
-    const json = await resposta.json();
-    const conteudo = json?.choices?.[0]?.message?.content;
-
-    if (!conteudo) {
-      return NextResponse.json(
-        { error: "Resposta vazia da OpenAI." },
-        { status: 502 }
-      );
-    }
 
     const analise = JSON.parse(conteudo);
     return NextResponse.json(analise);
   } catch (err) {
-    console.error("[api/ia/analisar-processo]", err);
+    console.error("[api/ia/analisar-processo]", err instanceof Error ? err.message : err);
     const msg = err instanceof Error ? err.message : String(err);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return NextResponse.json({ error: msg }, { status: 502 });
   }
 }
