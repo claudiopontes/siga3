@@ -39,7 +39,7 @@ const baseNavItems: NavItem[] = [
   },
   {
     icon: <ClipboardList className="h-5 w-5" />,
-    name: "Pautas",
+    name: "eProcessos CE",
     subItems: [
       { name: "Pautas para Julgamento", path: "/pautas-julgamento" },
     ],
