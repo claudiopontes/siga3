@@ -46,6 +46,7 @@ interface Cadastro {
   tipo_documento: string | null;
   nome_original: string | null;
   nome_enriquecido: string | null;
+  nome_fantasia: string | null;
   nome_exibicao: string | null;
   fonte_enriquecimento: string | null;
   situacao_cadastral: string | null;
@@ -54,13 +55,22 @@ interface Cadastro {
   municipio: string | null;
   uf: string | null;
   endereco: string | null;
+  complemento: string | null;
   bairro: string | null;
   cep: string | null;
   telefone: string | null;
+  telefone_2: string | null;
   email: string | null;
   capital_social: string | null;
   porte: string | null;
   data_abertura: string | null;
+  opcao_simples: boolean | null;
+  opcao_mei: boolean | null;
+  data_opcao_simples: string | null;
+  data_exclusao_simples: string | null;
+  motivo_situacao: string | null;
+  situacao_especial: string | null;
+  data_situacao_especial: string | null;
   cnaes_secundarios: CnaeItem[] | null;
   qsa: QsaItem[] | null;
   data_consulta: string | null;
@@ -436,8 +446,21 @@ export default function CredorDespesaDetalheClient({ cpfCnpj }: { cpfCnpj: strin
               {/* Aba: Cadastral */}
               {abaAtiva === "geral" && (
                 <dl className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
+                  {cadastro.nome_fantasia && (
+                    <CadastroItem icon={<Building2 className="h-3.5 w-3.5" />} label="Nome Fantasia" value={cadastro.nome_fantasia} />
+                  )}
                   {cadastro.situacao_cadastral && (
                     <CadastroItem icon={<Hash className="h-3.5 w-3.5" />} label="Situação Cadastral" value={cadastro.situacao_cadastral} />
+                  )}
+                  {cadastro.motivo_situacao && (
+                    <CadastroItem icon={<AlertTriangle className="h-3.5 w-3.5" />} label="Motivo da Situação" value={cadastro.motivo_situacao} />
+                  )}
+                  {cadastro.situacao_especial && (
+                    <CadastroItem icon={<AlertTriangle className="h-3.5 w-3.5" />} label="Situação Especial" value={
+                      cadastro.data_situacao_especial
+                        ? `${cadastro.situacao_especial} (${fmtData(cadastro.data_situacao_especial)})`
+                        : cadastro.situacao_especial
+                    } />
                   )}
                   {cadastro.natureza_juridica && (
                     <CadastroItem icon={<Briefcase className="h-3.5 w-3.5" />} label="Natureza Jurídica" value={cadastro.natureza_juridica} />
@@ -457,7 +480,17 @@ export default function CredorDespesaDetalheClient({ cpfCnpj }: { cpfCnpj: strin
                   {cadastro.data_abertura && (
                     <CadastroItem icon={<Calendar className="h-3.5 w-3.5" />} label="Data de Abertura" value={fmtData(cadastro.data_abertura)} />
                   )}
-                  {!cadastro.situacao_cadastral && !cadastro.natureza_juridica && !cadastro.porte && !cadastro.capital_social && !cadastro.data_abertura && (
+                  {cadastro.opcao_simples !== null && (
+                    <CadastroItem icon={<Hash className="h-3.5 w-3.5" />} label="Simples Nacional" value={
+                      cadastro.opcao_simples
+                        ? `Optante${cadastro.data_opcao_simples ? ` desde ${fmtData(cadastro.data_opcao_simples)}` : ""}`
+                        : `Não optante${cadastro.data_exclusao_simples ? ` (excluído em ${fmtData(cadastro.data_exclusao_simples)})` : ""}`
+                    } />
+                  )}
+                  {cadastro.opcao_mei !== null && (
+                    <CadastroItem icon={<Hash className="h-3.5 w-3.5" />} label="MEI" value={cadastro.opcao_mei ? "Sim" : "Não"} />
+                  )}
+                  {!cadastro.nome_fantasia && !cadastro.situacao_cadastral && !cadastro.natureza_juridica && !cadastro.porte && !cadastro.capital_social && !cadastro.data_abertura && (
                     <p className="col-span-full text-xs text-slate-400 dark:text-slate-500">Nenhum dado cadastral disponível.</p>
                   )}
                 </dl>
@@ -473,11 +506,37 @@ export default function CredorDespesaDetalheClient({ cpfCnpj }: { cpfCnpj: strin
                       value={[cadastro.municipio, cadastro.uf].filter(Boolean).join(" / ")}
                     />
                   )}
-                  {cadastro.endereco && (
-                    <CadastroItem icon={<MapPin className="h-3.5 w-3.5" />} label="Endereço" value={[cadastro.endereco, cadastro.bairro, cadastro.cep].filter(Boolean).join(", ")} />
-                  )}
+                  {cadastro.endereco && (() => {
+                    const nomeBusca = cadastro.nome_fantasia || cadastro.nome_enriquecido || cadastro.nome_exibicao || cadastro.nome_original;
+                    const partes = [nomeBusca, cadastro.endereco, cadastro.complemento, cadastro.bairro, cadastro.municipio, cadastro.uf, cadastro.cep].filter(Boolean);
+                    const textoExibido = [cadastro.endereco, cadastro.complemento, cadastro.bairro, cadastro.cep].filter(Boolean).join(", ");
+                    const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(partes.join(", "))}`;
+                    return (
+                      <div className="flex flex-col gap-0.5">
+                        <dt className="flex items-center gap-1 text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                          <MapPin className="h-3.5 w-3.5" /> Endereço
+                        </dt>
+                        <dd className="flex items-center gap-2 text-slate-700 dark:text-slate-200">
+                          <span>{textoExibido}</span>
+                          <a
+                            href={mapsUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title="Ver no Google Maps"
+                            className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-2.5 py-1 text-xs font-semibold text-white shadow-sm hover:bg-blue-700 active:bg-blue-800 dark:bg-blue-500 dark:hover:bg-blue-600"
+                          >
+                            <MapPin className="h-3.5 w-3.5" />
+                            Ver no mapa
+                          </a>
+                        </dd>
+                      </div>
+                    );
+                  })()}
                   {cadastro.telefone && (
                     <CadastroItem icon={<Phone className="h-3.5 w-3.5" />} label="Telefone" value={cadastro.telefone} />
+                  )}
+                  {cadastro.telefone_2 && (
+                    <CadastroItem icon={<Phone className="h-3.5 w-3.5" />} label="Telefone 2" value={cadastro.telefone_2} />
                   )}
                   {cadastro.email && (
                     <CadastroItem icon={<Mail className="h-3.5 w-3.5" />} label="E-mail" value={cadastro.email} />

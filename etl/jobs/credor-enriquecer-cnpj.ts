@@ -52,13 +52,22 @@ interface CnpjDados {
   municipio?: unknown;
   uf?: unknown;
   logradouro?: unknown;
+  complemento?: unknown;
   bairro?: unknown;
   cep?: unknown;
   ddd_telefone_1?: unknown;
+  ddd_telefone_2?: unknown;
   email?: unknown;
   capital_social?: number | null;
   porte?: string | null;
   data_abertura?: string | null;
+  opcao_simples?: boolean | null;
+  opcao_mei?: boolean | null;
+  data_opcao_simples?: string | null;
+  data_exclusao_simples?: string | null;
+  motivo_situacao?: string | null;
+  situacao_especial?: string | null;
+  data_situacao_especial?: string | null;
   cnaes_secundarios?: CnaeItem[];
   qsa?: QsaItem[];
 }
@@ -110,24 +119,36 @@ async function consultarBrasilAPI(cnpj: string): Promise<CnpjDados> {
   const porteRaw = toStr(raw.porte)?.toUpperCase() ?? "";
   const porte = porteMap[porteRaw] ?? (porteRaw || null);
 
+  const toDate = (v: unknown) => toStr(v) || null;
+  const toBool = (v: unknown) => v === true || v === "Sim" || v === "S" ? true : v === false || v === "Não" || v === "N" ? false : null;
+
   return {
-    razao_social:          raw.razao_social,
-    nome_fantasia:         raw.nome_fantasia,
-    situacao_cadastral:    situacao,
-    natureza_juridica:     (raw.natureza_juridica as Record<string, unknown> | undefined)?.descricao ?? raw.natureza_juridica,
-    cnae_fiscal_descricao: raw.cnae_fiscal_descricao,
-    municipio:             raw.municipio,
-    uf:                    raw.uf,
-    logradouro:            raw.logradouro ? `${raw.logradouro}, ${raw.numero ?? ""}`.trim() : raw.logradouro,
-    bairro:                raw.bairro,
-    cep:                   raw.cep,
-    ddd_telefone_1:        raw.ddd_telefone_1,
-    email:                 raw.email,
-    capital_social:        typeof raw.capital_social === "number" ? raw.capital_social : null,
-    porte:                 porte,
-    data_abertura:         toStr(raw.data_inicio_atividade),
-    cnaes_secundarios:     cnaesSecundarios.length > 0 ? cnaesSecundarios : undefined,
-    qsa:                   qsa.length > 0 ? qsa : undefined,
+    razao_social:           raw.razao_social,
+    nome_fantasia:          raw.nome_fantasia,
+    situacao_cadastral:     situacao,
+    natureza_juridica:      (raw.natureza_juridica as Record<string, unknown> | undefined)?.descricao ?? raw.natureza_juridica,
+    cnae_fiscal_descricao:  raw.cnae_fiscal_descricao,
+    municipio:              raw.municipio,
+    uf:                     raw.uf,
+    logradouro:             raw.logradouro ? `${raw.logradouro}, ${raw.numero ?? ""}`.trim() : raw.logradouro,
+    complemento:            raw.complemento,
+    bairro:                 raw.bairro,
+    cep:                    raw.cep,
+    ddd_telefone_1:         raw.ddd_telefone_1,
+    ddd_telefone_2:         raw.ddd_telefone_2,
+    email:                  raw.email,
+    capital_social:         typeof raw.capital_social === "number" ? raw.capital_social : null,
+    porte:                  porte,
+    data_abertura:          toStr(raw.data_inicio_atividade),
+    opcao_simples:          toBool(raw.opcao_pelo_simples),
+    opcao_mei:              toBool(raw.opcao_pelo_mei),
+    data_opcao_simples:     toDate(raw.data_opcao_pelo_simples),
+    data_exclusao_simples:  toDate(raw.data_exclusao_do_simples),
+    motivo_situacao:        toStr(raw.descricao_motivo_situacao_cadastral),
+    situacao_especial:      toStr(raw.situacao_especial),
+    data_situacao_especial: toDate(raw.data_situacao_especial),
+    cnaes_secundarios:      cnaesSecundarios.length > 0 ? cnaesSecundarios : undefined,
+    qsa:                    qsa.length > 0 ? qsa : undefined,
   };
 }
 
@@ -155,23 +176,32 @@ async function consultarReceitaWS(cnpj: string): Promise<CnpjDados> {
   }));
 
   return {
-    razao_social:          data.nome as string,
-    nome_fantasia:         data.fantasia as string,
-    situacao_cadastral:    data.situacao as string,
-    natureza_juridica:     data.natureza_juridica as string,
-    cnae_fiscal_descricao: atividadePrincipal?.[0]?.text,
-    municipio:             data.municipio as string,
-    uf:                    data.uf as string,
-    logradouro:            data.logradouro as string,
-    bairro:                data.bairro as string,
-    cep:                   data.cep as string,
-    ddd_telefone_1:        data.telefone as string,
-    email:                 data.email as string,
-    capital_social:        data.capital_social ? Number(data.capital_social) : null,
-    porte:                 toStr(data.porte),
-    data_abertura:         toStr(data.abertura),
-    cnaes_secundarios:     cnaesSecundarios.length > 0 ? cnaesSecundarios : undefined,
-    qsa:                   qsa.length > 0 ? qsa : undefined,
+    razao_social:           data.nome as string,
+    nome_fantasia:          data.fantasia as string,
+    situacao_cadastral:     data.situacao as string,
+    natureza_juridica:      data.natureza_juridica as string,
+    cnae_fiscal_descricao:  atividadePrincipal?.[0]?.text,
+    municipio:              data.municipio as string,
+    uf:                     data.uf as string,
+    logradouro:             data.logradouro as string,
+    complemento:            data.complemento,
+    bairro:                 data.bairro as string,
+    cep:                    data.cep as string,
+    ddd_telefone_1:         data.telefone as string,
+    ddd_telefone_2:         null,
+    email:                  data.email as string,
+    capital_social:         data.capital_social ? Number(data.capital_social) : null,
+    porte:                  toStr(data.porte),
+    data_abertura:          toStr(data.abertura),
+    opcao_simples:          null,
+    opcao_mei:              null,
+    data_opcao_simples:     null,
+    data_exclusao_simples:  null,
+    motivo_situacao:        toStr(data.motivo_situacao),
+    situacao_especial:      toStr(data.situacao_especial),
+    data_situacao_especial: toStr(data.data_situacao_especial),
+    cnaes_secundarios:      cnaesSecundarios.length > 0 ? cnaesSecundarios : undefined,
+    qsa:                    qsa.length > 0 ? qsa : undefined,
   };
 }
 
@@ -220,28 +250,38 @@ export async function executarCredorEnriquecerCnpj(): Promise<void> {
       await withPgTransaction(async (client) => {
         await client.query(`
           UPDATE dw.dim_credor_enriquecido SET
-            nome_enriquecido     = NULLIF($1, ''),
-            nome_exibicao        = COALESCE(NULLIF($1, ''), nome_exibicao),
-            fonte_enriquecimento = $2,
-            situacao_cadastral   = $3,
-            natureza_juridica    = $4,
-            cnae_principal       = $5,
-            municipio            = $6,
-            uf                   = $7,
-            endereco             = $8,
-            bairro               = $9,
-            cep                  = $10,
-            telefone             = $11,
-            email                = $12,
-            capital_social       = $13,
-            porte                = $14,
-            data_abertura        = $15,
-            cnaes_secundarios    = $16,
-            qsa                  = $17,
-            data_consulta        = now(),
-            status_consulta      = 'ENRIQUECIDO',
-            erro_consulta        = NULL,
-            atualizado_em        = now()
+            nome_enriquecido        = NULLIF($1, ''),
+            nome_exibicao           = COALESCE(NULLIF($1, ''), nome_exibicao),
+            fonte_enriquecimento    = $2,
+            situacao_cadastral      = $3,
+            natureza_juridica       = $4,
+            cnae_principal          = $5,
+            municipio               = $6,
+            uf                      = $7,
+            endereco                = $8,
+            bairro                  = $9,
+            cep                     = $10,
+            telefone                = $11,
+            email                   = $12,
+            capital_social          = $13,
+            porte                   = $14,
+            data_abertura           = $15,
+            cnaes_secundarios       = $16,
+            qsa                     = $17,
+            nome_fantasia           = $19,
+            complemento             = $20,
+            telefone_2              = $21,
+            opcao_simples           = $22,
+            opcao_mei               = $23,
+            data_opcao_simples      = $24,
+            data_exclusao_simples   = $25,
+            motivo_situacao         = $26,
+            situacao_especial       = $27,
+            data_situacao_especial  = $28,
+            data_consulta           = now(),
+            status_consulta         = 'ENRIQUECIDO',
+            erro_consulta           = NULL,
+            atualizado_em           = now()
           WHERE cpf_cnpj = $18
         `, [
           nomeEnriquecido || null,
@@ -262,6 +302,16 @@ export async function executarCredorEnriquecerCnpj(): Promise<void> {
           dados.cnaes_secundarios ? JSON.stringify(dados.cnaes_secundarios) : null,
           dados.qsa ? JSON.stringify(dados.qsa) : null,
           cnpj,
+          toStr(dados.nome_fantasia),
+          toStr(dados.complemento),
+          toStr(dados.ddd_telefone_2),
+          dados.opcao_simples ?? null,
+          dados.opcao_mei ?? null,
+          dados.data_opcao_simples ?? null,
+          dados.data_exclusao_simples ?? null,
+          dados.motivo_situacao ?? null,
+          dados.situacao_especial ?? null,
+          dados.data_situacao_especial ?? null,
         ]);
 
         await client.query(`

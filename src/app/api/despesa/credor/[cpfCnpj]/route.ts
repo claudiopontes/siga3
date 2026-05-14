@@ -31,6 +31,7 @@ interface CadastroRow {
   tipo_documento: string | null;
   nome_original: string | null;
   nome_enriquecido: string | null;
+  nome_fantasia: string | null;
   nome_exibicao: string | null;
   fonte_enriquecimento: string | null;
   situacao_cadastral: string | null;
@@ -39,13 +40,22 @@ interface CadastroRow {
   municipio: string | null;
   uf: string | null;
   endereco: string | null;
+  complemento: string | null;
   bairro: string | null;
   cep: string | null;
   telefone: string | null;
+  telefone_2: string | null;
   email: string | null;
   capital_social: string | null;
   porte: string | null;
   data_abertura: string | null;
+  opcao_simples: boolean | null;
+  opcao_mei: boolean | null;
+  data_opcao_simples: string | null;
+  data_exclusao_simples: string | null;
+  motivo_situacao: string | null;
+  situacao_especial: string | null;
+  data_situacao_especial: string | null;
   cnaes_secundarios: unknown;
   qsa: unknown;
   data_consulta: string | null;
@@ -134,6 +144,7 @@ export async function GET(
             tipo_documento,
             nome_original,
             nome_enriquecido,
+            nome_fantasia,
             nome_exibicao,
             fonte_enriquecimento,
             situacao_cadastral,
@@ -142,13 +153,22 @@ export async function GET(
             municipio,
             uf,
             endereco,
+            complemento,
             bairro,
             cep,
             telefone,
+            telefone_2,
             email,
             capital_social::text,
             porte,
             data_abertura::text,
+            opcao_simples,
+            opcao_mei,
+            data_opcao_simples::text,
+            data_exclusao_simples::text,
+            motivo_situacao,
+            situacao_especial,
+            data_situacao_especial::text,
             cnaes_secundarios,
             qsa,
             data_consulta,
