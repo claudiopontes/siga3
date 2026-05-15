@@ -1,7 +1,7 @@
 import { escaparHtml } from "./renderizarAnaliseProcessoHtml";
 
 // Incrementar ao mudar layout ou colunas — invalida cache em ia_relatorio_resumo_pauta.
-export const VERSAO_TEMPLATE_RELATORIO_RESUMO_PAUTA = "1.1.0";
+export const VERSAO_TEMPLATE_RELATORIO_RESUMO_PAUTA = "1.3.0";
 
 export type LinhaRelatorioResumoPauta = {
   processo_id: string | number;
@@ -53,7 +53,14 @@ export function renderizarRelatorioResumoPautaHtml(
     </tr>`;
 
   const corpoTabela = linhas.length > 0
-    ? linhas.map((l) => l.html_linha_sucinta ?? `<tr><td colspan="9"><em>Linha não gerada — processo ${escaparHtml(l.numero_processo)}</em></td></tr>`).join("\n")
+    ? linhas.map((l, i) => {
+        const nr = escaparHtml(l.sequencia ?? i + 1);
+        const fallback = `<tr><td colspan="9"><em>Linha não gerada — processo ${escaparHtml(l.numero_processo)}</em></td></tr>`;
+        const html = l.html_linha_sucinta ?? fallback;
+        // Injeta o número de ordem na primeira <td> — o html_linha_sucinta é gerado sem
+        // conhecer a sequência da sessão, então o valor correto vem do contexto do relatório.
+        return html.replace(/^(<tr><td>)[^<]*(<\/td>)/, `$1${nr}$2`);
+      }).join("\n")
     : `<tr><td colspan="9"><em>Nenhum processo analisado.</em></td></tr>`;
 
   const secaoPendentes = pendentes.length > 0

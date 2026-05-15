@@ -4,12 +4,12 @@ import { classificarDocumentoProcesso } from "./classificarDocumentoProcesso";
 // Limite de caracteres de texto extraído por tipo antes de enviar à IA.
 // Reduz consumo de tokens sem perder os trechos mais relevantes.
 export const LIMITE_CHARS_POR_TIPO: Record<TipoDocumentoProcesso, number> = {
-  voto_relator:          8000,
-  relatorio_tecnico:     6000,
-  parecer_mpc:           5000,
-  defesa_manifestacao:   4000,
-  decisao_acordao:       3000,
-  outro:                 2000,
+  voto_relator:          9000,
+  relatorio_tecnico:     9000,
+  parecer_mpc:           8000,
+  defesa_manifestacao:   5000,
+  decisao_acordao:       4000,
+  outro:                 2500,
 };
 
 // Modo de seleção de documentos.

@@ -1,7 +1,9 @@
 import "dotenv/config";
 import { withPgTransaction, pgQuery, closePgPool } from "../connectors/postgres";
 
-async function main() {
+const MODULO = "mart_despesa";
+
+export async function executarMartDespesa(): Promise<void> {
   const inicio = Date.now();
   console.log("[mart-despesa] Iniciando refresh das tabelas mart...");
 
@@ -159,13 +161,17 @@ async function main() {
   const duracao = Date.now() - inicio;
   await pgQuery(
     `INSERT INTO audit.etl_log (modulo, status, mensagem, duracao_ms) VALUES ($1, $2, $3, $4)`,
-    ["mart_despesa", "ok", "Refresh das tabelas mart concluído", duracao]
+    [MODULO, "ok", "Refresh das tabelas mart concluído", duracao],
   );
   console.log(`[mart-despesa] Refresh concluído em ${duracao}ms.`);
-  await closePgPool();
 }
 
-main().catch((err) => {
-  console.error("[mart-despesa] Erro:", (err as Error).message);
-  process.exit(1);
-});
+// Execução direta: ts-node jobs/refresh-mart-despesa.ts
+if (require.main === module) {
+  executarMartDespesa()
+    .catch((err) => {
+      console.error("[mart-despesa] Erro:", (err as Error).message);
+      process.exit(1);
+    })
+    .finally(() => closePgPool());
+}

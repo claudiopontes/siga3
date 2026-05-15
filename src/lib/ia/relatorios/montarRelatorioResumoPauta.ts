@@ -31,6 +31,7 @@ interface ItemComAnalise {
   nome_orgao: string | null;
   nome_relator: string | null;
   nome_1_parte: string | null;
+  objeto_processo: string | null;
   analise_id: number | null;
   hash_contexto_analise: string | null;
   html_linha_sucinta: string | null;
@@ -95,6 +96,7 @@ export async function montarRelatorioResumoPauta(params: {
        pji.nome_orgao,
        pji.nome_relator,
        p.nome_1_parte,
+       p.objeto            AS objeto_processo,
        iap.id              AS analise_id,
        iap.hash_contexto   AS hash_contexto_analise,
        iap.html_linha_sucinta,
@@ -190,9 +192,10 @@ export async function montarRelatorioResumoPauta(params: {
         numero_fmt: item.numero_processo_fmt ?? null,
       };
       const contexto: ContextoLinhaPauta = {
-        entidade:    item.nome_orgao ?? null,
-        responsavel: item.nome_1_parte ?? null,
-        relator:     item.nome_relator ?? null,
+        entidade:         item.nome_orgao ?? null,
+        responsavel:      item.nome_1_parte ?? null,
+        relator:          item.nome_relator ?? null,
+        objeto_processo:  item.objeto_processo ?? null,
       };
       htmlLinha = renderizarLinhaRelatorioSucintoHtml(analise, item.sequencia, contexto);
       atualizarHtml.push({ id: item.analise_id, html: htmlLinha });

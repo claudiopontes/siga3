@@ -34,12 +34,15 @@ interface CacheRow {
   descartado: boolean;
 }
 
-function gerarHtml(analise: AnaliseProcessoPautaOutput): {
+function gerarHtml(
+  analise: AnaliseProcessoPautaOutput,
+  contexto?: import("./relatorios/renderizarAnaliseProcessoHtml").ContextoLinhaPauta,
+): {
   html_linha_sucinta: string;
   html_relatorio: string;
 } {
   return {
-    html_linha_sucinta: renderizarLinhaRelatorioSucintoHtml(analise),
+    html_linha_sucinta: renderizarLinhaRelatorioSucintoHtml(analise, undefined, contexto),
     html_relatorio: renderizarAnaliseProcessoCompletaHtml(analise),
   };
 }
@@ -166,7 +169,12 @@ export async function executarAnaliseProcessoPauta(
 
     // Regenera HTML se estiver ausente (compatibilidade com análises antigas)
     if (!cached.html_relatorio || !cached.html_linha_sucinta) {
-      const { html_linha_sucinta, html_relatorio } = gerarHtml(analise);
+      const { html_linha_sucinta, html_relatorio } = gerarHtml(analise, {
+        entidade:        processo.nome_orgao ?? null,
+        responsavel:     processo.nome_1_parte ?? null,
+        relator:         processo.nome_relator ?? null,
+        objeto_processo: processo.objeto ?? null,
+      });
       await dbQuery(
         `UPDATE public.ia_analise_processo_pauta
          SET html_linha_sucinta = $1, html_relatorio = $2, formato_html_versao = $3
@@ -243,7 +251,12 @@ export async function executarAnaliseProcessoPauta(
   };
 
   // 9. Gera HTML localmente a partir do JSON
-  const { html_linha_sucinta, html_relatorio } = gerarHtml(resultado);
+  const { html_linha_sucinta, html_relatorio } = gerarHtml(resultado, {
+    entidade:        processo.nome_orgao ?? null,
+    responsavel:     processo.nome_1_parte ?? null,
+    relator:         processo.nome_relator ?? null,
+    objeto_processo: processo.objeto ?? null,
+  });
   resultado.html_linha_sucinta = html_linha_sucinta;
   resultado.html_relatorio = html_relatorio;
   resultado.formato_html_versao = VERSAO_FORMATO_HTML_ANALISE_PROCESSO;

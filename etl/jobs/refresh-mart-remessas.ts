@@ -51,7 +51,7 @@ const EXPR_NOME_ENTE = `
 // Main
 // ---------------------------------------------------------------------------
 
-async function main(): Promise<void> {
+export async function executarMartRemessas(): Promise<void> {
   const inicio = Date.now();
   console.log(`[${new Date().toISOString()}] [mart-remessas] Iniciando refresh das tabelas mart...`);
 
@@ -204,10 +204,13 @@ async function main(): Promise<void> {
   console.log(`[mart-remessas] Refresh concluído em ${duracao}ms.`);
 }
 
-main()
-  .then(() => closePgPool())
-  .catch((err) => {
-    console.error("[mart-remessas] Erro:", (err as Error).message);
-    closePgPool().catch(() => void 0);
-    process.exit(1);
-  });
+// Execução direta: ts-node jobs/refresh-mart-remessas.ts
+if (require.main === module) {
+  executarMartRemessas()
+    .then(() => closePgPool())
+    .catch((err) => {
+      console.error("[mart-remessas] Erro:", (err as Error).message);
+      closePgPool().catch(() => void 0);
+      process.exit(1);
+    });
+}

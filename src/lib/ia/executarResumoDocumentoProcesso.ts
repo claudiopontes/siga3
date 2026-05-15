@@ -5,6 +5,7 @@ import { sha256 } from "./hash";
 import { extrairTextoPdf, ErroExtracaoPdf } from "@/lib/processos/documentos/extrairTextoPdf";
 import { LIMITE_CHARS_POR_TIPO } from "./documentos/selecionarDocumentosPrincipaisProcesso";
 import type { ArquivoSelecionado } from "./documentos/selecionarDocumentosPrincipaisProcesso";
+import { extrairTrechoRelevante } from "./documentos/extrairTrechoRelevante";
 import type { ResumoDocumentoOutput } from "./tipos";
 
 const PREFIXO_RESUMO_FALHA = "[FALHA NA EXTRAÇÃO";
@@ -50,7 +51,7 @@ export async function executarResumoDocumentoProcesso(
   }
 
   const limite = LIMITE_CHARS_POR_TIPO[arquivo.tipo_documento];
-  const texto = textoCompleto.slice(0, limite);
+  const texto = extrairTrechoRelevante(textoCompleto, arquivo.tipo_documento, limite);
   const hash = sha256(texto);
 
   // Verifica cache — ignora entradas antigas que indicam falha de extração

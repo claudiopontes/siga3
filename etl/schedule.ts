@@ -23,6 +23,8 @@ import { executarCredorEnriquecimentoPreparar } from "./jobs/credor-enriquecimen
 import { executarCredorEnriquecerInterno } from "./jobs/credor-enriquecer-interno";
 import { executarCredorEnriquecerCnpj } from "./jobs/credor-enriquecer-cnpj";
 import { executarMartCredorDespesa } from "./jobs/refresh-mart-credor-despesa";
+import { executarMartDespesa } from "./jobs/refresh-mart-despesa";
+import { executarMartRemessas } from "./jobs/refresh-mart-remessas";
 
 const TIMEZONE = process.env.ETL_TIMEZONE || "America/Rio_Branco";
 const FACT_ETL_CRON = process.env.FACT_ETL_CRON || "0 1 * * *"; // 01:00 daily
@@ -49,6 +51,10 @@ const RUN_PROCESSOS_EPROCESS_NIGHTLY =
   (process.env.RUN_PROCESSOS_EPROCESS_NIGHTLY ?? "true").toLowerCase() !== "false";
 const RUN_CREDOR_ENRIQUECIMENTO_NIGHTLY =
   (process.env.RUN_CREDOR_ENRIQUECIMENTO_NIGHTLY ?? "true").toLowerCase() !== "false";
+const RUN_MART_DESPESA_NIGHTLY =
+  (process.env.RUN_MART_DESPESA_NIGHTLY ?? "true").toLowerCase() !== "false";
+const RUN_MART_REMESSAS_NIGHTLY =
+  (process.env.RUN_MART_REMESSAS_NIGHTLY ?? "true").toLowerCase() !== "false";
 
 console.log("ETL scheduler started - Varadouro Digital");
 console.log(`Nightly pipeline: cron="${FACT_ETL_CRON}" timezone="${TIMEZONE}"`);
@@ -177,12 +183,21 @@ cron.schedule(
     }
 
     if (RUN_FATO_EMPENHO_NIGHTLY) {
-      console.log("[CRON] Step 10/11: fato empenho (SQL Server -> Supabase)");
+      console.log("[CRON] Step 10/11: fato empenho (SQL Server -> PostgreSQL)");
       await executarETLFatoEmpenho().catch((error) => {
         console.error("[CRON] fato empenho failed:", error);
       });
     } else {
       console.log("[CRON] Step 10/11: fato empenho skipped by RUN_FATO_EMPENHO_NIGHTLY=false");
+    }
+
+    if (RUN_MART_DESPESA_NIGHTLY) {
+      console.log("[CRON] Step 10b: mart despesa (reconstrução das mart tables de empenho)");
+      await executarMartDespesa().catch((error) => {
+        console.error("[CRON] mart despesa failed:", error);
+      });
+    } else {
+      console.log("[CRON] Step 10b: mart despesa skipped by RUN_MART_DESPESA_NIGHTLY=false");
     }
 
     console.log("[CRON] Step 11/15: combustivel (NFE/SQL Server)");
@@ -212,6 +227,15 @@ cron.schedule(
       });
     } else {
       console.log("[CRON] Steps 12-15: credor enriquecimento skipped by RUN_CREDOR_ENRIQUECIMENTO_NIGHTLY=false");
+    }
+
+    if (RUN_MART_REMESSAS_NIGHTLY) {
+      console.log("[CRON] Step 16: mart remessas (reconstrução das mart tables de remessas contábeis)");
+      await executarMartRemessas().catch((error) => {
+        console.error("[CRON] mart remessas failed:", error);
+      });
+    } else {
+      console.log("[CRON] Step 16: mart remessas skipped by RUN_MART_REMESSAS_NIGHTLY=false");
     }
 
     console.log("[CRON] Nightly pipeline finished.");

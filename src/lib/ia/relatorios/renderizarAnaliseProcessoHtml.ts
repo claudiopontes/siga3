@@ -5,7 +5,7 @@
 import type { AnaliseProcessoPautaOutput, NivelRisco } from "../tipos";
 
 // Incrementar ao mudar estrutura da linha ou do relatório completo — invalida HTML em cache.
-export const VERSAO_FORMATO_HTML_ANALISE_PROCESSO = "1.1.0";
+export const VERSAO_FORMATO_HTML_ANALISE_PROCESSO = "1.2.0";
 
 // ---------------------------------------------------------------------------
 // Utilitário de escape
@@ -48,7 +48,14 @@ function secaoHtml(titulo: string, corpo: string): string {
 export interface ContextoLinhaPauta {
   entidade?: string | null;
   responsavel?: string | null;
+  advogados?: string | null;
   relator?: string | null;
+  objeto_processo?: string | null;  // objeto dos dados estruturados — preferência sobre o campo gerado pela IA
+}
+
+function truncar(texto: string | null | undefined, max: number): string {
+  if (!texto) return "";
+  return texto.length <= max ? texto : texto.slice(0, max - 1) + "…";
 }
 
 export function renderizarLinhaRelatorioSucintoHtml(
@@ -56,28 +63,38 @@ export function renderizarLinhaRelatorioSucintoHtml(
   numeroOrdem?: number | null,
   contexto?: ContextoLinhaPauta,
 ): string {
-  // Campos dedicados à linha (v1.4.0+). Fallback para análises geradas em versões anteriores.
-  const objeto = analise.objeto?.trim()
-    || analise.ponto_central?.trim()
-    || "";
+  // objeto: preferir dado estruturado do processo; fallback para campo gerado pela IA.
+  const objeto = truncar(
+    contexto?.objeto_processo?.trim()
+      || analise.objeto?.trim()
+      || analise.ponto_central?.trim()
+      || "",
+    180,
+  );
 
-  const resumoTecnico = analise.resumo_tecnico?.trim() || (() => {
-    const doc = analise.documentos_analisados?.find((d) => d.tipo === "relatorio_tecnico");
-    return doc?.resumo ?? "";
-  })();
+  const resumoTecnico = truncar(
+    analise.resumo_tecnico?.trim() || (() => {
+      const doc = analise.documentos_analisados?.find((d) => d.tipo === "relatorio_tecnico");
+      return doc?.resumo ?? "";
+    })(),
+    260,
+  );
 
-  const resumoMpc = analise.resumo_mpc?.trim() || (() => {
-    const doc = analise.documentos_analisados?.find((d) => d.tipo === "parecer_mpc");
-    return doc?.resumo ?? "";
-  })();
+  const resumoMpc = truncar(
+    analise.resumo_mpc?.trim() || (() => {
+      const doc = analise.documentos_analisados?.find((d) => d.tipo === "parecer_mpc");
+      return doc?.resumo ?? "";
+    })(),
+    260,
+  );
 
   const colunas = [
     numeroOrdem != null ? escaparHtml(numeroOrdem) : "",
     escaparHtml(analise.numero_fmt),
-    escaparHtml(contexto?.entidade ?? ""),
+    escaparHtml(truncar(contexto?.entidade, 80)),
     escaparHtml(objeto),
-    escaparHtml(contexto?.responsavel ?? ""),
-    "",   // Advogados — não disponível nesta fase
+    escaparHtml(truncar(contexto?.responsavel, 120)),
+    escaparHtml(truncar(contexto?.advogados, 120)),
     escaparHtml(contexto?.relator ?? ""),
     escaparHtml(resumoTecnico),
     escaparHtml(resumoMpc),

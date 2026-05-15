@@ -103,8 +103,9 @@ export default function ModalRelatorioResumoPauta({ aberto, onFechar, sessaoLabe
             <button
               type="button"
               onClick={onFechar}
-              className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-xs font-semibold text-gray-700 shadow-sm hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-4 py-2 text-xs font-semibold text-gray-700 shadow-sm transition hover:bg-gray-100 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
             >
+              <X className="h-3.5 w-3.5" />
               Fechar
             </button>
           </div>
@@ -273,15 +274,32 @@ export default function ModalRelatorioResumoPauta({ aberto, onFechar, sessaoLabe
         </div>
 
         {/* Rodapé com botões */}
-        <div className="flex shrink-0 flex-col gap-2 border-t border-gray-200 px-5 py-3 dark:border-gray-700 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex shrink-0 items-center justify-between border-t border-gray-200 px-5 py-3 dark:border-gray-700">
+          {/* Esquerda: Abrir relatório + Fechar juntos */}
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={onFechar}
-              className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-xs font-semibold text-gray-700 shadow-sm hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+              onClick={abrirRelatorio}
+              disabled={!relatorio?.html_relatorio}
+              title="Abre o relatório no modelo da planilha em uma nova janela."
+              aria-label="Abrir relatório em nova janela"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-blue-300 bg-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-blue-700 dark:bg-blue-700 dark:hover:bg-blue-600"
             >
+              <ExternalLink className="h-3.5 w-3.5" />
+              Abrir relatório
+            </button>
+            <button
+              type="button"
+              onClick={onFechar}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-4 py-2 text-xs font-semibold text-gray-700 shadow-sm transition hover:bg-gray-100 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+            >
+              <X className="h-3.5 w-3.5" />
               Fechar
             </button>
+          </div>
+
+          {/* Direita: Descartar — isolado para evitar clique acidental */}
+          <div>
             {relatorio?.relatorio_id != null && (
               <button
                 type="button"
@@ -296,18 +314,6 @@ export default function ModalRelatorioResumoPauta({ aberto, onFechar, sessaoLabe
               </button>
             )}
           </div>
-
-          <button
-            type="button"
-            onClick={abrirRelatorio}
-            disabled={!relatorio?.html_relatorio}
-            title="Abre o relatório no modelo da planilha em uma nova janela."
-            aria-label="Abrir relatório em nova janela"
-            className="inline-flex items-center gap-1.5 rounded-lg border border-blue-300 bg-blue-600 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-blue-700 dark:bg-blue-700 dark:hover:bg-blue-600"
-          >
-            <ExternalLink className="h-3.5 w-3.5" />
-            Abrir relatório
-          </button>
         </div>
       </div>
     </>
