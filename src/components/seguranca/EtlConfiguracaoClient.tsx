@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { Settings2, AlertTriangle, X, ArrowUpDown, ChevronUp, ChevronDown, Terminal, Ban } from "lucide-react";
+import { Settings2, AlertTriangle, X, Terminal, Ban } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { useModal } from "@/hooks/useModal";
 import Button from "@/components/ui/button/Button";
@@ -127,12 +127,6 @@ const selectClass =
 
 // ─── Sub-componentes ─────────────────────────────────────────────────────────
 
-function SortIcon({ active, dir }: { active: boolean; dir: SortDir }) {
-  if (!active) return <ArrowUpDown className="ml-1 inline h-3 w-3 text-slate-400" />;
-  return dir === "asc"
-    ? <ChevronUp   className="ml-1 inline h-3 w-3 text-teal-500" />
-    : <ChevronDown className="ml-1 inline h-3 w-3 text-teal-500" />;
-}
 
 function BoolField({
   label, checked, onChange, hint,
@@ -312,151 +306,162 @@ export default function EtlConfiguracaoClient() {
   const visiveis = mostrarInativos ? configs : configs.filter((c) => c.ativoPainel);
   const sorted = sortConfigs(visiveis, sortKey, sortDir);
 
-  function ThCol({ label, sortK }: { label: string; sortK: SortKey }) {
-    return (
-      <th
-        className="cursor-pointer select-none whitespace-nowrap px-4 py-3 text-left font-semibold hover:text-teal-600 dark:hover:text-teal-400"
-        onClick={() => handleSort(sortK)}
-      >
-        {label}
-        <SortIcon active={sortKey === sortK} dir={sortDir} />
-      </th>
-    );
-  }
+  const inativos = configs.filter((c) => !c.ativoPainel).length;
 
   return (
-    <div className="min-h-screen space-y-5 bg-slate-50 p-4 pb-10 dark:bg-slate-900 sm:p-6">
+    <div className="min-h-screen space-y-4 bg-slate-50 p-4 pb-10 dark:bg-slate-900 sm:p-6">
       {showToast && <AlertToast onDismiss={() => setShowToast(false)} />}
 
-      {/* Tabela */}
-      <div className="rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-800">
-
-        {isLoading && (
-          <div className="flex items-center justify-center py-16 text-sm text-slate-500">
-            <div className="mr-3 h-5 w-5 animate-spin rounded-full border-2 border-teal-200 border-t-teal-600" />
-            Carregando configurações...
-          </div>
-        )}
-
-        {!isLoading && error && (
-          <div className="m-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-800 dark:bg-red-950/30 dark:text-red-300">
-            {error}
-          </div>
-        )}
-
-        {!isLoading && !error && (
-          <>
-            <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3 text-xs text-slate-500 dark:border-slate-700 dark:text-slate-400">
-              <span>
-                <strong className="text-slate-700 dark:text-slate-200">{visiveis.length}</strong> módulos ETL
-                {!mostrarInativos && configs.some((c) => !c.ativoPainel) && (
-                  <span className="ml-1 text-slate-400 dark:text-slate-500">
-                    ({configs.filter((c) => !c.ativoPainel).length} inativo{configs.filter((c) => !c.ativoPainel).length !== 1 ? "s" : ""} oculto{configs.filter((c) => !c.ativoPainel).length !== 1 ? "s" : ""})
-                  </span>
-                )}
+      {/* Barra de ferramentas */}
+      {!isLoading && !error && (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-800">
+          <span className="text-xs text-slate-500 dark:text-slate-400">
+            <strong className="text-slate-700 dark:text-slate-200">{visiveis.length}</strong> módulos
+            {!mostrarInativos && inativos > 0 && (
+              <span className="ml-1 text-slate-400 dark:text-slate-500">
+                ({inativos} inativo{inativos !== 1 ? "s" : ""} oculto{inativos !== 1 ? "s" : ""})
               </span>
-              {configs.some((c) => !c.ativoPainel) && (
-                <button
-                  type="button"
-                  onClick={() => setMostrarInativos((v) => !v)}
-                  className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600 hover:border-slate-300 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600"
-                >
-                  {mostrarInativos ? "Ocultar inativos" : "Mostrar inativos"}
-                </button>
-              )}
-            </div>
+            )}
+          </span>
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs text-slate-500 dark:text-slate-400">Ordenar:</span>
+            <select
+              value={`${sortKey}-${sortDir}`}
+              onChange={(e) => {
+                const [k, d] = e.target.value.split("-");
+                setSortKey(k as SortKey);
+                setSortDir(d as SortDir);
+              }}
+              className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs text-slate-700 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-200"
+            >
+              <option value="nomeExibicao-asc">Nome (A→Z)</option>
+              <option value="nomeExibicao-desc">Nome (Z→A)</option>
+              <option value="periodicidade-asc">Periodicidade</option>
+              <option value="tipoCarga-asc">Tipo de carga</option>
+              <option value="implementada-desc">Implementados primeiro</option>
+            </select>
+          </div>
+          {inativos > 0 && (
+            <button
+              type="button"
+              onClick={() => setMostrarInativos((v) => !v)}
+              className="ml-auto rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-300 dark:hover:bg-slate-600"
+            >
+              {mostrarInativos ? "Ocultar inativos" : "Mostrar inativos"}
+            </button>
+          )}
+        </div>
+      )}
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-slate-50 text-slate-500 dark:bg-slate-900/60 dark:text-slate-400">
-                  <tr>
-                    <ThCol label="Módulo"           sortK="modulo" />
-                    <ThCol label="Nome de exibição" sortK="nomeExibicao" />
-                    <ThCol label="Periodicidade"    sortK="periodicidade" />
-                    <ThCol label="Tolerância"       sortK="toleranciaDias" />
-                    <ThCol label="Painel"           sortK="ativoPainel" />
-                    <ThCol label="Tipo de carga"    sortK="tipoCarga" />
-                    <ThCol label="Exec. manual"     sortK="execucaoManual" />
-                    <ThCol label="Backend"          sortK="implementada" />
-                    <th className="px-4 py-3" />
-                  </tr>
-                </thead>
-                <tbody>
-                  {sorted.length === 0 ? (
-                    <tr>
-                      <td colSpan={9} className="px-4 py-12 text-center text-sm text-slate-400">
-                        Nenhum módulo encontrado.
-                      </td>
-                    </tr>
-                  ) : (
-                    sorted.map((cfg, i) => (
-                      <tr
-                        key={cfg.modulo}
-                        className={`border-t border-slate-100 dark:border-slate-700/50 ${
-                          editingConfig?.modulo === cfg.modulo
-                            ? "bg-teal-50/60 dark:bg-teal-900/20"
-                            : i % 2 !== 0
-                            ? "bg-slate-50/50 dark:bg-slate-800/30"
-                            : ""
-                        }`}
-                      >
-                        <td className="whitespace-nowrap px-4 py-3 font-mono text-xs text-slate-500 dark:text-slate-400">{cfg.modulo}</td>
-                        <td className="px-4 py-3 font-medium text-slate-700 dark:text-slate-200">{cfg.nomeExibicao}</td>
-                        <td className="whitespace-nowrap px-4 py-3 text-slate-500 dark:text-slate-400">{cfg.periodicidade}</td>
-                        <td className="whitespace-nowrap px-4 py-3 text-slate-500 dark:text-slate-400">{cfg.toleranciaDias}d</td>
-                        <td className="whitespace-nowrap px-4 py-3">
-                          <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${cfg.ativoPainel ? "bg-teal-50 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300" : "bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400"}`}>
-                            {cfg.ativoPainel ? "Ativo" : "Inativo"}
-                          </span>
-                        </td>
-                        <td className="whitespace-nowrap px-4 py-3 text-slate-500 dark:text-slate-400">{cfg.execucao.tipoCargaPadrao ?? "—"}</td>
-                        <td className="whitespace-nowrap px-4 py-3">
-                          {cfg.execucao.permiteExecucaoManual ? (
-                            <span className="rounded-full px-2 py-0.5 text-xs font-semibold bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
-                              Habilitado
-                            </span>
-                          ) : cfg.execucao.tipoCargaPadrao === "nao_aplicavel" ? (
-                            <span className="rounded-full px-2 py-0.5 text-xs font-semibold bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
-                              Vinculado
-                            </span>
-                          ) : (
-                            <span className="rounded-full px-2 py-0.5 text-xs font-semibold bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400">
-                              Desabilitado
-                            </span>
-                          )}
-                        </td>
-                        <td className="whitespace-nowrap px-4 py-3">
-                          {cfg.execucaoManualImplementada ? (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
-                              <Terminal className="h-3 w-3" />
-                              Implementado
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-400 dark:bg-slate-700 dark:text-slate-500">
-                              <Ban className="h-3 w-3" />
-                              Sem comando
-                            </span>
-                          )}
-                        </td>
-                        <td className="whitespace-nowrap px-4 py-3 text-right">
-                          <button
-                            type="button"
-                            onClick={() => startEdit(cfg)}
-                            className="inline-flex items-center gap-1 text-sm font-medium text-teal-600 hover:text-teal-700 dark:text-teal-400 dark:hover:text-teal-300"
-                          >
-                            <Settings2 className="h-3.5 w-3.5" />
-                            Editar
-                          </button>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
+      {/* Conteúdo */}
+      {isLoading ? (
+        <div className="space-y-3">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="animate-pulse rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800">
+              <div className="flex items-center justify-between">
+                <div className="space-y-2">
+                  <div className="h-3.5 w-56 rounded bg-slate-200 dark:bg-slate-700" />
+                  <div className="h-2.5 w-36 rounded bg-slate-100 dark:bg-slate-700/50" />
+                </div>
+                <div className="h-7 w-16 rounded-lg bg-slate-100 dark:bg-slate-700" />
+              </div>
+              <div className="mt-3 flex gap-2">
+                {Array.from({ length: 4 }).map((_, j) => <div key={j} className="h-5 w-20 rounded-full bg-slate-100 dark:bg-slate-700/50" />)}
+              </div>
             </div>
-          </>
-        )}
-      </div>
+          ))}
+        </div>
+      ) : error ? (
+        <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-800 dark:bg-red-950/30 dark:text-red-300">
+          {error}
+        </div>
+      ) : sorted.length === 0 ? (
+        <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-400 dark:border-slate-700 dark:bg-slate-800">
+          Nenhum módulo encontrado.
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+          {sorted.map((cfg) => {
+            const isEditing = editingConfig?.modulo === cfg.modulo;
+            return (
+              <div
+                key={cfg.modulo}
+                className={`rounded-xl border bg-white dark:bg-slate-800 ${
+                  isEditing
+                    ? "border-teal-300 ring-2 ring-teal-200 dark:border-teal-700 dark:ring-teal-800/60"
+                    : cfg.ativoPainel
+                    ? "border-slate-200 dark:border-slate-700"
+                    : "border-slate-200 opacity-60 dark:border-slate-700"
+                }`}
+              >
+                {/* Cabeçalho do card */}
+                <div className="flex items-start justify-between gap-3 px-4 pt-3.5 pb-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-slate-800 dark:text-white">
+                      {cfg.nomeExibicao}
+                    </p>
+                    <p className="mt-0.5 font-mono text-[10px] text-slate-400 dark:text-slate-500">
+                      {cfg.modulo}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => startEdit(cfg)}
+                    className="shrink-0 inline-flex items-center gap-1.5 rounded-lg border border-teal-200 bg-teal-50 px-3 py-1.5 text-xs font-semibold text-teal-700 transition hover:bg-teal-100 dark:border-teal-700/60 dark:bg-teal-900/20 dark:text-teal-300 dark:hover:bg-teal-900/40"
+                  >
+                    <Settings2 className="h-3.5 w-3.5" />
+                    Editar
+                  </button>
+                </div>
+
+                {/* Tags de atributos */}
+                <div className="flex flex-wrap gap-1.5 border-t border-slate-100 px-4 py-2.5 dark:border-slate-700/60">
+                  {/* Ativo/Inativo */}
+                  <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${cfg.ativoPainel ? "bg-teal-50 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300" : "bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400"}`}>
+                    {cfg.ativoPainel ? "Ativo" : "Inativo"}
+                  </span>
+                  {/* Periodicidade + tolerância */}
+                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600 dark:bg-slate-700 dark:text-slate-300">
+                    {cfg.periodicidade} · tol. {cfg.toleranciaDias}d
+                  </span>
+                  {/* Tipo de carga */}
+                  {cfg.execucao.tipoCargaPadrao && (
+                    <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-700 dark:bg-blue-900/20 dark:text-blue-300">
+                      {cfg.execucao.tipoCargaPadrao}
+                    </span>
+                  )}
+                  {/* Escopo */}
+                  {cfg.execucao.escopoCarga && (
+                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-500 dark:bg-slate-700 dark:text-slate-400">
+                      {cfg.execucao.escopoCarga}
+                    </span>
+                  )}
+                  {/* Execução manual */}
+                  {cfg.execucao.permiteExecucaoManual ? (
+                    <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
+                      Exec. manual
+                    </span>
+                  ) : cfg.execucao.tipoCargaPadrao === "nao_aplicavel" ? (
+                    <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+                      Vinculado
+                    </span>
+                  ) : null}
+                  {/* Backend */}
+                  {cfg.execucaoManualImplementada ? (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
+                      <Terminal className="h-2.5 w-2.5" />Backend
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-400 dark:bg-slate-700 dark:text-slate-500">
+                      <Ban className="h-2.5 w-2.5" />Sem comando
+                    </span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Modal de edição — padrão do projeto (UserInfoCard) */}
       <Modal isOpen={isOpen} onClose={handleClose} className="max-w-[700px] m-4">

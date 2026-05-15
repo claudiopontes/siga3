@@ -66,6 +66,29 @@ export const ETL_CONFIG: Record<string, EtlConfigEntry> = {
     toleranciaDias: 1,
     ativoPainel: true,
   },
+  processos_eprocess: {
+    nomeExibicao: "Processos — Arquivos e Movimentações (eProcessos)",
+    periodicidade: "diaria",
+    toleranciaDias: 1,
+    ativoPainel: true,
+    execucao: {
+      tipoCargaPadrao: "incremental",
+      modoCargaPadrao: "upsert",
+      escopoCarga: "tudo",
+      preservaHistoricoAnterior: true,
+      requerConfirmacaoManual: false,
+      observacaoRegraNegocio:
+        "Carga incremental de arquivos e movimentações dos processos presentes nos itens de pauta. Deve ser executado após o ETL pauta_julgamento.",
+    },
+    execucaoManual: {
+      permiteExecucaoManual: true,
+      permiteFullManual: false,
+      permiteIncrementalManual: true,
+      labelBotao: "Recarregar",
+      mensagemConfirmacao:
+        "Esta ação irá sincronizar arquivos e movimentações dos processos do eProcessos. Deseja continuar?",
+    },
+  },
   pauta_julgamento: {
     nomeExibicao: "Pautas para Julgamento (EJURIS)",
     periodicidade: "diaria",
@@ -84,7 +107,7 @@ export const ETL_CONFIG: Record<string, EtlConfigEntry> = {
       permiteExecucaoManual: true,
       permiteFullManual: false,
       permiteIncrementalManual: true,
-      labelBotao: "Forçar atualização",
+      labelBotao: "Recarregar",
       mensagemConfirmacao:
         "Esta ação irá sincronizar todas as sessões e itens de pauta do EJURIS. Deseja continuar?",
     },
@@ -144,7 +167,7 @@ export const ETL_CONFIG: Record<string, EtlConfigEntry> = {
       permiteExecucaoManual: true,
       permiteFullManual: true,
       permiteIncrementalManual: false,
-      labelBotao: "Forçar atualização",
+      labelBotao: "Recarregar",
       mensagemConfirmacao:
         "Esta ação irá recarregar as remessas contábeis do exercício corrente. Deseja continuar?",
     },

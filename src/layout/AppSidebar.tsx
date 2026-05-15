@@ -42,6 +42,7 @@ const baseNavItems: NavItem[] = [
     name: "eProcessos CE",
     subItems: [
       { name: "Pautas para Julgamento", path: "/pautas-julgamento" },
+      { name: "Processos", path: "/eprocessos-ce/processos" },
     ],
   },
   {

@@ -11,34 +11,15 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const rows = await dbQuery<{
-      id: number;
-      sessao_id: number | null;
-      sessao_numero: string | null;
-      processo_id: number | null;
-      numero_processo: string | null;
-      situacao: string | null;
-      sequencia: number | null;
-      relator_id: number | null;
-      nome_relator: string | null;
-      cargo_relator: string | null;
-      titulo_relator: string | null;
-      relator_tratamento: string | null;
-      revisor_id: number | null;
-      nome_revisor: string | null;
-      cargo_revisor: string | null;
-      titulo_revisor: string | null;
-      eletronico: string | null;
-      qtde_pron: number | null;
-      incluir_interessados: string | null;
-      julgado: string | null;
-    }>(
+    const rows = await dbQuery(
       `SELECT
-         id, sessao_id, sessao_numero, processo_id, numero_processo,
-         situacao, sequencia, relator_id, nome_relator, cargo_relator,
-         titulo_relator, relator_tratamento, revisor_id, nome_revisor,
-         cargo_revisor, titulo_revisor, eletronico, qtde_pron,
-         incluir_interessados, julgado
+         id, sessao_id, sessao_numero, processo_id,
+         situacao, sequencia,
+         relator_id, nome_relator, relator_tratamento,
+         revisor_id, nome_revisor,
+         eletronico, qtde_pron, advogado, incluir_interessados, julgado,
+         numero_processo_fmt, objeto, nome_classe, assunto, nome_1_parte, situacao_funcional,
+         nome_orgao
        FROM public.pauta_julgamento_item
        WHERE sessao_id = $1
        ORDER BY sequencia NULLS LAST, id`,

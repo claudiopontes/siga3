@@ -10,43 +10,6 @@ const BATCH_SIZE = 500;
 
 // --- Tipos de origem ---
 
-interface SqlMovimentacaoRow {
-  ID_ITEM_FLUXO_INSTAN: number;
-  cod_processo: number;
-  dt_mov: Date | string | null;
-  dt_saida: Date | string | null;
-  grupo_id: number | null;
-  grupo_desc: string | null;
-  item_fluxo_id: number | null;
-  item_fluxo_desc: string | null;
-  ID_ATIVIDADE: number | null;
-  ATIVIDADE: string | null;
-  FASE: string | null;
-  ID_SETOR: number | null;
-  usuario_login: string | null;
-  NOME_USUARIO: string | null;
-  ID_PROCESSO_ARQUIVO: number | null;
-  TIPO_DOCUMENTO: string | null;
-  ULTIMO_TIPO_DOCUMENTO: string | null;
-  DATA_CRIACAO_ULTIMO_DOCUMENTO: Date | string | null;
-}
-
-interface SqlArquivoRow {
-  ID_PROC_INSTAN: number;
-  ID_PROC_ARQV: number;
-  IC_DOCUMENTO_ASSINADO: string | number | null;
-  DT_AUTUADO: Date | string | null;
-  DT_CRIAC: Date | string | null;
-  ID_TIPO_DOCM: number | null;
-  NM_TIPO_DOCM: string | null;
-  NM_PROC_ARQV: string | null;
-  EN_DIR: string | null;
-  ID_FASE_INSTAN: number | null;
-  DATA_FINALIZADO: Date | string | null;
-  NR_PAGN: number | null;
-  NR_ORDEM: number | null;
-}
-
 interface SqlSessaoRow {
   id: number;
   numero: string | number | null;
@@ -94,6 +57,7 @@ interface SqlItemPautaRow {
   assunto: string | null;
   nome_1_parte: string | null;
   situacao_funcional: string | null;
+  nome_orgao: string | null;
 }
 
 // --- Helpers ---
@@ -128,9 +92,12 @@ function toNullableInt(value: unknown): number | null {
 // --- Queries SQL Server ---
 // Sem "USE [database]" — queryInDatabase já conecta no banco correto via config.
 
-// Carrega apenas sessões ENCERRADAS — a pauta só é considerada definitiva
-// quando a sessão está neste estado. Sessões em andamento são ignoradas.
-const SQL_TODAS_SESSOES = `
+// Carrega apenas sessões ENCERRADAS não presentes no PostgreSQL.
+function sqlSessoesNovas(idsExcluir: number[]): string {
+  const filtro = idsExcluir.length > 0
+    ? `AND s.id NOT IN (${idsExcluir.join(",")})`
+    : "";
+  return `
 SELECT
   s.id,
   s.numero,
@@ -150,11 +117,15 @@ SELECT
   s.qtd_julgamento
 FROM dbo.vw_Sessao s
 WHERE s.situacao = 'ENCERRADA'
+${filtro}
 ORDER BY s.dt_realizacao DESC;
 `;
+}
 
-// Itens apenas das sessões ENCERRADAS + enriquecimento EPROCESS.
-const SQL_TODOS_ITENS_PAUTA = `
+// Itens das sessões novas + enriquecimento EPROCESS.
+function sqlItensNovos(sessaoIds: number[]): string {
+  const lista = sessaoIds.join(",");
+  return `
 SELECT
   p.id,
   p.sessao_id,
@@ -180,71 +151,18 @@ SELECT
   ep.Objeto              AS objeto,
   ep.nome_classe         AS nome_classe,
   ep.NM_ASSUN            AS assunto,
-  ep.nome_1_parte        AS nome_1_parte,
-  ep.Situacao_Funcional  AS situacao_funcional
+  ep.Partes              AS nome_1_parte,
+  ep.Situacao_Funcional  AS situacao_funcional,
+  ep.Cod_Orgao           AS nome_orgao
 FROM dbo.vw_PautaJulgamento p
 JOIN dbo.Sessao s ON s.id = p.sessao_id AND s.situacao = 'ENCERRADA'
 LEFT JOIN [${EPROCESS_DATABASE}].processo.vwProc_Eletronico ep
        ON ep.Cod_Processo = p.processo_id
+WHERE p.sessao_id IN (${lista})
 ORDER BY p.sessao_id, p.sequencia;
 `;
+}
 
-// Arquivos apenas dos processos de sessões ENCERRADAS.
-const SQL_ARQUIVOS_PAUTA = `
-SELECT
-  a.ID_PROC_INSTAN,
-  a.ID_PROC_ARQV,
-  a.IC_DOCUMENTO_ASSINADO,
-  a.DT_AUTUADO,
-  a.DT_CRIAC,
-  a.ID_TIPO_DOCM,
-  a.NM_TIPO_DOCM,
-  a.NM_PROC_ARQV,
-  a.EN_DIR,
-  a.ID_FASE_INSTAN,
-  a.DATA_FINALIZADO,
-  a.NR_PAGN,
-  a.NR_ORDEM
-FROM processo.vwArquivoProcesso a
-WHERE a.ID_PROC_INSTAN IN (
-  SELECT DISTINCT p.processo_id
-  FROM [${SQL_DATABASE}].dbo.vw_PautaJulgamento p
-  JOIN [${SQL_DATABASE}].dbo.Sessao s ON s.id = p.sessao_id AND s.situacao = 'ENCERRADA'
-  WHERE p.processo_id IS NOT NULL
-)
-ORDER BY a.ID_PROC_INSTAN, a.NR_ORDEM;
-`;
-
-// Movimentações apenas dos processos de sessões ENCERRADAS.
-const SQL_MOVIMENTACOES_PAUTA = `
-SELECT
-  fi.ID_ITEM_FLUXO_INSTAN,
-  fi.cod_processo,
-  fi.dt_mov,
-  fi.dt_saida,
-  fi.grupo_id,
-  fi.grupo_desc,
-  fi.item_fluxo_id,
-  fi.item_fluxo_desc,
-  fi.ID_ATIVIDADE,
-  fi.ATIVIDADE,
-  fi.FASE,
-  fi.ID_SETOR,
-  fi.usuario_login,
-  fi.NOME_USUARIO,
-  fi.ID_PROCESSO_ARQUIVO,
-  fi.TIPO_DOCUMENTO,
-  fi.ULTIMO_TIPO_DOCUMENTO,
-  fi.DATA_CRIACAO_ULTIMO_DOCUMENTO
-FROM processo.vwMovimentacoes fi
-WHERE fi.cod_processo IN (
-  SELECT DISTINCT p.processo_id
-  FROM [${SQL_DATABASE}].dbo.vw_PautaJulgamento p
-  JOIN [${SQL_DATABASE}].dbo.Sessao s ON s.id = p.sessao_id AND s.situacao = 'ENCERRADA'
-  WHERE p.processo_id IS NOT NULL
-)
-ORDER BY fi.cod_processo, fi.dt_mov;
-`;
 
 // --- Controle de carga ---
 
@@ -322,8 +240,8 @@ async function inserirItens(itens: SqlItemPautaRow[], cargaId: number): Promise<
             revisor_id, nome_revisor, cargo_revisor, titulo_revisor,
             eletronico, qtde_pron, advogado, incluir_interessados, julgado,
             numero_processo_fmt, objeto, nome_classe, assunto, nome_1_parte, situacao_funcional,
-            coletado_em)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,now())
+            nome_orgao, coletado_em)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,now())
          ON CONFLICT (id) DO NOTHING`,
         [
           p.id, cargaId,
@@ -345,75 +263,7 @@ async function inserirItens(itens: SqlItemPautaRow[], cargaId: number): Promise<
           toText(p.assunto),
           toText(p.nome_1_parte),
           toText(p.situacao_funcional),
-        ],
-      );
-      inseridos++;
-    }
-  }
-  return inseridos;
-}
-
-// --- Upsert movimentações ---
-
-async function inserirMovimentacoes(movs: SqlMovimentacaoRow[], cargaId: number): Promise<number> {
-  let inseridos = 0;
-  for (let i = 0; i < movs.length; i += BATCH_SIZE) {
-    const lote = movs.slice(i, i + BATCH_SIZE);
-    for (const m of lote) {
-      await pgQuery(
-        `INSERT INTO public.pauta_julgamento_movimentacao
-           (processo_id, carga_id, id_item_fluxo_instan,
-            dt_mov, dt_saida,
-            grupo_id, grupo_desc,
-            item_fluxo_id, item_fluxo_desc,
-            id_atividade, atividade, fase,
-            id_setor, usuario_login, nome_usuario,
-            id_processo_arquivo, tipo_documento,
-            ultimo_tipo_documento, data_criacao_ultimo_doc,
-            coletado_em)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,now())
-         ON CONFLICT (id_item_fluxo_instan, COALESCE(id_processo_arquivo, -1)) DO NOTHING`,
-        [
-          m.cod_processo, cargaId, m.ID_ITEM_FLUXO_INSTAN,
-          toIso(m.dt_mov), toIso(m.dt_saida),
-          toNullableInt(m.grupo_id), toText(m.grupo_desc),
-          toNullableInt(m.item_fluxo_id), toText(m.item_fluxo_desc),
-          toNullableInt(m.ID_ATIVIDADE), toText(m.ATIVIDADE), toText(m.FASE),
-          toNullableInt(m.ID_SETOR), toText(m.usuario_login), toText(m.NOME_USUARIO),
-          m.ID_PROCESSO_ARQUIVO !== null ? toNullableInt(m.ID_PROCESSO_ARQUIVO) : null,
-          toText(m.TIPO_DOCUMENTO),
-          toText(m.ULTIMO_TIPO_DOCUMENTO), toIso(m.DATA_CRIACAO_ULTIMO_DOCUMENTO),
-        ],
-      );
-      inseridos++;
-    }
-  }
-  return inseridos;
-}
-
-// --- Upsert arquivos dos processos ---
-
-async function inserirArquivos(arquivos: SqlArquivoRow[], cargaId: number): Promise<number> {
-  let inseridos = 0;
-  for (let i = 0; i < arquivos.length; i += BATCH_SIZE) {
-    const lote = arquivos.slice(i, i + BATCH_SIZE);
-    for (const a of lote) {
-      await pgQuery(
-        `INSERT INTO public.pauta_julgamento_arquivo
-           (id_proc_arqv, processo_id, carga_id, id_tipo_docm, nm_tipo_docm,
-            nm_proc_arqv, en_dir, ic_documento_assinado,
-            dt_autuado, dt_criac, data_finalizado,
-            nr_pagn, nr_ordem, id_fase_instan, coletado_em)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,now())
-         ON CONFLICT (id_proc_arqv) DO NOTHING`,
-        [
-          a.ID_PROC_ARQV, a.ID_PROC_INSTAN, cargaId,
-          toNullableInt(a.ID_TIPO_DOCM), toText(a.NM_TIPO_DOCM),
-          toText(a.NM_PROC_ARQV), toText(a.EN_DIR),
-          a.IC_DOCUMENTO_ASSINADO !== null ? String(a.IC_DOCUMENTO_ASSINADO) : null,
-          toIso(a.DT_AUTUADO), toIso(a.DT_CRIAC), toIso(a.DATA_FINALIZADO),
-          toNullableInt(a.NR_PAGN), toNullableInt(a.NR_ORDEM),
-          toNullableInt(a.ID_FASE_INSTAN),
+          toText(p.nome_orgao),
         ],
       );
       inseridos++;
@@ -433,66 +283,58 @@ export async function executarCargaPautaJulgamento(): Promise<void> {
   let totalInseridos = 0;
 
   try {
-    // 1. Sessões (dbo.vw_Sessao — inclui orgao_julgador, dt_encerramento, contadores)
-    console.log(`  -> Consultando sessões em ${SQL_DATABASE}.dbo.vw_Sessao...`);
-    const sessoes = await queryInDatabase<SqlSessaoRow>(SQL_DATABASE, SQL_TODAS_SESSOES);
-    console.log(`  -> Sessões ENCERRADAS encontradas: ${sessoes.length}`);
+    // 1. IDs de sessões já presentes no PostgreSQL
+    const pgSessoes = await pgQuery<{ id: number }>("SELECT id FROM public.pauta_julgamento_sessao");
+    const idsExistentes = pgSessoes.map((r) => r.id);
+    console.log(`  -> Sessões já no PostgreSQL: ${idsExistentes.length}`);
 
-    // 2. Itens de pauta com enriquecimento EPROCESS (cross-db join na mesma instância)
-    console.log(`  -> Consultando itens em ${SQL_DATABASE}.dbo.vw_PautaJulgamento + ${EPROCESS_DATABASE}...`);
-    const todosItens = await queryInDatabase<SqlItemPautaRow>(SQL_DATABASE, SQL_TODOS_ITENS_PAUTA);
+    // 2. Busca no SQL Server apenas sessões ENCERRADAS que ainda não existem
+    console.log(`  -> Consultando sessões novas em ${SQL_DATABASE}.dbo.vw_Sessao...`);
+    const sessoes = await queryInDatabase<SqlSessaoRow>(SQL_DATABASE, sqlSessoesNovas(idsExistentes));
+    console.log(`  -> Sessões novas encontradas: ${sessoes.length}`);
+
+    if (sessoes.length === 0) {
+      console.log("  -> Nenhuma sessão nova. ETL encerrado sem alterações.");
+      const duracao = Date.now() - inicio;
+      await gravarLog("sucesso", 0, duracao, "Sem sessões novas — nada a inserir.");
+      return;
+    }
+
+    const novasSessaoIds = sessoes.map((s) => s.id);
+
+    // 3. Itens apenas das sessões novas
+    console.log(`  -> Consultando itens das ${novasSessaoIds.length} sessões novas...`);
+    const todosItens = await queryInDatabase<SqlItemPautaRow>(SQL_DATABASE, sqlItensNovos(novasSessaoIds));
     console.log(`  -> Itens encontrados: ${todosItens.length}`);
-
-    // 3. Arquivos PDF dos processos na pauta (consultado a partir do EPROCESS)
-    console.log(`  -> Consultando arquivos em ${EPROCESS_DATABASE}.processo.vwArquivoProcesso...`);
-    const todosArquivos = await queryInDatabase<SqlArquivoRow>(EPROCESS_DATABASE, SQL_ARQUIVOS_PAUTA);
-    console.log(`  -> Arquivos encontrados: ${todosArquivos.length}`);
-
-    // 4. Movimentações dos processos na pauta (consultado a partir do EPROCESS)
-    console.log(`  -> Consultando movimentações em ${EPROCESS_DATABASE}.processo.vwMovimentacoes...`);
-    const todasMovimentacoes = await queryInDatabase<SqlMovimentacaoRow>(EPROCESS_DATABASE, SQL_MOVIMENTACOES_PAUTA);
-    console.log(`  -> Movimentações encontradas: ${todasMovimentacoes.length}`);
 
     if (DRY_RUN) {
       console.log("\n--- DRY-RUN: pauta_julgamento ---");
-      console.log(`  Sessões: ${sessoes.length}`);
+      console.log(`  Sessões novas: ${sessoes.length}`);
       console.dir(sessoes.slice(0, 2), { depth: null });
       console.log(`  Itens: ${todosItens.length}`);
       console.dir(todosItens.slice(0, 2), { depth: null });
-      console.log(`  Arquivos: ${todosArquivos.length}`);
-      console.dir(todosArquivos.slice(0, 2), { depth: null });
-      console.log(`  Movimentações: ${todasMovimentacoes.length}`);
-      console.dir(todasMovimentacoes.slice(0, 2), { depth: null });
       console.log("--- Fim dry-run ---\n");
       return;
     }
 
-    // 5. Registro de carga
+    // 4. Registro de carga
     cargaId = await criarCarga();
     console.log(`  -> carga_id=${cargaId}`);
 
-    // 6. Inserir sessões (novas; existentes ignoradas — DO NOTHING)
+    // 5. Inserir sessões novas
     const sessoesInseridas = await inserirSessoes(sessoes, cargaId);
     console.log(`  -> Sessões inseridas: ${sessoesInseridas}`);
 
-    // 7. Inserir itens
+    // 6. Inserir itens
     const itensInseridos = await inserirItens(todosItens, cargaId);
     console.log(`  -> Itens inseridos: ${itensInseridos}`);
 
-    // 8. Inserir arquivos
-    const arquivosInseridos = await inserirArquivos(todosArquivos, cargaId);
-    console.log(`  -> Arquivos inseridos: ${arquivosInseridos}`);
-
-    // 9. Inserir movimentações
-    const movsInseridas = await inserirMovimentacoes(todasMovimentacoes, cargaId);
-    console.log(`  -> Movimentações inseridas: ${movsInseridas}`);
-
-    const totalInseridos = sessoesInseridas + itensInseridos + arquivosInseridos + movsInseridas;
+    const totalInseridos = sessoesInseridas + itensInseridos;
     await finalizarCarga(cargaId, "sucesso", totalInseridos);
 
     const duracao = Date.now() - inicio;
     await gravarLog("sucesso", totalInseridos, duracao);
-    console.log(`  OK — ${MODULO} em ${duracao} ms (${sessoesInseridas} sessões, ${itensInseridos} itens, ${arquivosInseridos} arquivos, ${movsInseridas} movimentações)`);
+    console.log(`  OK — ${MODULO} em ${duracao} ms (${sessoesInseridas} sessões, ${itensInseridos} itens)`);
 
   } catch (error) {
     const duracao = Date.now() - inicio;

@@ -17,6 +17,7 @@
     "mis-bolsa-familia-bpc": "ts-node jobs/mis-bolsa-familia-bpc.ts",
     "processos-gabinete": "ts-node jobs/processos-gabinete.ts",
     "pauta-julgamento": "ts-node jobs/pauta-julgamento.ts",
+    "processos-eprocess": "ts-node jobs/processos.ts",
     "agendar": "ts-node schedule.ts",
     "postgres:check": "ts-node jobs/postgres-check.ts",
     "postgres:migrate": "ts-node jobs/postgres-migrate.ts",

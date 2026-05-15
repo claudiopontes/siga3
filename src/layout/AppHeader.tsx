@@ -24,6 +24,10 @@ const AppHeader: React.FC = () => {
   const isReceitaPage        = pathname === "/painel-receita-publica";
   const isDespesaPage        = pathname === "/painel-despesa";
   const isSaudePage          = pathname === "/painel-saude";
+  const isPautasPage          = pathname === "/pautas-julgamento";
+  const isPautasDetalhePage   = pathname.startsWith("/pautas-julgamento/");
+  const isProcessosPage       = pathname === "/eprocessos-ce/processos";
+  const isProcessoDetalhePage = pathname.startsWith("/eprocessos-ce/processos/");
   const isCredoresPage       = pathname === "/pesquisa-credores";
   const isFlorestalPage      = pathname === "/painel-cobertura-florestal";
   const isCaucPage           = pathname === "/painel-cauc";
@@ -59,6 +63,14 @@ const AppHeader: React.FC = () => {
     "/seguranca/usuarios": { crumbs: [{ label: "Home", href: "/" }, { label: "Segurança" }, { label: "Usuários e perfis" }] },
     "/seguranca/etl": { crumbs: [{ label: "Home", href: "/" }, { label: "Segurança" }, { label: "Status das Bases ETL" }] },
     "/seguranca/etl/configuracao": { crumbs: [{ label: "Home", href: "/" }, { label: "Segurança" }, { label: "Configuração de ETLs" }] },
+    "/pautas-julgamento": { crumbs: [{ label: "Home", href: "/" }, { label: "eProcessos CE" }, { label: "Pautas para Julgamento" }] },
+    ...(pathname.startsWith("/pautas-julgamento/") ? {
+      [pathname]: { crumbs: [{ label: "Home", href: "/" }, { label: "eProcessos CE" }, { label: "Pautas para Julgamento", href: "/pautas-julgamento" }, { label: "Processos da Sessão" }] }
+    } : {}),
+    "/eprocessos-ce/processos": { crumbs: [{ label: "Home", href: "/" }, { label: "eProcessos CE" }, { label: "Processos" }] },
+    ...(pathname.startsWith("/eprocessos-ce/processos/") ? {
+      [pathname]: { crumbs: [{ label: "Home", href: "/" }, { label: "eProcessos CE" }, { label: "Processos", href: "/eprocessos-ce/processos" }, { label: "Detalhe" }] }
+    } : {}),
   };
 
   const currentCrumbs = (() => {
@@ -247,6 +259,28 @@ const AppHeader: React.FC = () => {
               <div className="flex flex-col">
                 <span className="truncate text-sm text-gray-600 dark:text-gray-300">
                   Configuração dos módulos de monitoramento e execução dos jobs ETL.
+                </span>
+              </div>
+            )}
+            {(isProcessosPage || isProcessoDetalhePage) && (
+              <div className="flex flex-col">
+                <span className="truncate text-sm text-gray-600 dark:text-gray-300">
+                  Processos de Controle Externo — movimentações e arquivos por processo.
+                </span>
+                <span className="text-xs text-gray-400 dark:text-gray-500">
+                  <span className="font-medium text-blue-600 dark:text-blue-400">eProcessos</span>
+                </span>
+              </div>
+            )}
+            {(isPautasPage || isPautasDetalhePage) && (
+              <div className="flex flex-col">
+                <span className="truncate text-sm text-gray-600 dark:text-gray-300">
+                  Sessões encerradas e processos pautados para julgamento no TCE-AC.
+                </span>
+                <span className="text-xs text-gray-400 dark:text-gray-500">
+                  <span className="font-medium text-violet-600 dark:text-violet-400">EJURIS</span>
+                  {" · "}
+                  <span className="font-medium text-blue-600 dark:text-blue-400">eProcessos CE</span>
                 </span>
               </div>
             )}
