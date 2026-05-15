@@ -27,6 +27,7 @@ export interface ArquivoParaSelecao {
   nm_tipo_docm: string | null;
   nr_pagn: number | null;
   dt_criac: string | null;
+  en_dir: string | null;
 }
 
 export interface ArquivoSelecionado extends ArquivoParaSelecao {
@@ -53,7 +54,9 @@ export function selecionarDocumentosPrincipaisProcesso(
         if (!a.dt_criac && !b.dt_criac) return 0;
         if (!a.dt_criac) return 1;
         if (!b.dt_criac) return -1;
-        return b.dt_criac.localeCompare(a.dt_criac);
+        const ta = new Date(a.dt_criac).getTime();
+        const tb = new Date(b.dt_criac).getTime();
+        return isNaN(ta) || isNaN(tb) ? 0 : tb - ta;
       });
 
     if (candidatos.length > 0) {

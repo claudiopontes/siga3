@@ -106,16 +106,6 @@ export default function SessaoDetalheClient({ sessaoId }: { sessaoId: number }) 
             <dt className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">Realização</dt>
             <dd className="mt-0.5 text-sm text-gray-700 dark:text-gray-300">{formatarData(sessao.dt_realizacao)}</dd>
           </div>
-          {sessao.dt_encerramento && (
-            <div>
-              <dt className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">Encerramento</dt>
-              <dd className="mt-0.5 text-sm text-gray-700 dark:text-gray-300">{formatarData(sessao.dt_encerramento)}</dd>
-            </div>
-          )}
-          <div>
-            <dt className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">Situação</dt>
-            <dd className="mt-0.5 text-sm text-gray-700 dark:text-gray-300">{sessao.situacao ?? "—"}</dd>
-          </div>
         </dl>
 
         {/* Contadores */}

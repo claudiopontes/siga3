@@ -60,6 +60,12 @@ export interface AnaliseProcessoPautaOutput {
   aviso_revisao: string;
   gerado_em: string;
   do_cache: boolean;
+  // Campos HTML opcionais — gerados localmente a partir do JSON, nunca pela IA
+  html_linha_sucinta?: string;
+  html_relatorio?: string;
+  formato_html_versao?: string;
+  // Documentos cujo texto não pôde ser extraído — para diagnóstico no modal
+  documentos_com_falha_extracao?: { nome: string; tipo: string; motivo: string }[];
 }
 
 export type TipoFonteInstitucional =

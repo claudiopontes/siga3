@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { dbQuery } from "@/lib/db";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 export async function GET(
   _req: NextRequest,
@@ -24,7 +25,6 @@ export async function GET(
        FROM public.pauta_julgamento_arquivo
        WHERE processo_id = $1
          AND (desentranhado IS NOT TRUE)
-         AND ic_documento_assinado = 'true'
        ORDER BY nr_ordem ASC NULLS LAST, dt_criac ASC, id_proc_arqv ASC`,
       [id],
     );

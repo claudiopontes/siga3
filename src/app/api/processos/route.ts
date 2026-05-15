@@ -33,15 +33,21 @@ export async function GET(req: NextRequest) {
   let idx = 1;
 
   if (busca) {
+    // Remove pontuação do termo de busca para comparar com número sem formatação
+    // Ex: "149522" ou "149522/2025" deve encontrar "149.522/2025"
+    const buscaSemPontuacao = busca.replace(/[.\-/\s]/g, "");
+
     conditions.push(`(
       p.numero_fmt  ILIKE $${idx}
       OR p.objeto       ILIKE $${idx}
       OR p.nome_1_parte ILIKE $${idx}
       OR p.nome_relator ILIKE $${idx}
       OR p.partes       ILIKE $${idx}
+      OR regexp_replace(p.numero_fmt, '[^0-9]', '', 'g') ILIKE $${idx + 1}
     )`);
     params.push(`%${busca}%`);
-    idx++;
+    params.push(`%${buscaSemPontuacao}%`);
+    idx += 2;
   }
 
   if (ano) {

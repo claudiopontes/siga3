@@ -1,7 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  // pdf-parse e suas dependências nativas não devem passar pelo bundler do Next.js.
+  serverExternalPackages: ["pdf-parse", "canvas", "@napi-rs/canvas"],
+
   webpack(config) {
     config.module.rules.push({
       test: /\.svg$/,

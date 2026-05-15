@@ -4,9 +4,9 @@ import { pgQuery, closePgPool } from "../connectors/postgres";
 
 const MODULO = "processos_eprocess";
 const EPROCESS_DATABASE = process.env.EPROCESS_SQLSERVER_DATABASE ?? "EPROCESS";
-const SQL_DATABASE = process.env.EJURIS_SQLSERVER_DATABASE ?? "EJURIS";
 const DRY_RUN = process.argv.includes("--dry-run");
 const BATCH_SIZE = 500;
+const SQL_BATCH = 1000;
 
 // --- Tipos ---
 
@@ -78,7 +78,7 @@ function toNullableInt(value: unknown): number | null {
 
 // --- Queries SQL Server ---
 
-function sqlArquivosNovos(processoIds: number[]): string {
+function sqlArquivos(processoIds: number[]): string {
   const lista = processoIds.join(",");
   return `
 SELECT
@@ -101,7 +101,7 @@ ORDER BY a.ID_PROC_INSTAN, a.NR_ORDEM;
 `;
 }
 
-function sqlMovimentacoesNovos(processoIds: number[]): string {
+function sqlMovimentacoes(processoIds: number[]): string {
   const lista = processoIds.join(",");
   return `
 SELECT
@@ -159,9 +159,12 @@ async function finalizarCarga(cargaId: number, status: "sucesso" | "erro", regis
 }
 
 // --- Upsert arquivos ---
+// Novos registros são inseridos normalmente.
+// Registros existentes: atualiza apenas ic_documento_assinado e data_finalizado,
+// que mudam quando todos os signatários concluem a assinatura.
 
-async function inserirArquivos(arquivos: SqlArquivoRow[], cargaId: number): Promise<number> {
-  let inseridos = 0;
+async function upsertArquivos(arquivos: SqlArquivoRow[], cargaId: number): Promise<number> {
+  let processados = 0;
   for (let i = 0; i < arquivos.length; i += BATCH_SIZE) {
     const lote = arquivos.slice(i, i + BATCH_SIZE);
     for (const a of lote) {
@@ -172,7 +175,13 @@ async function inserirArquivos(arquivos: SqlArquivoRow[], cargaId: number): Prom
             dt_autuado, dt_criac, data_finalizado,
             nr_pagn, nr_ordem, id_fase_instan, coletado_em)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,now())
-         ON CONFLICT (id_proc_arqv) DO NOTHING`,
+         ON CONFLICT (id_proc_arqv) DO UPDATE SET
+           ic_documento_assinado = EXCLUDED.ic_documento_assinado,
+           data_finalizado       = EXCLUDED.data_finalizado,
+           nr_pagn               = EXCLUDED.nr_pagn
+         WHERE pauta_julgamento_arquivo.ic_documento_assinado IS DISTINCT FROM EXCLUDED.ic_documento_assinado
+            OR pauta_julgamento_arquivo.data_finalizado       IS DISTINCT FROM EXCLUDED.data_finalizado
+            OR pauta_julgamento_arquivo.nr_pagn               IS DISTINCT FROM EXCLUDED.nr_pagn`,
         [
           a.ID_PROC_ARQV, a.ID_PROC_INSTAN, cargaId,
           toNullableInt(a.ID_TIPO_DOCM), toText(a.NM_TIPO_DOCM),
@@ -183,16 +192,19 @@ async function inserirArquivos(arquivos: SqlArquivoRow[], cargaId: number): Prom
           toNullableInt(a.ID_FASE_INSTAN),
         ],
       );
-      inseridos++;
+      processados++;
     }
   }
-  return inseridos;
+  return processados;
 }
 
 // --- Upsert movimentações ---
+// Novos registros são inseridos normalmente.
+// Registros existentes: atualiza dt_saida, que é preenchida quando o processo
+// sai do setor atual (movimentação em aberto passa a ter data de saída).
 
-async function inserirMovimentacoes(movs: SqlMovimentacaoRow[], cargaId: number): Promise<number> {
-  let inseridos = 0;
+async function upsertMovimentacoes(movs: SqlMovimentacaoRow[], cargaId: number): Promise<number> {
+  let processados = 0;
   for (let i = 0; i < movs.length; i += BATCH_SIZE) {
     const lote = movs.slice(i, i + BATCH_SIZE);
     for (const m of lote) {
@@ -208,7 +220,9 @@ async function inserirMovimentacoes(movs: SqlMovimentacaoRow[], cargaId: number)
             ultimo_tipo_documento, data_criacao_ultimo_doc,
             coletado_em)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,now())
-         ON CONFLICT (id_item_fluxo_instan, COALESCE(id_processo_arquivo, -1)) DO NOTHING`,
+         ON CONFLICT (id_item_fluxo_instan, COALESCE(id_processo_arquivo, -1)) DO UPDATE SET
+           dt_saida = EXCLUDED.dt_saida
+         WHERE pauta_julgamento_movimentacao.dt_saida IS DISTINCT FROM EXCLUDED.dt_saida`,
         [
           m.cod_processo, cargaId, m.ID_ITEM_FLUXO_INSTAN,
           toIso(m.dt_mov), toIso(m.dt_saida),
@@ -221,10 +235,10 @@ async function inserirMovimentacoes(movs: SqlMovimentacaoRow[], cargaId: number)
           toText(m.ULTIMO_TIPO_DOCUMENTO), toIso(m.DATA_CRIACAO_ULTIMO_DOCUMENTO),
         ],
       );
-      inseridos++;
+      processados++;
     }
   }
-  return inseridos;
+  return processados;
 }
 
 // --- Função principal ---
@@ -235,10 +249,10 @@ export async function executarCargaProcessos(): Promise<void> {
   if (DRY_RUN) console.log("  -> Modo dry-run ativo. Nenhum dado será gravado no PostgreSQL.");
 
   let cargaId: number | null = null;
-  let totalInseridos = 0;
+  let totalProcessados = 0;
 
   try {
-    // 1. Todos os processo_ids de CE carregados na tabela central (fonte de verdade)
+    // 1. Todos os processo_ids CE (fonte de verdade)
     const pgItens = await pgQuery<{ processo_id: number }>(
       "SELECT processo_id FROM public.processo ORDER BY processo_id",
     );
@@ -247,75 +261,104 @@ export async function executarCargaProcessos(): Promise<void> {
 
     if (todosProcessoIds.length === 0) {
       console.log("  -> Nenhum processo encontrado. Execute primeiro o ETL processos-ce.");
-      const duracao = Date.now() - inicio;
-      await gravarLog("sucesso", 0, duracao, "Nenhum processo em public.processo.");
+      await gravarLog("sucesso", 0, Date.now() - inicio, "Nenhum processo em public.processo.");
       return;
     }
 
-    // 2. Processos que já têm arquivos carregados
-    const pgArquivos = await pgQuery<{ processo_id: number }>(
+    // 2. Processos sem arquivos (carga inicial)
+    const pgComArquivos = await pgQuery<{ processo_id: number }>(
       "SELECT DISTINCT processo_id FROM public.pauta_julgamento_arquivo WHERE processo_id IS NOT NULL",
     );
-    const processosComArquivos = new Set(pgArquivos.map((r) => r.processo_id));
+    const comArquivos = new Set(pgComArquivos.map((r) => r.processo_id));
 
-    // 3. Processos que já têm movimentações carregadas
-    const pgMovs = await pgQuery<{ processo_id: number }>(
+    // 3. Processos com arquivos ainda não totalmente assinados (precisam de atualização)
+    const pgArqPendentes = await pgQuery<{ processo_id: number }>(
+      `SELECT DISTINCT processo_id FROM public.pauta_julgamento_arquivo
+       WHERE processo_id IS NOT NULL
+         AND (ic_documento_assinado IS NULL OR ic_documento_assinado IS DISTINCT FROM 'true')`,
+    );
+    const comArqPendentes = new Set(pgArqPendentes.map((r) => r.processo_id));
+
+    // 4. Processos sem movimentações (carga inicial)
+    const pgComMovs = await pgQuery<{ processo_id: number }>(
       "SELECT DISTINCT processo_id FROM public.pauta_julgamento_movimentacao WHERE processo_id IS NOT NULL",
     );
-    const processosComMovs = new Set(pgMovs.map((r) => r.processo_id));
+    const comMovs = new Set(pgComMovs.map((r) => r.processo_id));
 
-    // 4. Processos novos = sem arquivos OU sem movimentações
-    const processosNovos = todosProcessoIds.filter(
-      (id) => !processosComArquivos.has(id) || !processosComMovs.has(id),
+    // 5. Processos com movimentação ainda em aberto (dt_saida IS NULL — precisam de atualização)
+    const pgMovsAbertas = await pgQuery<{ processo_id: number }>(
+      `SELECT DISTINCT processo_id FROM public.pauta_julgamento_movimentacao
+       WHERE processo_id IS NOT NULL AND dt_saida IS NULL`,
     );
-    console.log(`  -> Processos já carregados (arquivos): ${processosComArquivos.size}`);
-    console.log(`  -> Processos já carregados (movimentações): ${processosComMovs.size}`);
-    console.log(`  -> Processos novos a carregar: ${processosNovos.length}`);
+    const comMovsAbertas = new Set(pgMovsAbertas.map((r) => r.processo_id));
 
-    if (processosNovos.length === 0) {
-      console.log("  -> Nenhum processo novo. ETL encerrado sem alterações.");
-      const duracao = Date.now() - inicio;
-      await gravarLog("sucesso", 0, duracao, "Sem processos novos — nada a inserir.");
+    // 6. Conjuntos a processar
+    // Arquivos: novos (sem nenhum dado) + com docs pendentes de assinatura
+    const idsParaArquivos = new Set(
+      todosProcessoIds.filter((id) => !comArquivos.has(id) || comArqPendentes.has(id)),
+    );
+    // Movimentações: novos + com movimentação em aberto
+    const idsParaMovs = new Set(
+      todosProcessoIds.filter((id) => !comMovs.has(id) || comMovsAbertas.has(id)),
+    );
+    // União para iterar em lote único
+    const idsParaProcessar = [...new Set([...idsParaArquivos, ...idsParaMovs])];
+
+    console.log(`  -> Processos sem arquivos (carga inicial): ${todosProcessoIds.filter((id) => !comArquivos.has(id)).length}`);
+    console.log(`  -> Processos com docs pendentes de assinatura: ${comArqPendentes.size}`);
+    console.log(`  -> Processos sem movimentações (carga inicial): ${todosProcessoIds.filter((id) => !comMovs.has(id)).length}`);
+    console.log(`  -> Processos com movimentação em aberto: ${comMovsAbertas.size}`);
+    console.log(`  -> Total de processos a processar: ${idsParaProcessar.length}`);
+
+    if (idsParaProcessar.length === 0) {
+      console.log("  -> Nada a atualizar. ETL encerrado.");
+      await gravarLog("sucesso", 0, Date.now() - inicio, "Sem processos para atualizar.");
       return;
     }
 
     if (DRY_RUN) {
       console.log("\n--- DRY-RUN: processos_eprocess ---");
-      console.log(`  Processos novos a carregar: ${processosNovos.length}`);
+      console.log(`  Para arquivos (novos + pendentes): ${idsParaArquivos.size}`);
+      console.log(`  Para movimentações (novos + abertos): ${idsParaMovs.size}`);
       console.log("--- Fim dry-run ---\n");
       return;
     }
 
-    // 5. Registro de carga
+    // 7. Registro de carga
     cargaId = await criarCarga();
     console.log(`  -> carga_id=${cargaId}`);
 
-    // 6. Busca e insere em lotes de 1.000 (evita IN() gigante no SQL Server)
-    const SQL_BATCH = 1000;
-    let arquivosInseridos = 0;
-    let movsInseridas = 0;
-    const totalLotes = Math.ceil(processosNovos.length / SQL_BATCH);
+    // 8. Processa em lotes, separando arquivos e movimentações por necessidade
+    let arquivosProcessados = 0;
+    let movsProcessadas = 0;
+    const totalLotes = Math.ceil(idsParaProcessar.length / SQL_BATCH);
 
     for (let lote = 0; lote < totalLotes; lote++) {
-      const ids = processosNovos.slice(lote * SQL_BATCH, (lote + 1) * SQL_BATCH);
+      const ids = idsParaProcessar.slice(lote * SQL_BATCH, (lote + 1) * SQL_BATCH);
       console.log(`  -> Lote ${lote + 1}/${totalLotes} — ${ids.length} processos`);
 
-      const arquivos = await queryInDatabase<SqlArquivoRow>(EPROCESS_DATABASE, sqlArquivosNovos(ids));
-      arquivosInseridos += await inserirArquivos(arquivos, cargaId);
+      const idsArqLote = ids.filter((id) => idsParaArquivos.has(id));
+      if (idsArqLote.length > 0) {
+        const arquivos = await queryInDatabase<SqlArquivoRow>(EPROCESS_DATABASE, sqlArquivos(idsArqLote));
+        arquivosProcessados += await upsertArquivos(arquivos, cargaId);
+      }
 
-      const movs = await queryInDatabase<SqlMovimentacaoRow>(EPROCESS_DATABASE, sqlMovimentacoesNovos(ids));
-      movsInseridas += await inserirMovimentacoes(movs, cargaId);
+      const idsMovLote = ids.filter((id) => idsParaMovs.has(id));
+      if (idsMovLote.length > 0) {
+        const movs = await queryInDatabase<SqlMovimentacaoRow>(EPROCESS_DATABASE, sqlMovimentacoes(idsMovLote));
+        movsProcessadas += await upsertMovimentacoes(movs, cargaId);
+      }
     }
 
-    console.log(`  -> Arquivos inseridos: ${arquivosInseridos}`);
-    console.log(`  -> Movimentações inseridas: ${movsInseridas}`);
+    console.log(`  -> Arquivos processados (insert+update): ${arquivosProcessados}`);
+    console.log(`  -> Movimentações processadas (insert+update): ${movsProcessadas}`);
 
-    totalInseridos = arquivosInseridos + movsInseridas;
-    await finalizarCarga(cargaId, "sucesso", totalInseridos);
+    totalProcessados = arquivosProcessados + movsProcessadas;
+    await finalizarCarga(cargaId, "sucesso", totalProcessados);
 
     const duracao = Date.now() - inicio;
-    await gravarLog("sucesso", totalInseridos, duracao);
-    console.log(`  OK — ${MODULO} em ${duracao} ms (${arquivosInseridos} arquivos, ${movsInseridas} movimentações)`);
+    await gravarLog("sucesso", totalProcessados, duracao);
+    console.log(`  OK — ${MODULO} em ${duracao} ms (${arquivosProcessados} arquivos, ${movsProcessadas} movimentações)`);
 
   } catch (error) {
     const duracao = Date.now() - inicio;
@@ -323,12 +366,12 @@ export async function executarCargaProcessos(): Promise<void> {
     console.error(`  ERRO — ${mensagem}`);
 
     if (cargaId !== null) {
-      await finalizarCarga(cargaId, "erro", totalInseridos, mensagem).catch((e) => {
+      await finalizarCarga(cargaId, "erro", totalProcessados, mensagem).catch((e) => {
         console.error(`  ERRO ao atualizar carga: ${e instanceof Error ? e.message : String(e)}`);
       });
     }
 
-    await gravarLog("erro", totalInseridos, duracao, mensagem).catch((e) => {
+    await gravarLog("erro", totalProcessados, duracao, mensagem).catch((e) => {
       console.error(`  ERRO ao gravar etl_log: ${e instanceof Error ? e.message : String(e)}`);
     });
     throw error;

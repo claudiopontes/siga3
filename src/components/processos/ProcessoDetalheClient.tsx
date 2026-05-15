@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, ArrowDownUp, Clock, ExternalLink, FileText, Gavel } from "lucide-react";
+import ModalAnaliseProcessoPautaIA from "@/components/pautas-julgamento/ModalAnaliseProcessoPautaIA";
 
 function formatarData(valor: string | null) {
   if (!valor) return "—";
@@ -72,6 +73,7 @@ type ArquivoRow = {
   nm_proc_arqv: string | null;
   nr_pagn: number | null;
   dt_criac: string | null;
+  ic_documento_assinado: string | null;
 };
 
 type Aba = "sessoes" | "movimentacoes" | "arquivos";
@@ -289,10 +291,12 @@ function ordenarArquivos(lista: ArquivoRow[], desc: boolean): ArquivoRow[] {
 function AbaArquivos({
   arquivos,
   loading,
+  erro,
   processoId,
 }: {
   arquivos: ArquivoRow[];
   loading: boolean;
+  erro: string | null;
   processoId: number;
 }) {
   const [desc, setDesc] = useState(true);
@@ -312,6 +316,10 @@ function AbaArquivos({
         <span className="text-sm text-gray-400">Carregando arquivos...</span>
       </div>
     );
+  }
+
+  if (erro) {
+    return <p className="py-10 text-center text-sm text-red-500">{erro}</p>;
   }
 
   if (!total) {
@@ -362,6 +370,16 @@ function AbaArquivos({
                     </p>
                     <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
                       <BadgeCategoria tipo={a.nm_tipo_docm} />
+                      {a.ic_documento_assinado !== "true" && a.ic_documento_assinado !== null && (
+                        <span className="rounded bg-orange-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-orange-600 dark:bg-orange-900/30 dark:text-orange-400">
+                          Não concluído
+                        </span>
+                      )}
+                      {a.ic_documento_assinado === null && (
+                        <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-gray-500 dark:bg-gray-700 dark:text-gray-400">
+                          Pendente
+                        </span>
+                      )}
                       {a.nr_pagn != null && (
                         <span className="text-[10px] text-gray-400">{a.nr_pagn} pág.</span>
                       )}
@@ -415,11 +433,11 @@ export default function ProcessoDetalheClient({ processoId }: { processoId: numb
 
   const { data: processo, loading: loadingP, erro: erroP } =
     useAsyncData<ProcessoRow>(`/api/processos/${processoId}`);
-  const { data: sessoes, loading: loadingSess } =
+  const { data: sessoes, loading: loadingSess, erro: erroSess } =
     useAsyncData<SessaoProcessoRow[]>(`/api/processos/${processoId}/sessoes`);
-  const { data: movimentacoes, loading: loadingMov } =
+  const { data: movimentacoes, loading: loadingMov, erro: erroMov } =
     useAsyncData<MovimentacaoRow[]>(`/api/processos/${processoId}/movimentacoes`);
-  const { data: arquivos, loading: loadingArq } =
+  const { data: arquivos, loading: loadingArq, erro: erroArq } =
     useAsyncData<ArquivoRow[]>(`/api/processos/${processoId}/arquivos`);
 
   if (loadingP) {
@@ -463,9 +481,15 @@ export default function ProcessoDetalheClient({ processoId }: { processoId: numb
           {/* Coluna esquerda */}
           <div className="space-y-3">
             <div>
-              <h1 className="text-lg font-bold text-blue-700 dark:text-blue-400">
-                {processo.numero_fmt ?? `ID ${processo.processo_id}`}
-              </h1>
+              <div className="flex flex-wrap items-center gap-3">
+                <h1 className="text-lg font-bold text-blue-700 dark:text-blue-400">
+                  {processo.numero_fmt ?? `ID ${processo.processo_id}`}
+                </h1>
+                <ModalAnaliseProcessoPautaIA
+                  processoId={processo.processo_id}
+                  numeroFmt={processo.numero_fmt}
+                />
+              </div>
               <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
                 {processo.nome_classe && (
                   <span className="text-xs text-gray-500 dark:text-gray-400">{processo.nome_classe}</span>
@@ -562,6 +586,8 @@ export default function ProcessoDetalheClient({ processoId }: { processoId: numb
                 <Spinner className="h-4 w-4 text-blue-500" />
                 <span className="text-sm text-gray-400">Carregando sessões...</span>
               </div>
+            ) : erroSess ? (
+              <p className="py-10 text-center text-sm text-red-500">{erroSess}</p>
             ) : !sessoes?.length ? (
               <p className="py-10 text-center text-sm text-gray-400">Processo não foi pautado em nenhuma sessão.</p>
             ) : (
@@ -572,7 +598,6 @@ export default function ProcessoDetalheClient({ processoId }: { processoId: numb
                       <th className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">Sessão</th>
                       <th className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">Órgão Julgador</th>
                       <th className="px-3 py-2.5 text-center text-[11px] font-semibold uppercase tracking-wide text-gray-500">Realização</th>
-                      <th className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">Situação na Pauta</th>
                       <th className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500">Relator</th>
                     </tr>
                   </thead>
@@ -585,7 +610,6 @@ export default function ProcessoDetalheClient({ processoId }: { processoId: numb
                         </td>
                         <td className="px-3 py-2 text-xs text-gray-600 dark:text-gray-300">{s.orgao_julgador ?? "—"}</td>
                         <td className="px-3 py-2 text-center text-xs text-gray-600 dark:text-gray-300 whitespace-nowrap">{formatarData(s.dt_realizacao)}</td>
-                        <td className="px-3 py-2 text-xs text-gray-500 dark:text-gray-400">{s.situacao ?? "—"}</td>
                         <td className="px-3 py-2 text-xs text-gray-700 dark:text-gray-300">
                           {s.relator_tratamento ?? s.nome_relator ?? "—"}
                           {s.nome_revisor && <span className="mt-0.5 block text-[10px] text-gray-400">Rev.: {s.nome_revisor}</span>}
@@ -605,6 +629,8 @@ export default function ProcessoDetalheClient({ processoId }: { processoId: numb
                 <Spinner className="h-4 w-4 text-blue-500" />
                 <span className="text-sm text-gray-400">Carregando movimentações...</span>
               </div>
+            ) : erroMov ? (
+              <p className="py-10 text-center text-sm text-red-500">{erroMov}</p>
             ) : !movimentacoes?.length ? (
               <p className="py-10 text-center text-sm text-gray-400">Nenhuma movimentação encontrada.</p>
             ) : (
@@ -614,7 +640,7 @@ export default function ProcessoDetalheClient({ processoId }: { processoId: numb
 
           {/* Arquivos */}
           {abaAtiva === "arquivos" && (
-            <AbaArquivos arquivos={arquivos ?? []} loading={loadingArq} processoId={processoId} />
+            <AbaArquivos arquivos={arquivos ?? []} loading={loadingArq} erro={erroArq} processoId={processoId} />
           )}
         </div>
       </div>
