@@ -17,6 +17,8 @@ import { executarETLFatoEmpenho } from "./jobs/fato-empenho";
 import { executarCargaCauc } from "./jobs/cauc";
 import { executarCargaProcessosGabinete } from "./jobs/processos-gabinete";
 import { executarCargaPautaJulgamento } from "./jobs/pauta-julgamento";
+import { executarCargaProcessosCe } from "./jobs/processos-ce";
+import { executarCargaProcessos } from "./jobs/processos";
 import { executarCredorEnriquecimentoPreparar } from "./jobs/credor-enriquecimento-preparar";
 import { executarCredorEnriquecerInterno } from "./jobs/credor-enriquecer-interno";
 import { executarCredorEnriquecerCnpj } from "./jobs/credor-enriquecer-cnpj";
@@ -41,6 +43,10 @@ const RUN_PROCESSOS_GABINETE_NIGHTLY =
   (process.env.RUN_PROCESSOS_GABINETE_NIGHTLY ?? "true").toLowerCase() !== "false";
 const RUN_PAUTA_JULGAMENTO_NIGHTLY =
   (process.env.RUN_PAUTA_JULGAMENTO_NIGHTLY ?? "true").toLowerCase() !== "false";
+const RUN_PROCESSOS_CE_NIGHTLY =
+  (process.env.RUN_PROCESSOS_CE_NIGHTLY ?? "true").toLowerCase() !== "false";
+const RUN_PROCESSOS_EPROCESS_NIGHTLY =
+  (process.env.RUN_PROCESSOS_EPROCESS_NIGHTLY ?? "true").toLowerCase() !== "false";
 const RUN_CREDOR_ENRIQUECIMENTO_NIGHTLY =
   (process.env.RUN_CREDOR_ENRIQUECIMENTO_NIGHTLY ?? "true").toLowerCase() !== "false";
 
@@ -81,12 +87,30 @@ cron.schedule(
     }
 
     if (RUN_PAUTA_JULGAMENTO_NIGHTLY) {
-      console.log("[CRON] Step 3/12: pauta julgamento (EJURIS/SQL Server -> PostgreSQL)");
+      console.log("[CRON] Step 3/14: pauta julgamento (EJURIS/SQL Server -> PostgreSQL)");
       await executarCargaPautaJulgamento().catch((error) => {
         console.error("[CRON] pauta julgamento failed:", error);
       });
     } else {
-      console.log("[CRON] Step 3/12: pauta julgamento skipped by RUN_PAUTA_JULGAMENTO_NIGHTLY=false");
+      console.log("[CRON] Step 3/14: pauta julgamento skipped by RUN_PAUTA_JULGAMENTO_NIGHTLY=false");
+    }
+
+    if (RUN_PROCESSOS_CE_NIGHTLY) {
+      console.log("[CRON] Step 4/14: processos CE (EPROCESS -> public.processo)");
+      await executarCargaProcessosCe().catch((error) => {
+        console.error("[CRON] processos-ce failed:", error);
+      });
+    } else {
+      console.log("[CRON] Step 4/14: processos CE skipped by RUN_PROCESSOS_CE_NIGHTLY=false");
+    }
+
+    if (RUN_PROCESSOS_EPROCESS_NIGHTLY) {
+      console.log("[CRON] Step 5/14: processos arquivos/movimentações (EPROCESS -> PostgreSQL)");
+      await executarCargaProcessos().catch((error) => {
+        console.error("[CRON] processos-eprocess failed:", error);
+      });
+    } else {
+      console.log("[CRON] Step 5/14: processos eprocess skipped by RUN_PROCESSOS_EPROCESS_NIGHTLY=false");
     }
 
     if (RUN_APC_POLANCO_NIGHTLY) {

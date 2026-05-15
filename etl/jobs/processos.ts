@@ -238,17 +238,17 @@ export async function executarCargaProcessos(): Promise<void> {
   let totalInseridos = 0;
 
   try {
-    // 1. Todos os processo_ids presentes nos itens de pauta (fonte de verdade)
+    // 1. Todos os processo_ids de CE carregados na tabela central (fonte de verdade)
     const pgItens = await pgQuery<{ processo_id: number }>(
-      "SELECT DISTINCT processo_id FROM public.pauta_julgamento_item WHERE processo_id IS NOT NULL",
+      "SELECT processo_id FROM public.processo ORDER BY processo_id",
     );
     const todosProcessoIds = pgItens.map((r) => r.processo_id);
-    console.log(`  -> Total de processos nos itens de pauta: ${todosProcessoIds.length}`);
+    console.log(`  -> Total de processos CE: ${todosProcessoIds.length}`);
 
     if (todosProcessoIds.length === 0) {
-      console.log("  -> Nenhum processo encontrado. Execute primeiro o ETL pauta_julgamento.");
+      console.log("  -> Nenhum processo encontrado. Execute primeiro o ETL processos-ce.");
       const duracao = Date.now() - inicio;
-      await gravarLog("sucesso", 0, duracao, "Nenhum processo nos itens de pauta.");
+      await gravarLog("sucesso", 0, duracao, "Nenhum processo em public.processo.");
       return;
     }
 
@@ -279,36 +279,35 @@ export async function executarCargaProcessos(): Promise<void> {
       return;
     }
 
-    // 5. Busca arquivos e movimentações no EPROCESS
-    console.log(`  -> Consultando arquivos de ${processosNovos.length} processos...`);
-    const arquivos = await queryInDatabase<SqlArquivoRow>(EPROCESS_DATABASE, sqlArquivosNovos(processosNovos));
-    console.log(`  -> Arquivos encontrados: ${arquivos.length}`);
-
-    console.log(`  -> Consultando movimentações de ${processosNovos.length} processos...`);
-    const movimentacoes = await queryInDatabase<SqlMovimentacaoRow>(EPROCESS_DATABASE, sqlMovimentacoesNovos(processosNovos));
-    console.log(`  -> Movimentações encontradas: ${movimentacoes.length}`);
-
     if (DRY_RUN) {
       console.log("\n--- DRY-RUN: processos_eprocess ---");
-      console.log(`  Processos novos: ${processosNovos.length}`);
-      console.log(`  Arquivos: ${arquivos.length}`);
-      console.dir(arquivos.slice(0, 2), { depth: null });
-      console.log(`  Movimentações: ${movimentacoes.length}`);
-      console.dir(movimentacoes.slice(0, 2), { depth: null });
+      console.log(`  Processos novos a carregar: ${processosNovos.length}`);
       console.log("--- Fim dry-run ---\n");
       return;
     }
 
-    // 6. Registro de carga
+    // 5. Registro de carga
     cargaId = await criarCarga();
     console.log(`  -> carga_id=${cargaId}`);
 
-    // 7. Inserir arquivos
-    const arquivosInseridos = await inserirArquivos(arquivos, cargaId);
-    console.log(`  -> Arquivos inseridos: ${arquivosInseridos}`);
+    // 6. Busca e insere em lotes de 1.000 (evita IN() gigante no SQL Server)
+    const SQL_BATCH = 1000;
+    let arquivosInseridos = 0;
+    let movsInseridas = 0;
+    const totalLotes = Math.ceil(processosNovos.length / SQL_BATCH);
 
-    // 8. Inserir movimentações
-    const movsInseridas = await inserirMovimentacoes(movimentacoes, cargaId);
+    for (let lote = 0; lote < totalLotes; lote++) {
+      const ids = processosNovos.slice(lote * SQL_BATCH, (lote + 1) * SQL_BATCH);
+      console.log(`  -> Lote ${lote + 1}/${totalLotes} — ${ids.length} processos`);
+
+      const arquivos = await queryInDatabase<SqlArquivoRow>(EPROCESS_DATABASE, sqlArquivosNovos(ids));
+      arquivosInseridos += await inserirArquivos(arquivos, cargaId);
+
+      const movs = await queryInDatabase<SqlMovimentacaoRow>(EPROCESS_DATABASE, sqlMovimentacoesNovos(ids));
+      movsInseridas += await inserirMovimentacoes(movs, cargaId);
+    }
+
+    console.log(`  -> Arquivos inseridos: ${arquivosInseridos}`);
     console.log(`  -> Movimentações inseridas: ${movsInseridas}`);
 
     totalInseridos = arquivosInseridos + movsInseridas;

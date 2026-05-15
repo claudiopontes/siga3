@@ -19,10 +19,13 @@ export async function GET(
       `SELECT
          id_proc_arqv, nm_tipo_docm, nm_proc_arqv,
          nr_pagn, nr_ordem, data_finalizado,
-         ic_documento_assinado, id_fase_instan
+         dt_criac, ic_documento_assinado, id_fase_instan,
+         ic_valido, desentranhado
        FROM public.pauta_julgamento_arquivo
        WHERE processo_id = $1
-       ORDER BY nr_ordem ASC NULLS LAST, id_proc_arqv ASC`,
+         AND (desentranhado IS NOT TRUE)
+         AND ic_documento_assinado = 'true'
+       ORDER BY nr_ordem ASC NULLS LAST, dt_criac ASC, id_proc_arqv ASC`,
       [id],
     );
     return NextResponse.json(rows);

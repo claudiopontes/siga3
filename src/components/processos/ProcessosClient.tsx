@@ -29,17 +29,17 @@ function Spinner({ className }: { className?: string }) {
 
 type ProcessoRow = {
   processo_id: number;
-  numero_processo_fmt: string | null;
+  numero_fmt: string | null;
+  ano: number | null;
   objeto: string | null;
   nome_classe: string | null;
   nome_1_parte: string | null;
-  situacao_funcional: string | null;
+  situacao: string | null;
   nome_orgao: string | null;
   nome_relator: string | null;
-  relator_tratamento: string | null;
 };
 
-type SortCol = "numero_processo_fmt" | "nome_classe" | "objeto" | "nome_1_parte" | "relator";
+type SortCol = "numero_fmt" | "nome_classe" | "objeto" | "nome_1_parte" | "relator";
 
 type Option = { value: string; label: string };
 
@@ -257,7 +257,7 @@ export default function ProcessosClient() {
 
   const busca   = searchParams.get("busca") ?? "";
   const pagina  = Math.max(1, Number(searchParams.get("page") ?? "1"));
-  const sortCol = (searchParams.get("sort") ?? "numero_processo_fmt") as SortCol;
+  const sortCol = (searchParams.get("sort") ?? "numero_fmt") as SortCol;
   const sortDir = (searchParams.get("dir")?.toUpperCase() === "ASC" ? "ASC" : "DESC") as "ASC" | "DESC";
 
   const selectedAno      = searchParams.get("ano") ?? "";
@@ -398,8 +398,8 @@ export default function ProcessosClient() {
           <table className="w-full min-w-[700px] text-sm">
             <thead>
               <tr className="border-b border-gray-100 bg-gray-50 dark:border-gray-700 dark:bg-gray-900/40">
-                <th className={thClass("numero_processo_fmt")} onClick={() => toggleSort("numero_processo_fmt")}>
-                  <span className="inline-flex items-center gap-1">Processo <SortIcon active={sortCol === "numero_processo_fmt"} dir={sortDir} /></span>
+                <th className={thClass("numero_fmt")} onClick={() => toggleSort("numero_fmt")}>
+                  <span className="inline-flex items-center gap-1">Processo <SortIcon active={sortCol === "numero_fmt"} dir={sortDir} /></span>
                 </th>
                 <th className={thClass("nome_classe")} onClick={() => toggleSort("nome_classe")}>
                   <span className="inline-flex items-center gap-1">Classe <SortIcon active={sortCol === "nome_classe"} dir={sortDir} /></span>
@@ -435,8 +435,8 @@ export default function ProcessosClient() {
                 dados.map((p, i) => (
                   <tr key={p.processo_id} className={`border-t border-gray-100 dark:border-gray-700/50 hover:bg-blue-50/40 dark:hover:bg-blue-900/10 ${i % 2 !== 0 ? "bg-slate-50 dark:bg-slate-800/30" : ""}`}>
                     <td className="px-4 py-2.5">
-                      <span className="block font-semibold text-blue-700 dark:text-blue-400">{p.numero_processo_fmt ?? `ID ${p.processo_id}`}</span>
-                      {p.situacao_funcional && <span className="mt-0.5 block text-[10px] text-gray-400 dark:text-gray-500">{p.situacao_funcional}</span>}
+                      <span className="block font-semibold text-blue-700 dark:text-blue-400">{p.numero_fmt ?? `ID ${p.processo_id}`}</span>
+                      {p.situacao && <span className="mt-0.5 block text-[10px] text-gray-400 dark:text-gray-500">{p.situacao}</span>}
                     </td>
                     <td className="max-w-40 px-4 py-2.5 text-xs text-gray-500 dark:text-gray-400">{p.nome_classe ?? "—"}</td>
                     <td className="max-w-60 px-4 py-2.5">
@@ -445,7 +445,7 @@ export default function ProcessosClient() {
                     <td className="max-w-48 px-4 py-2.5 text-xs text-gray-600 dark:text-gray-300">
                       {p.nome_1_parte ? <p className="truncate" title={p.nome_1_parte}>{p.nome_1_parte}</p> : "—"}
                     </td>
-                    <td className="max-w-40 px-4 py-2.5 text-xs text-gray-700 dark:text-gray-300">{p.relator_tratamento ?? p.nome_relator ?? "—"}</td>
+                    <td className="max-w-40 px-4 py-2.5 text-xs text-gray-700 dark:text-gray-300">{p.nome_relator ?? "—"}</td>
                     <td className="max-w-48 px-4 py-2.5 text-xs text-gray-600 dark:text-gray-300">
                       {p.nome_orgao ? <p className="truncate" title={p.nome_orgao}>{p.nome_orgao}</p> : "—"}
                     </td>

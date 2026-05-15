@@ -1,9 +1,12 @@
 "use client";
 
+import { useRouter } from "next/navigation";
+import { FileText } from "lucide-react";
 import type { ProcessoPautaJulgamentoView } from "./tipos";
 
 
 export default function TabelaProcessosPauta({ processos }: { processos: ProcessoPautaJulgamentoView[] }) {
+  const router = useRouter();
   if (processos.length === 0) {
     return (
       <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
@@ -24,6 +27,7 @@ export default function TabelaProcessosPauta({ processos }: { processos: Process
             <th className="px-3 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Relator</th>
             <th className="px-3 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Entidade/Órgão</th>
             <th className="px-3 py-3 text-left text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Situação Pauta</th>
+            <th className="px-3 py-3 text-center text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Ações</th>
           </tr>
         </thead>
         <tbody>
@@ -76,6 +80,20 @@ export default function TabelaProcessosPauta({ processos }: { processos: Process
               </td>
               <td className="px-3 py-2.5 text-xs text-gray-500 dark:text-gray-400">
                 {p.situacao ?? "—"}
+              </td>
+              <td className="px-3 py-2.5 text-center">
+                {p.processo_id ? (
+                  <button
+                    type="button"
+                    onClick={() => router.push(`/eprocessos-ce/processos/${p.processo_id}`)}
+                    className="inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-xs font-semibold text-blue-700 transition hover:border-blue-300 hover:bg-blue-100 dark:border-blue-900/70 dark:bg-blue-950/30 dark:text-blue-400 dark:hover:bg-blue-900/40"
+                  >
+                    <FileText className="h-3.5 w-3.5" />
+                    Detalhar
+                  </button>
+                ) : (
+                  <span className="text-xs text-gray-300 dark:text-gray-600">—</span>
+                )}
               </td>
             </tr>
           ))}
