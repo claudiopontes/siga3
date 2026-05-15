@@ -60,6 +60,15 @@ export interface AnaliseProcessoPautaOutput {
   aviso_revisao: string;
   gerado_em: string;
   do_cache: boolean;
+  // Divergência entre unidade técnica (instrução) e Ministério Público de Contas
+  ha_divergencia?: boolean;
+  tipo_divergencia?: string;
+  // Campos específicos para a linha da tabela de pauta (curtos, sem repetir colunas já existentes)
+  objeto?: string | null;          // ≤ 140 chars — objeto do processo para a coluna Objeto
+  resumo_tecnico?: string | null;  // ≤ 220 chars — conclusão da instrução técnica
+  resumo_mpc?: string | null;      // ≤ 220 chars — conclusão do MPC
+  // ID do registro em ia_analise_processo_pauta — necessário para descarte lógico
+  analise_id?: number;
   // Campos HTML opcionais — gerados localmente a partir do JSON, nunca pela IA
   html_linha_sucinta?: string;
   html_relatorio?: string;

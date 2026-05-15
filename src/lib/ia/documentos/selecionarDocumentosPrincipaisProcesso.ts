@@ -12,14 +12,32 @@ export const LIMITE_CHARS_POR_TIPO: Record<TipoDocumentoProcesso, number> = {
   outro:                 2000,
 };
 
-// Prioridade de seleção — apenas 1 documento por tipo prioritário.
-const TIPOS_PRIORITARIOS: TipoDocumentoProcesso[] = [
-  "voto_relator",
-  "relatorio_tecnico",
-  "parecer_mpc",
-  "defesa_manifestacao",
-  "decisao_acordao",
-];
+// Modo de seleção de documentos.
+// "pauta_pre_julgamento": apenas relatorio_tecnico e parecer_mpc — o voto do
+//   relator normalmente não está disponível antes do julgamento.
+// "pos_julgamento": inclui voto_relator e decisao_acordao.
+// "completo": todos os tipos prioritários.
+export type ModoSelecaoDocumentos = "pauta_pre_julgamento" | "pos_julgamento" | "completo";
+
+const TIPOS_POR_MODO: Record<ModoSelecaoDocumentos, TipoDocumentoProcesso[]> = {
+  pauta_pre_julgamento: [
+    "relatorio_tecnico",
+    "parecer_mpc",
+  ],
+  pos_julgamento: [
+    "voto_relator",
+    "relatorio_tecnico",
+    "parecer_mpc",
+    "decisao_acordao",
+  ],
+  completo: [
+    "voto_relator",
+    "relatorio_tecnico",
+    "parecer_mpc",
+    "defesa_manifestacao",
+    "decisao_acordao",
+  ],
+};
 
 export interface ArquivoParaSelecao {
   id_proc_arqv: number;
@@ -36,18 +54,20 @@ export interface ArquivoSelecionado extends ArquivoParaSelecao {
 
 export function selecionarDocumentosPrincipaisProcesso(
   arquivos: ArquivoParaSelecao[],
+  opcoes?: { modo?: ModoSelecaoDocumentos },
 ): ArquivoSelecionado[] {
-  // Classifica todos
+  const modo = opcoes?.modo ?? "pauta_pre_julgamento";
+  const tiposPrioritarios = TIPOS_POR_MODO[modo];
+
   const classificados = arquivos.map((a) => ({
     ...a,
     tipo_documento: classificarDocumentoProcesso(a.nm_tipo_docm, a.nm_proc_arqv),
   }));
 
   const selecionados: ArquivoSelecionado[] = [];
-  const tiposUsados = new Set<TipoDocumentoProcesso>();
 
-  // 1. Um de cada tipo prioritário (mais recente por dt_criac)
-  for (const tipo of TIPOS_PRIORITARIOS) {
+  // Um documento por tipo prioritário, mais recente por dt_criac
+  for (const tipo of tiposPrioritarios) {
     const candidatos = classificados
       .filter((a) => a.tipo_documento === tipo)
       .sort((a, b) => {
@@ -61,7 +81,6 @@ export function selecionarDocumentosPrincipaisProcesso(
 
     if (candidatos.length > 0) {
       selecionados.push(candidatos[0]);
-      tiposUsados.add(tipo);
     }
   }
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
-import { Bot, Loader2, X, Printer, RefreshCw, AlertTriangle, CheckCircle, Info, XCircle } from "lucide-react";
+import { Bot, Loader2, X, Printer, RefreshCw, AlertTriangle, CheckCircle, Info, XCircle, Trash2 } from "lucide-react";
 import type { AnaliseProcessoPautaOutput, NivelRisco } from "@/lib/ia/tipos";
 
 interface Props {
@@ -21,6 +21,8 @@ export default function ModalAnaliseProcessoPautaIA({ processoId, numeroFmt }: P
   const [carregando, setCarregando] = useState(false);
   const [analise, setAnalise] = useState<AnaliseProcessoPautaOutput | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+  const [descartando, setDescartando] = useState(false);
+  const [descartado, setDescartado] = useState(false);
 
   const executarAnalise = useCallback(async () => {
     setCarregando(true);
@@ -46,6 +48,32 @@ export default function ModalAnaliseProcessoPautaIA({ processoId, numeroFmt }: P
     if (!analise && !carregando) executarAnalise();
   }, [analise, carregando, executarAnalise]);
 
+  async function descartarAnalise() {
+    if (!analise?.analise_id) return;
+    const motivo = window.prompt("Motivo do descarte (opcional):");
+    if (motivo === null) return;
+
+    setDescartando(true);
+    try {
+      const res = await fetch("/api/ia/analise-processo-pauta/descartar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ analiseId: analise.analise_id, motivo }),
+      });
+      if (res.ok) {
+        setDescartado(true);
+        setAnalise(null);
+      } else {
+        const json = await res.json();
+        setErro(json?.error ?? "Erro ao descartar análise.");
+      }
+    } catch {
+      setErro("Falha na comunicação com o servidor.");
+    } finally {
+      setDescartando(false);
+    }
+  }
+
   const fechar = () => setAberto(false);
 
   // Fecha com Escape
@@ -69,14 +97,16 @@ export default function ModalAnaliseProcessoPautaIA({ processoId, numeroFmt }: P
 
   return (
     <>
-      {/* Botão disparador */}
+      {/* Botão disparador — analisa este processo para compor futuramente o relatório da pauta */}
       <button
         type="button"
         onClick={abrir}
+        title="Gera ou recupera a análise deste processo para preparação da pauta de julgamento."
+        aria-label="Gerar análise da pauta"
         className="inline-flex items-center gap-1.5 rounded-lg border border-purple-200 bg-purple-50 px-3 py-1.5 text-xs font-semibold text-purple-700 transition hover:border-purple-300 hover:bg-purple-100 dark:border-purple-900/70 dark:bg-purple-950/30 dark:text-purple-400 dark:hover:bg-purple-900/40"
       >
         <Bot className="h-3.5 w-3.5" />
-        Análise IA
+        Gerar análise da pauta
       </button>
 
       {/* Overlay escurecido clicável para fechar */}
@@ -114,7 +144,7 @@ export default function ModalAnaliseProcessoPautaIA({ processoId, numeroFmt }: P
             <Bot className="h-4 w-4 text-purple-600 dark:text-purple-400" />
             <div>
               <p className="text-sm font-bold text-gray-900 dark:text-white">
-                Análise IA
+                Análise para a pauta
               </p>
               <p className="text-[10px] text-gray-400">
                 {numeroFmt ?? `Processo ${processoId}`}
@@ -138,6 +168,16 @@ export default function ModalAnaliseProcessoPautaIA({ processoId, numeroFmt }: P
 
         {/* Conteúdo com scroll */}
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+
+          {/* Aviso de análise descartada */}
+          {descartado && !carregando && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/40 dark:bg-amber-950/20">
+              <p className="text-sm font-semibold text-amber-700 dark:text-amber-400">Análise descartada</p>
+              <p className="mt-1 text-xs text-amber-600 dark:text-amber-300">
+                A análise foi marcada como descartada. A próxima vez que clicar em <strong>Reanalisar</strong>, uma nova análise será gerada.
+              </p>
+            </div>
+          )}
 
           {/* Loading */}
           {carregando && (
@@ -183,28 +223,48 @@ export default function ModalAnaliseProcessoPautaIA({ processoId, numeroFmt }: P
                 <p className="text-sm text-gray-700 dark:text-gray-300">{analise.motivo_do_risco}</p>
               </div>
 
-              {/* Documentos analisados */}
-              {analise.documentos_analisados?.length > 0 && (
-                <section>
-                  <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                    Documentos Analisados ({analise.documentos_analisados.length})
+              {/* Divergência instrução × MPC */}
+              {analise.ha_divergencia && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/40 dark:bg-amber-950/20">
+                  <h3 className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400">
+                    Divergência: Instrução Técnica × MPC
                   </h3>
-                  <div className="space-y-1.5">
-                    {analise.documentos_analisados.map((doc, i) => (
-                      <details key={i} className="rounded-xl border border-gray-200 dark:border-gray-700">
-                        <summary className="cursor-pointer select-none rounded-xl px-4 py-2.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-700/50">
-                          <span className="capitalize">{doc.tipo.replace(/_/g, " ")}</span>
-                          {" — "}
-                          <span className="font-normal text-gray-500 dark:text-gray-400">{doc.nome}</span>
-                        </summary>
-                        <div className="border-t border-gray-200 px-4 py-3 dark:border-gray-700">
-                          <p className="text-xs leading-relaxed text-gray-700 dark:text-gray-300 whitespace-pre-line">{doc.resumo}</p>
-                        </div>
-                      </details>
-                    ))}
-                  </div>
-                </section>
+                  {analise.tipo_divergencia && (
+                    <span className="mb-1.5 inline-block rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
+                      {analise.tipo_divergencia}
+                    </span>
+                  )}
+                  <p className="text-sm text-amber-800 dark:text-amber-200">{analise.motivo_do_risco}</p>
+                </div>
               )}
+
+              {/* Documentos analisados — voto "não aplicável" é ocultado */}
+              {(() => {
+                const docsVisiveis = (analise.documentos_analisados ?? []).filter(
+                  (d) => !(d.tipo === "voto_relator" && d.resumo.startsWith("Não aplicável nesta fase")),
+                );
+                return docsVisiveis.length > 0 ? (
+                  <section>
+                    <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                      Documentos Analisados ({docsVisiveis.length})
+                    </h3>
+                    <div className="space-y-1.5">
+                      {docsVisiveis.map((doc, i) => (
+                        <details key={i} className="rounded-xl border border-gray-200 dark:border-gray-700">
+                          <summary className="cursor-pointer select-none rounded-xl px-4 py-2.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-700/50">
+                            <span className="capitalize">{doc.tipo.replace(/_/g, " ")}</span>
+                            {" — "}
+                            <span className="font-normal text-gray-500 dark:text-gray-400">{doc.nome}</span>
+                          </summary>
+                          <div className="border-t border-gray-200 px-4 py-3 dark:border-gray-700">
+                            <p className="text-xs leading-relaxed text-gray-700 dark:text-gray-300 whitespace-pre-line">{doc.resumo}</p>
+                          </div>
+                        </details>
+                      ))}
+                    </div>
+                  </section>
+                ) : null;
+              })()}
 
               {/* Pontos de atenção */}
               {analise.pontos_para_atencao?.length > 0 && (
@@ -276,9 +336,19 @@ export default function ModalAnaliseProcessoPautaIA({ processoId, numeroFmt }: P
           )}
         </div>
 
-        {/* Rodapé fixo com botão imprimir — visível sempre que há análise */}
+        {/* Rodapé fixo com botão imprimir e descartar */}
         {analise && !carregando && (
-          <div className="flex shrink-0 items-center justify-end border-t border-gray-200 px-5 py-3 dark:border-gray-700">
+          <div className="flex shrink-0 items-center justify-between border-t border-gray-200 px-5 py-3 dark:border-gray-700">
+            <button
+              type="button"
+              onClick={descartarAnalise}
+              disabled={descartando || !analise.analise_id}
+              title={analise.analise_id ? "Marcar análise como descartada (não apaga o registro)" : "ID da análise indisponível"}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-600 shadow-sm hover:bg-red-50 disabled:opacity-50 dark:border-red-800 dark:bg-gray-800 dark:text-red-400 dark:hover:bg-red-950/30"
+            >
+              {descartando ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
+              Descartar análise
+            </button>
             <button
               type="button"
               onClick={imprimir}

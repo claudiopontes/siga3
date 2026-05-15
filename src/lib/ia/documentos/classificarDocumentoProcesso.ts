@@ -1,6 +1,14 @@
 import type { TipoDocumentoProcesso } from "../tipos";
 
-// Mapas de palavras-chave por tipo de documento — classificação local sem IA.
+// Mapeamento direto de tags explícitas do banco (nm_tipo_docm como categoria).
+// Prioridade sobre classificação por palavras-chave.
+const TAGS_BANCO: Record<string, TipoDocumentoProcesso> = {
+  "RELATORIO":  "relatorio_tecnico",
+  "PARECER MP": "parecer_mpc",
+  "VOTO":       "voto_relator",
+};
+
+// Regras de palavras-chave — usadas quando não há tag explícita do banco.
 const REGRAS: Array<{ tipo: TipoDocumentoProcesso; termos: string[] }> = [
   {
     tipo: "voto_relator",
@@ -50,6 +58,13 @@ export function classificarDocumentoProcesso(
   nmTipoDocm: string | null,
   nmProcArqv: string | null,
 ): TipoDocumentoProcesso {
+  // Prioridade 1: tag explícita do banco (categoria estruturada)
+  if (nmTipoDocm) {
+    const tag = nmTipoDocm.trim().toUpperCase();
+    if (tag in TAGS_BANCO) return TAGS_BANCO[tag];
+  }
+
+  // Prioridade 2: palavras-chave no nm_tipo_docm + nm_proc_arqv
   const fonte = normalizar([nmTipoDocm, nmProcArqv].filter(Boolean).join(" "));
 
   for (const regra of REGRAS) {

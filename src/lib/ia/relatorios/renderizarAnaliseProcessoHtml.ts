@@ -4,7 +4,8 @@
 
 import type { AnaliseProcessoPautaOutput, NivelRisco } from "../tipos";
 
-export const VERSAO_FORMATO_HTML_ANALISE_PROCESSO = "1.0.0";
+// Incrementar ao mudar estrutura da linha ou do relatório completo — invalida HTML em cache.
+export const VERSAO_FORMATO_HTML_ANALISE_PROCESSO = "1.1.0";
 
 // ---------------------------------------------------------------------------
 // Utilitário de escape
@@ -44,34 +45,40 @@ function secaoHtml(titulo: string, corpo: string): string {
 // Linha da tabela sucinta (para relatório de pauta)
 // ---------------------------------------------------------------------------
 
-// TODO: O relatório sucinto da pauta deve futuramente montar uma tabela única
-// concatenando html_linha_sucinta dos processos analisados da sessão.
-// Como o HTML já estará salvo em ia_analise_processo_pauta, não será necessário
-// chamar IA novamente para imprimir a pauta completa.
+export interface ContextoLinhaPauta {
+  entidade?: string | null;
+  responsavel?: string | null;
+  relator?: string | null;
+}
 
 export function renderizarLinhaRelatorioSucintoHtml(
   analise: AnaliseProcessoPautaOutput,
   numeroOrdem?: number | null,
+  contexto?: ContextoLinhaPauta,
 ): string {
-  // Extrai resumos por tipo dos documentos analisados
-  const docPorTipo = (tipo: string): string => {
-    const doc = analise.documentos_analisados?.find(
-      (d) => d.tipo === tipo,
-    );
-    return doc?.resumo ?? "";
-  };
+  // Campos dedicados à linha (v1.4.0+). Fallback para análises geradas em versões anteriores.
+  const objeto = analise.objeto?.trim()
+    || analise.ponto_central?.trim()
+    || "";
 
-  const resumoTecnico = docPorTipo("relatorio_tecnico");
-  const resumoMpc     = docPorTipo("parecer_mpc");
+  const resumoTecnico = analise.resumo_tecnico?.trim() || (() => {
+    const doc = analise.documentos_analisados?.find((d) => d.tipo === "relatorio_tecnico");
+    return doc?.resumo ?? "";
+  })();
+
+  const resumoMpc = analise.resumo_mpc?.trim() || (() => {
+    const doc = analise.documentos_analisados?.find((d) => d.tipo === "parecer_mpc");
+    return doc?.resumo ?? "";
+  })();
 
   const colunas = [
     numeroOrdem != null ? escaparHtml(numeroOrdem) : "",
     escaparHtml(analise.numero_fmt),
-    "",   // Entidade — não disponível em AnaliseProcessoPautaOutput (campo nome_orgao não está no output)
-    escaparHtml(analise.ponto_central),
-    "",   // Responsável
-    "",   // Advogados
-    "",   // Relator
+    escaparHtml(contexto?.entidade ?? ""),
+    escaparHtml(objeto),
+    escaparHtml(contexto?.responsavel ?? ""),
+    "",   // Advogados — não disponível nesta fase
+    escaparHtml(contexto?.relator ?? ""),
     escaparHtml(resumoTecnico),
     escaparHtml(resumoMpc),
   ];
@@ -143,7 +150,13 @@ ${secaoHtml("Motivo do Risco", `<p>${escaparHtml(analise.motivo_do_risco)}</p>`)
 
 ${secaoHtml("Resumo Técnico (Instrução/Relatório)", `<p>${docPorTipo("relatorio_tecnico")}</p>`)}
 ${secaoHtml("Resumo do Parecer do MPC", `<p>${docPorTipo("parecer_mpc")}</p>`)}
-${secaoHtml("Resumo do Voto do Relator", `<p>${docPorTipo("voto_relator")}</p>`)}
+${analise.ha_divergencia ? secaoHtml("Divergência entre Instrução Técnica e MPC", `<p><strong>Tipo:</strong> ${escaparHtml(analise.tipo_divergencia ?? "")} &mdash; ${escaparHtml(analise.motivo_do_risco)}</p>`) : ""}
+${(() => {
+    const resumoVoto = analise.documentos_analisados?.find(
+      (d) => d.tipo === "voto_relator" && !d.resumo.startsWith("Não aplicável nesta fase"),
+    );
+    return resumoVoto ? secaoHtml("Voto/Relatório do Relator", `<p>${escaparHtml(resumoVoto.resumo)}</p>`) : "";
+  })()}
 
 ${secaoHtml("Documentos Analisados", blocoDocumentos)}
 ${secaoHtml("Pontos para Atenção na Sessão", listaHtml(analise.pontos_para_atencao))}

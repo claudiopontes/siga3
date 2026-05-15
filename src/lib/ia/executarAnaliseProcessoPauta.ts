@@ -31,6 +31,7 @@ interface CacheRow {
   html_linha_sucinta: string | null;
   html_relatorio: string | null;
   formato_html_versao: string | null;
+  descartado: boolean;
 }
 
 function gerarHtml(analise: AnaliseProcessoPautaOutput): {
@@ -82,8 +83,13 @@ export async function executarAnaliseProcessoPauta(
     [processoId],
   );
 
-  // 3. Seleciona documentos prioritários (1 por tipo)
-  const arquivosSelecionados = selecionarDocumentosPrincipaisProcesso(arquivosRows);
+  // 3. Seleciona documentos prioritários para análise prévia de pauta:
+  //    apenas relatorio_tecnico e parecer_mpc — o voto do relator normalmente
+  //    não está disponível antes do julgamento e não deve ser exigido.
+  const arquivosSelecionados = selecionarDocumentosPrincipaisProcesso(
+    arquivosRows,
+    { modo: "pauta_pre_julgamento" },
+  );
 
   // 4. Gera resumos (com cache por documento)
   const resumos: AnaliseProcessoPautaOutput["documentos_analisados"] = [];
@@ -138,11 +144,11 @@ export async function executarAnaliseProcessoPauta(
 
   const hashContexto = sha256(contextoParaHash);
 
-  // 6. Verifica cache da análise final — só aproveita se foi gerado com o modelo atual
+  // 6. Verifica cache da análise final — ignora registros descartados
   const cachedRows = await dbQuery<CacheRow>(
-    `SELECT id, resultado_json, html_linha_sucinta, html_relatorio, formato_html_versao
+    `SELECT id, resultado_json, html_linha_sucinta, html_relatorio, formato_html_versao, descartado
      FROM public.ia_analise_processo_pauta
-     WHERE hash_contexto = $1 AND modelo_versao = $2 LIMIT 1`,
+     WHERE hash_contexto = $1 AND modelo_versao = $2 AND descartado = false LIMIT 1`,
     [hashContexto, modeloAnaliseProcessoPauta.versao],
   );
 
@@ -153,6 +159,7 @@ export async function executarAnaliseProcessoPauta(
       processo_id: processoId,
       numero_fmt: processo.numero_fmt ?? null,
       do_cache: true,
+      analise_id: cached.id,
       // Garante que documentos_analisados usa sempre nossos tipos corretos
       documentos_analisados: resumos,
     };
@@ -177,7 +184,19 @@ export async function executarAnaliseProcessoPauta(
     return analise;
   }
 
-  // 7. Chama Azure OpenAI para análise final
+  // 7. Detecta se o processo é um recurso/embargos para avisar a IA
+  const TERMOS_RECURSO = /recurso|embargos|reconsideração|reconsideracao|agravo/i;
+  const ehRecurso = TERMOS_RECURSO.test(processo.nome_classe ?? "") ||
+                    TERMOS_RECURSO.test(processo.assunto ?? "");
+
+  // TODO: Se for recurso, buscar processo originário/recorrido (número e decisão recorrida)
+  //       na base do EPROCESS quando o relacionamento estiver mapeado na estrutura de dados.
+  //       Por ora, apenas avisa a IA sobre a ausência desses dados.
+
+  // TODO: Futuramente, consultar banco de jurisprudência do TCE por assunto/classe/teses
+  //       para comparar decisões semelhantes antes do julgamento.
+
+  // 8. Chama Azure OpenAI para análise final
   const systemPrompt = montarSystemPromptAnalise();
   const userPrompt = montarUserPromptAnalise({
     numero_fmt: processo.numero_fmt ?? null,
@@ -190,6 +209,7 @@ export async function executarAnaliseProcessoPauta(
     situacao: processo.situacao ?? null,
     setor_atual: processo.setor_atual ?? null,
     resumos,
+    eh_recurso: ehRecurso,
   });
 
   const conteudoBruto = await chamarAzureOpenAI({
@@ -202,7 +222,7 @@ export async function executarAnaliseProcessoPauta(
     jsonMode: true,
   });
 
-  let parsed: Omit<AnaliseProcessoPautaOutput, "processo_id" | "numero_fmt" | "gerado_em" | "do_cache" | "html_linha_sucinta" | "html_relatorio" | "formato_html_versao">;
+  let parsed: Omit<AnaliseProcessoPautaOutput, "processo_id" | "numero_fmt" | "gerado_em" | "do_cache" | "ha_divergencia" | "tipo_divergencia" | "html_linha_sucinta" | "html_relatorio" | "formato_html_versao">;
   try {
     parsed = JSON.parse(conteudoBruto);
   } catch {
@@ -222,19 +242,34 @@ export async function executarAnaliseProcessoPauta(
     ...(falhasExtracao.length > 0 && { documentos_com_falha_extracao: falhasExtracao }),
   };
 
-  // 8. Gera HTML localmente a partir do JSON
+  // 9. Gera HTML localmente a partir do JSON
   const { html_linha_sucinta, html_relatorio } = gerarHtml(resultado);
   resultado.html_linha_sucinta = html_linha_sucinta;
   resultado.html_relatorio = html_relatorio;
   resultado.formato_html_versao = VERSAO_FORMATO_HTML_ANALISE_PROCESSO;
 
-  // 9. Persiste cache com JSON + HTML
-  await dbQuery(
+  // 10. Persiste cache com JSON + HTML — RETURNING id para popular analise_id
+  // ON CONFLICT reseta descartado=false para o caso em que a análise foi descartada mas o
+  // conteúdo do processo não mudou (hash idêntico). Sem esse reset, a linha ficaria descartada
+  // e o relatório continuaria mostrando o processo como pendente.
+  interface InsertRow { id: number }
+  const insertRows = await dbQuery<InsertRow>(
     `INSERT INTO public.ia_analise_processo_pauta
        (processo_id, hash_contexto, numero_fmt, resultado_json, modelo_versao,
         html_linha_sucinta, html_relatorio, formato_html_versao)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-     ON CONFLICT (hash_contexto) DO NOTHING`,
+     ON CONFLICT (hash_contexto) DO UPDATE
+       SET processo_id         = EXCLUDED.processo_id,
+           resultado_json      = EXCLUDED.resultado_json,
+           html_linha_sucinta  = EXCLUDED.html_linha_sucinta,
+           html_relatorio      = EXCLUDED.html_relatorio,
+           formato_html_versao = EXCLUDED.formato_html_versao,
+           numero_fmt          = EXCLUDED.numero_fmt,
+           descartado          = false,
+           descartado_por      = NULL,
+           descartado_em       = NULL,
+           motivo_descarte     = NULL
+     RETURNING id`,
     [
       processoId,
       hashContexto,
@@ -246,6 +281,10 @@ export async function executarAnaliseProcessoPauta(
       VERSAO_FORMATO_HTML_ANALISE_PROCESSO,
     ],
   );
+
+  if (insertRows.length > 0) {
+    resultado.analise_id = insertRows[0].id;
+  }
 
   return resultado;
 }

@@ -181,7 +181,11 @@ SELECT
   END AS pct_variacao_familias_pobreza,
 
   -- Variação em pontos percentuais da taxa de atualização
-  (a.taxa_atualizacao_cadastral - ant.taxa_atualizacao_ant)     AS variacao_taxa_atualizacao
+  (a.taxa_atualizacao_cadastral - ant.taxa_atualizacao_ant)     AS variacao_taxa_atualizacao,
+
+  -- Campos de controle herdados da competência atual (necessários para vw_cadunico_alertas_municipio)
+  a.fonte,
+  a.data_carga
 
 FROM atual a
 LEFT JOIN anterior ant ON ant.codigo_ibge_municipio = a.codigo_ibge_municipio;
