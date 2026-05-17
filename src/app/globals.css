@@ -175,6 +175,15 @@
   If we ever want to remove these styles, we need to add an explicit border
   color utility to any element that depends on these defaults.
 */
+@keyframes aquiry-pop-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.92); }
+  to   { opacity: 1; transform: translateY(0)    scale(1);    }
+}
+@keyframes aquiry-pop-out {
+  from { opacity: 1; transform: translateY(0)    scale(1);    }
+  to   { opacity: 0; transform: translateY(10px) scale(0.92); }
+}
+
 @layer base {
   *,
   ::after,

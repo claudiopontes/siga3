@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type React from "react";
 import Link from "next/link";
+import { useContextoAquiry } from "@/components/aquiry/useContextoAquiry";
 
 type AlertaRow = {
   codigo_ibge: string;
@@ -595,6 +596,30 @@ export default function AlertasGabineteClient() {
     () => (modalProcessual ? alertasProcessos.filter((alerta) => alerta.tipo_alerta === modalProcessual) : []),
     [alertasProcessos, modalProcessual]
   );
+
+  useContextoAquiry({
+    titulo: "Alertas do Gabinete — Varadouro Digital",
+    descricao: "Central de alertas e prioridades para os gabinetes dos conselheiros do TCE-AC.",
+    dados: carregando
+      ? { carregando: true }
+      : {
+          regularidade_municipiosComPendencia: comPendencia.length,
+          regularidade_totalPendencias: totalPendencias,
+          regularidade_maiorNivelAlerta: maiorNivel ?? "sem_alerta",
+          processos_total: resumoProcessos?.total_processos ?? null,
+          processos_sensiveis: resumoProcessos?.processos_sensiveis ?? null,
+          processos_prazoRegulamentarVencido: resumoProcessos?.processos_prazo_regulamentar_vencido ?? null,
+          processos_mais15Dias: resumoProcessos?.processos_mais_15_dias ?? null,
+          saude_totalAlertas: resumoSaude?.total_alertas ?? null,
+          saude_totalCriticos: resumoSaude?.total_criticos ?? null,
+          saude_municipiosRiscoCritico: resumoSaude?.municipios_risco_critico ?? null,
+        },
+    observacoes: [
+      "Dados carregados diretamente dos cards visíveis na tela de alertas do gabinete.",
+      "Valores representam contagens agregadas. Detalhes por jurisdicionado nos painéis específicos.",
+    ],
+    fontes: ["CAUC/SICONFI", "eProcessos TCE-AC", "SIOPS/Saúde"],
+  });
 
   if (erro) {
     return (

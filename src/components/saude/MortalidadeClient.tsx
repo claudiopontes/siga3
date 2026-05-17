@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import type { ApexOptions } from "apexcharts";
+import { useContextoAquiry } from "@/components/aquiry/useContextoAquiry";
 
 const ReactApexChart = dynamic(() => import("react-apexcharts"), { ssr: false });
 
@@ -215,6 +216,35 @@ export default function MortalidadeClient() {
   };
 
   const chartSeries = [{ name: "Óbitos infantis", data: dadosGrafico.map(m => m.obitos_infantis) }];
+
+  useContextoAquiry({
+    titulo: "Painel de Mortalidade e Nascidos Vivos",
+    descricao: "Indicadores de mortalidade infantil, materna e nascidos vivos no estado do Acre.",
+    dados: carregando
+      ? { carregando: true }
+      : {
+          anoSelecionado: anoSel,
+          municipioFiltrado: munSel || "Todos os municípios",
+          totalNascidosVivos: resumo?.nascidos_vivos ?? null,
+          totalObitosInfantis: resumo?.obitos_infantis ?? null,
+          totalObitosMaternos: resumo?.obitos_maternos ?? null,
+          totalObitosFetais: resumo?.obitos_fetais ?? null,
+          taxaMortalidadeInfantil: resumo?.taxa_mortalidade_infantil ?? null,
+          taxaDisponivel: resumo?.indicador_taxa_disponivel ?? null,
+          totalAlertasVisiveis: alertasFiltrados.length,
+          totalMunicipiosComDados: municipiosFiltrados.length,
+        },
+    observacoes: [
+      "Dados carregados na tela para o ano e município selecionados.",
+      "A taxa de mortalidade infantil pode não estar disponível para todos os anos.",
+      "Alertas e municípios exibidos refletem o filtro atual aplicado na tela.",
+    ],
+    fontes: [
+      resumo?.fonte_dado ?? "SIM/SINASC",
+      ...(resumo?.ano_mais_recente_sim ? [`SIM (referência): ${resumo.ano_mais_recente_sim}`] : []),
+      ...(resumo?.ano_mais_recente_sinasc ? [`SINASC (referência): ${resumo.ano_mais_recente_sinasc}`] : []),
+    ],
+  });
 
   return (
     <div className="space-y-6 p-4 sm:p-6">

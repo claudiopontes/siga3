@@ -4,6 +4,8 @@ import { useSidebar } from "@/context/SidebarContext";
 import AppHeader from "@/layout/AppHeader";
 import AppSidebar from "@/layout/AppSidebar";
 import Backdrop from "@/layout/Backdrop";
+import AssistenteAquiry from "@/components/aquiry/AssistenteAquiry";
+import { AssistenteAquiryProvider } from "@/components/aquiry/AssistenteAquiryProvider";
 import React from "react";
 
 export default function AdminLayout({
@@ -22,19 +24,22 @@ export default function AdminLayout({
   const contentPaddingClass = "p-[5px]";
 
   return (
-    <div className="min-h-screen xl:flex">
-      {/* Sidebar and Backdrop */}
-      <AppSidebar />
-      <Backdrop />
-      {/* Main Content Area */}
-      <div
-        className={`min-w-0 flex-1 transition-all duration-300 ease-in-out ${mainContentMargin}`}
-      >
-        {/* Header */}
-        <AppHeader />
-        {/* Page Content */}
-        <div className={`${contentPaddingClass} mx-auto min-w-0 max-w-(--breakpoint-2xl)`}>{children}</div>
+    <AssistenteAquiryProvider>
+      <div className="min-h-screen xl:flex">
+        {/* Sidebar and Backdrop */}
+        <AppSidebar />
+        <Backdrop />
+        {/* Main Content Area */}
+        <div
+          className={`min-w-0 flex-1 transition-all duration-300 ease-in-out ${mainContentMargin}`}
+        >
+          {/* Header */}
+          <AppHeader />
+          {/* Page Content */}
+          <div className={`${contentPaddingClass} mx-auto min-w-0 max-w-(--breakpoint-2xl)`}>{children}</div>
+        </div>
+        <AssistenteAquiry />
       </div>
-    </div>
+    </AssistenteAquiryProvider>
   );
 }
