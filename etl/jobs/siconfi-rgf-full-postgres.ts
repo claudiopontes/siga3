@@ -1,26 +1,20 @@
 /**
  * siconfi-rgf-full-postgres.ts
  *
- * Carga de dados SICONFI/RGF para municípios do Acre no PostgreSQL local.
- * Fonte: API DataLake Tesouro Nacional — https://apidatalake.tesouro.gov.br/ords/siconfi/tt
+ * Carga de SICONFI/RGF via extrato_entregas.
  *
- * Endpoint: GET /rreo?co_tipo_demonstrativo=RGF
- * Parâmetros:
- *   an_exercicio          — ano do exercício
- *   nr_periodo            — período quadrimestral (1, 2 ou 3)
- *   id_ente               — código IBGE 7 dígitos do município
- *   co_tipo_demonstrativo — "RGF"
- *   limit/offset          — paginação (padrão 200)
+ * NOTA: O endpoint /rgf do DataLake Tesouro Nacional não expõe dados fiscais RGF
+ * (retorna HTTP 200 com 0 itens em todas as combinações de parâmetros testadas em mai/2025).
+ * Os dados de entrega do RGF estão disponíveis via /extrato_entregas
+ * (entregavel="Relatório de Gestão Fiscal", periodicidade=Q, períodos 1/2/3).
  *
- * Campos retornados: exercicio, demonstrativo, periodo, periodicidade,
- *   instituicao, cod_ibge, uf, populacao, anexo, esfera, rotulo,
- *   coluna, cod_conta, conta, valor
- *
- * Periodicidade do RGF: Q (quadrimestral) — 3 períodos por ano.
- *
- * Estratégia: por município × período, DELETE + INSERT idempotente.
- *   - Se a API retornar vazio para um período, loga e prossegue.
- *   - Nunca derruba a execução por erro parcial.
+ * Fluxo:
+ *   Para cada município × ano alvo:
+ *   1. GET /extrato_entregas?id_ente=X&an_referencia=Y
+ *   2. Filtra entradas com co_entregavel='RGF'
+ *   3. DELETE + INSERT idempotente em dw.fato_siconfi_extrato_entregas
+ *      (apenas para co_entregavel='RGF', preservando entradas RREO/DCA/etc.)
+ *   4. Registra payload bruto em raw.siconfi_extrato_entregas_raw
  *
  * Variáveis de ambiente:
  *   SICONFI_API_BASE_URL  — base da API
@@ -48,10 +42,6 @@ const ANOS_RGF: number[] = process.env.SICONFI_RGF_ANOS
   ? process.env.SICONFI_RGF_ANOS.split(",").map(Number).filter((n) => !isNaN(n))
   : [ANO_ATUAL - 1, ANO_ATUAL];
 
-// O RGF é quadrimestral — 3 períodos por ano
-const PERIODOS_RGF = [1, 2, 3];
-
-// Municípios do Acre — código IBGE 7 dígitos
 const MUNICIPIOS_ACRE: Array<{ id_ente: number; no_municipio: string }> = [
   { id_ente: 1200013, no_municipio: "Acrelândia" },
   { id_ente: 1200054, no_municipio: "Assis Brasil" },
@@ -81,29 +71,23 @@ const MUNICIPIOS_ACRE: Array<{ id_ente: number; no_municipio: string }> = [
 // Tipos
 // ---------------------------------------------------------------------------
 
-interface RgfItem {
-  exercicio:      number;
-  demonstrativo:  string;
-  periodo:        number;
-  periodicidade:  string;
-  instituicao:    string;
-  cod_ibge:       number;
-  uf:             string;
-  populacao:      number | null;
-  anexo:          string;
-  esfera:         string;
-  rotulo:         string | null;
-  coluna:         string;
-  cod_conta:      string;
-  conta:          string;
-  valor:          number | null;
+interface ExtratoItem {
+  exercicio:        number;
+  cod_ibge:         number;
+  populacao:        number | null;
+  instituicao:      string | null;
+  entregavel:       string;
+  periodo:          number;
+  periodicidade:    string;
+  status_relatorio: string | null;
+  data_status:      string | null;
+  forma_envio:      string | null;
+  tipo_relatorio:   string | null;
 }
 
-interface RgfResponse {
-  items:   RgfItem[];
+interface ExtratoResponse {
+  items:   ExtratoItem[];
   hasMore: boolean;
-  limit:   number;
-  offset:  number;
   count:   number;
 }
 
@@ -115,25 +99,25 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function parseValor(v: string | number | null | undefined): number | null {
-  if (v === null || v === undefined || v === "") return null;
-  if (typeof v === "number") return isNaN(v) ? null : v;
-  const n = parseFloat(String(v).replace(/,/g, "."));
-  return isNaN(n) ? null : n;
+function derivarCoEntregavel(entregavel: string): string | null {
+  const e = entregavel
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase();
+  if (e.includes("relatorio de gestao fiscal") || e === "rgf") return "RGF";
+  return null;
 }
 
-async function fetchRgf(
-  an_exercicio: number,
-  nr_periodo: number,
+async function fetchExtrato(
   id_ente: number,
-  offset = 0,
+  an_referencia: number,
   retries = 0,
-): Promise<RgfResponse | null> {
+): Promise<ExtratoResponse | null> {
   if (retries >= 3) {
-    console.log(`    [siconfi-rgf] [429] Limite de retries atingido — pulando ${an_exercicio}/${nr_periodo}/${id_ente}`);
+    console.log(`    [siconfi-rgf] Limite de retries atingido — pulando ${id_ente}/${an_referencia}`);
     return null;
   }
-  const url = `${BASE_URL}/rreo?an_exercicio=${an_exercicio}&nr_periodo=${nr_periodo}&id_ente=${id_ente}&co_tipo_demonstrativo=RGF&limit=200&offset=${offset}`;
+  const url = `${BASE_URL}/extrato_entregas?id_ente=${id_ente}&an_referencia=${an_referencia}`;
   try {
     const resp = await fetch(url, {
       headers: {
@@ -144,39 +128,19 @@ async function fetchRgf(
     });
     if (resp.status === 429) {
       const wait = 30000 * (retries + 1);
-      console.log(`    [siconfi-rgf] [429] Rate limit — aguardando ${wait / 1000}s... (tentativa ${retries + 1}/3)`);
+      console.log(`    [siconfi-rgf] [429] Rate limit — aguardando ${wait / 1000}s...`);
       await sleep(wait);
-      return fetchRgf(an_exercicio, nr_periodo, id_ente, offset, retries + 1);
+      return fetchExtrato(id_ente, an_referencia, retries + 1);
     }
     if (!resp.ok) {
-      console.log(`    [siconfi-rgf] HTTP ${resp.status} para ${an_exercicio}/${nr_periodo}/${id_ente}`);
+      console.log(`    [siconfi-rgf] HTTP ${resp.status} para extrato ${id_ente}/${an_referencia}`);
       return null;
     }
-    return (await resp.json()) as RgfResponse;
+    return (await resp.json()) as ExtratoResponse;
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.log(`    [siconfi-rgf] Erro de rede: ${msg}`);
+    console.log(`    [siconfi-rgf] Erro de rede: ${(err as Error).message}`);
     return null;
   }
-}
-
-async function fetchRgfAllPages(
-  an_exercicio: number,
-  nr_periodo: number,
-  id_ente: number,
-): Promise<RgfItem[]> {
-  const all: RgfItem[] = [];
-  let offset = 0;
-
-  while (true) {
-    const page = await fetchRgf(an_exercicio, nr_periodo, id_ente, offset);
-    if (!page || !page.items?.length) break;
-    all.push(...page.items);
-    if (!page.hasMore) break;
-    offset += page.items.length;
-    await sleep(RATE_LIMIT);
-  }
-  return all;
 }
 
 // ---------------------------------------------------------------------------
@@ -185,107 +149,107 @@ async function fetchRgfAllPages(
 
 export async function executarSiconfiRgfFullPostgres(): Promise<void> {
   const inicio = Date.now();
-  console.log("[siconfi-rgf:full] Iniciando carga SICONFI/RGF...");
-  console.log(`[siconfi-rgf:full] Exercícios  : ${ANOS_RGF.join(", ")}`);
-  console.log(`[siconfi-rgf:full] Períodos RGF: ${PERIODOS_RGF.join(", ")} (quadrimestral)`);
-  console.log(`[siconfi-rgf:full] Municípios  : ${MUNICIPIOS_ACRE.length}`);
+  console.log("[siconfi-rgf:full] Iniciando carga SICONFI/RGF via extrato_entregas...");
+  console.log("[siconfi-rgf:full] Fonte: /extrato_entregas (co_entregavel=RGF)");
+  console.log(`[siconfi-rgf:full] Exercícios : ${ANOS_RGF.join(", ")}`);
+  console.log(`[siconfi-rgf:full] Municípios : ${MUNICIPIOS_ACRE.length}`);
 
-  let totalRegistros   = 0;
-  let totalCombinacoes = 0;
-  let totalVazias      = 0;
-  let totalErros       = 0;
+  let totalComRgf   = 0;
+  let totalSemRgf   = 0;
+  let totalErros    = 0;
+  let totalEntregas = 0;
 
   for (const ano of ANOS_RGF) {
-    for (const periodo of PERIODOS_RGF) {
-      console.log(`\n[siconfi-rgf:full] ── Exercício ${ano} / Período ${periodo} ──`);
+    console.log(`\n[siconfi-rgf:full] ── Exercício ${ano} ──`);
 
-      for (const municipio of MUNICIPIOS_ACRE) {
-        totalCombinacoes++;
-        await sleep(RATE_LIMIT);
+    for (const municipio of MUNICIPIOS_ACRE) {
+      await sleep(RATE_LIMIT);
 
-        const items = await fetchRgfAllPages(ano, periodo, municipio.id_ente);
+      const extrato = await fetchExtrato(municipio.id_ente, ano);
+      if (!extrato) {
+        totalErros++;
+        continue;
+      }
 
-        if (items.length === 0) {
-          totalVazias++;
-          // Período ainda não disponível ou não entregue — comportamento esperado
-          continue;
-        }
+      const rgfItems = extrato.items.filter(
+        (item) => derivarCoEntregavel(item.entregavel) === "RGF",
+      );
 
-        try {
-          await withPgTransaction(async (client) => {
-            // Salva payload bruto (uma linha por combinação ente/exercicio/periodo)
+      if (rgfItems.length === 0) {
+        totalSemRgf++;
+        console.log(`  [siconfi-rgf]   ${municipio.no_municipio}: sem entradas RGF no extrato ${ano}`);
+        continue;
+      }
+
+      totalComRgf++;
+      totalEntregas += rgfItems.length;
+      const periodos  = rgfItems.map((i) => i.periodo).join(", ");
+      const statuses  = rgfItems.map((i) => i.status_relatorio ?? "null").join(", ");
+      console.log(`  [siconfi-rgf] ✓ ${municipio.no_municipio}: ${rgfItems.length} período(s) RGF [${periodos}] status=[${statuses}]`);
+
+      try {
+        await withPgTransaction(async (client) => {
+          // Payload bruto para auditoria
+          await client.query(`
+            INSERT INTO raw.siconfi_extrato_entregas_raw
+              (id_ente, an_referencia, endpoint, payload)
+            VALUES ($1, $2, $3, $4)
+          `, [
+            municipio.id_ente,
+            ano,
+            `/extrato_entregas?id_ente=${municipio.id_ente}&an_referencia=${ano}`,
+            JSON.stringify(extrato.items),
+          ]);
+
+          // DELETE idempotente: apenas entradas RGF deste ente/exercicio
+          await client.query(`
+            DELETE FROM dw.fato_siconfi_extrato_entregas
+            WHERE id_ente = $1 AND exercicio = $2 AND co_entregavel = 'RGF'
+          `, [municipio.id_ente, ano]);
+
+          // INSERT entradas RGF
+          for (const item of rgfItems) {
             await client.query(`
-              INSERT INTO raw.siconfi_rgf_raw
-                (an_exercicio, nr_periodo, id_ente, no_ente, co_tipo_demonstrativo, endpoint, payload)
-              VALUES ($1, $2, $3, $4, $5, $6, $7)
+              INSERT INTO dw.fato_siconfi_extrato_entregas
+                (id_ente, no_ente, exercicio, periodo, periodicidade,
+                 instituicao, entregavel, co_entregavel,
+                 status_relatorio, data_status, forma_envio, tipo_relatorio)
+              VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
             `, [
-              ano,
-              periodo,
               municipio.id_ente,
               municipio.no_municipio,
-              items[0]?.demonstrativo ?? "RGF",
-              `/rreo?an_exercicio=${ano}&nr_periodo=${periodo}&id_ente=${municipio.id_ente}&co_tipo_demonstrativo=RGF`,
-              JSON.stringify(items),
+              item.exercicio     ?? ano,
+              item.periodo,
+              item.periodicidade ?? "Q",
+              item.instituicao   ?? null,
+              item.entregavel,
+              "RGF",
+              item.status_relatorio ?? null,
+              item.data_status      ?? null,
+              item.forma_envio      ?? null,
+              item.tipo_relatorio   ?? null,
             ]);
-
-            // Idempotente: remove registros anteriores do mesmo ente/exercicio/periodo
-            await client.query(`
-              DELETE FROM dw.fato_siconfi_rgf
-              WHERE an_exercicio = $1 AND nr_periodo = $2 AND id_ente = $3
-            `, [ano, periodo, municipio.id_ente]);
-
-            // Insere todos os itens normalizados
-            for (const item of items) {
-              await client.query(`
-                INSERT INTO dw.fato_siconfi_rgf
-                  (an_exercicio, nr_periodo, id_ente, no_ente,
-                   uf, esfera, periodicidade, populacao,
-                   co_tipo_demonstrativo, no_anexo, rotulo,
-                   coluna, cod_conta, conta, valor)
-                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
-              `, [
-                item.exercicio     ?? ano,
-                item.periodo       ?? periodo,
-                item.cod_ibge      ?? municipio.id_ente,
-                item.instituicao   ?? municipio.no_municipio,
-                item.uf            ?? null,
-                item.esfera        ?? null,
-                item.periodicidade ?? "Q",
-                item.populacao     ?? null,
-                item.demonstrativo ?? "RGF",
-                item.anexo         ?? null,
-                item.rotulo        ?? null,
-                item.coluna        ?? null,
-                item.cod_conta     ?? null,
-                item.conta         ?? null,
-                parseValor(item.valor),
-              ]);
-            }
-          });
-
-          totalRegistros += items.length;
-          console.log(`  [siconfi-rgf] ✓ ${municipio.no_municipio}: ${items.length} registros`);
-        } catch (err) {
-          totalErros++;
-          console.error(`  [siconfi-rgf] ✗ ${municipio.no_municipio}: ${(err as Error).message}`);
-        }
+          }
+        });
+      } catch (err) {
+        totalErros++;
+        console.error(`  [siconfi-rgf] ✗ ${municipio.no_municipio}: ${(err as Error).message}`);
       }
     }
   }
 
   const duracao = Date.now() - inicio;
   console.log(`\n[siconfi-rgf:full] Concluído em ${duracao}ms`);
-  console.log(`  Combinações verificadas : ${totalCombinacoes}`);
-  console.log(`  Com dados               : ${totalCombinacoes - totalVazias - totalErros}`);
-  console.log(`  Sem dados (período n/d) : ${totalVazias}`);
-  console.log(`  Erros                   : ${totalErros}`);
-  console.log(`  Total de registros      : ${totalRegistros}`);
+  console.log(`  Municípios com RGF no extrato : ${totalComRgf}`);
+  console.log(`  Municípios sem RGF no extrato : ${totalSemRgf}`);
+  console.log(`  Total de entregas RGF         : ${totalEntregas}`);
+  console.log(`  Erros                         : ${totalErros}`);
 
   try {
     await pgQuery(`
       INSERT INTO audit.etl_log (modulo, status, mensagem, registros, duracao_ms)
-      VALUES ($1, 'OK', 'Carga SICONFI/RGF concluída', $2, $3)
-    `, [MODULO, totalRegistros, duracao]);
+      VALUES ($1, 'OK', 'Carga SICONFI/RGF via extrato_entregas concluída', $2, $3)
+    `, [MODULO, totalEntregas, duracao]);
   } catch {
     // audit.etl_log pode não existir em ambiente de desenvolvimento
   }

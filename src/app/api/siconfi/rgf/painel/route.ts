@@ -19,6 +19,8 @@ interface MunicipioRgfRow {
   no_municipio:         string | null;
   situacao_envio:       string | null;
   total_contas:         number | null;
+  status_relatorio:     string | null;
+  data_entrega:         string | null;
   alertas_criticos:     number;
   alertas_altos:        number;
   alertas_medios:       number;
@@ -99,6 +101,8 @@ export async function GET(req: NextRequest) {
       r.no_municipio,
       r.situacao_envio,
       r.total_contas,
+      r.status_relatorio,
+      r.data_entrega::text AS data_entrega,
       r.atualizado_em,
       COALESCE(a.alertas_criticos, 0) AS alertas_criticos,
       COALESCE(a.alertas_altos,    0) AS alertas_altos,
@@ -119,6 +123,8 @@ export async function GET(req: NextRequest) {
       al.no_municipio,
       'SEM_DADO'             AS situacao_envio,
       NULL::int              AS total_contas,
+      NULL::text             AS status_relatorio,
+      NULL::text             AS data_entrega,
       al.atualizado_em,
       COUNT(*)::int          AS alertas_criticos,
       0::int                 AS alertas_altos,

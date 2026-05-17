@@ -20,6 +20,8 @@ interface MunicipioRgf {
   no_municipio:         string | null;
   situacao_envio:       string | null;
   total_contas:         number | null;
+  status_relatorio:     string | null;
+  data_entrega:         string | null;
   alertas_criticos:     number;
   alertas_altos:        number;
   alertas_medios:       number;
@@ -228,9 +230,8 @@ export default function RgfClient() {
       <div className="flex items-start gap-3 rounded-xl border border-blue-100 bg-blue-50/60 p-4 text-sm dark:border-blue-900/30 dark:bg-blue-900/10">
         <Info className="mt-0.5 h-4 w-4 shrink-0 text-blue-500 dark:text-blue-400" />
         <p className="text-xs leading-relaxed text-blue-700 dark:text-blue-300">
-          Esta primeira versão do painel RGF apresenta <strong>presença de dados e alertas estruturais conservadores</strong>.
-          Indicadores legais sensíveis, como despesa com pessoal em relação à RCL, serão ativados somente após
-          confirmação técnica dos códigos e contas retornados pelo SICONFI para os municípios do Acre.
+            O painel exibe o <strong>status de entrega do RGF ao SICONFI</strong> — confirmado via Extrato de Entregas do Tesouro Nacional.
+          Indicadores fiscais (despesa com pessoal em relação à RCL) serão adicionados quando disponíveis na API do DataLake.
         </p>
       </div>
 
@@ -432,10 +433,10 @@ export default function RgfClient() {
                     Principal ocorrência
                   </th>
                   <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                    Registros RGF
+                    Entregas
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                    Atualizado em
+                    Data entrega
                   </th>
                 </tr>
               </thead>
@@ -487,10 +488,27 @@ export default function RgfClient() {
                           {m.principal_ocorrencia ?? (nivel === "OK" ? "Sem ocorrências" : "—")}
                         </td>
                         <td className="px-4 py-3 text-center text-xs text-gray-500 dark:text-gray-400">
-                          {m.total_contas !== null ? m.total_contas : "—"}
+                          {m.total_contas !== null && m.total_contas > 0 ? (
+                            <span className="inline-flex items-center gap-1">
+                              <span className="font-medium text-emerald-600 dark:text-emerald-400">
+                                {m.total_contas}
+                              </span>
+                              {m.status_relatorio && (
+                                <span className={`rounded px-1 text-[10px] font-bold ${
+                                  m.status_relatorio === "HO"
+                                    ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+                                    : "bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+                                }`}>
+                                  {m.status_relatorio}
+                                </span>
+                              )}
+                            </span>
+                          ) : "—"}
                         </td>
                         <td className="px-4 py-3 text-xs text-gray-400 dark:text-gray-500">
-                          {formatarData(m.atualizado_em)}
+                          {m.data_entrega
+                            ? new Date(m.data_entrega + "T12:00:00").toLocaleDateString("pt-BR")
+                            : "—"}
                         </td>
                       </tr>
                     );
@@ -501,9 +519,9 @@ export default function RgfClient() {
 
           <div className="border-t border-gray-100 px-5 py-3 dark:border-gray-700">
             <p className="text-[11px] text-gray-400 dark:text-gray-500">
-              Fonte: SICONFI / Tesouro Nacional · STN · Dados carregados via ETL do Varadouro Digital ·{" "}
-              Periodicidade quadrimestral (3 períodos/ano) · Ordenação: verificar com prioridade primeiro ·{" "}
-              Limites legais de despesa com pessoal pendentes de validação técnica
+              Fonte: SICONFI / Extrato de Entregas · Tesouro Nacional · STN ·{" "}
+              Periodicidade quadrimestral (3 períodos/ano) · Entregas = nº de instituições que entregaram (prefeitura + câmara) ·{" "}
+              HO = Homologado · RE = Retificado
             </p>
           </div>
         </div>

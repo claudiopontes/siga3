@@ -6,21 +6,16 @@
  *   - mart.siconfi_rgf_alertas           (alertas gerados)
  *   - mart.siconfi_rgf_resumo_home       (uma linha para o card/hub)
  *
- * Alertas implementados:
- *   rgf_sem_dado_recente  — CRITICO — município sem nenhum dado RGF no
- *                           período mais recente disponível no DW.
- *   rgf_dado_incompleto   — ALTO — município com total_contas muito abaixo
- *                           da mediana dos demais (threshold: percentil 25,
- *                           somente quando há >= 5 municípios com dado).
+ * Fonte de dados: dw.fato_siconfi_extrato_entregas WHERE co_entregavel='RGF'
+ * (O endpoint /rgf do DataLake não publica dados fiscais. Os dados de entrega
+ *  do RGF estão disponíveis apenas via /extrato_entregas.)
  *
- * Alertas PENDENTES (não implementados por falta de campo seguro na API):
- *   rgf_despesa_pessoal   — [PENDENTE] exigiria identificar a conta de
- *                           Despesa com Pessoal e RCL no payload. Os campos
- *                           "conta" e "cod_conta" existem mas os valores
- *                           dependem dos anexos enviados (ex: "RGF-Anexo 01")
- *                           e não foram confirmados em dados reais para municípios
- *                           do Acre. Será implementado quando a carga retornar
- *                           dados concretos.
+ * Lógica de situacao_envio:
+ *   COM_DADO — município tem ao menos uma entrega RGF com status HO ou RE
+ *   SEM_DADO — município não tem entrega confirmada para o período
+ *
+ * Alertas implementados:
+ *   rgf_sem_dado_recente — CRITICO — município sem entrega RGF no período mais recente.
  *
  * Uso: cd etl && npm run refresh-mart-siconfi-rgf
  */
@@ -29,7 +24,7 @@ import "dotenv/config";
 import { pgQuery, withPgTransaction, closePgPool } from "../connectors/postgres";
 
 // ---------------------------------------------------------------------------
-// Municípios do Acre — espelhado do job de carga para validação de cobertura
+// Municípios do Acre
 // ---------------------------------------------------------------------------
 
 const MUNICIPIOS_ACRE: Array<{ id_municipio: number; no_municipio: string }> = [
@@ -63,49 +58,27 @@ const TOTAL_MUNICIPIOS = MUNICIPIOS_ACRE.length;
 // Tipos internos
 // ---------------------------------------------------------------------------
 
-interface FatoRgfRow {
-  an_exercicio: number;
-  nr_periodo:   number;
-  id_ente:      number;
-  no_ente:      string | null;
-}
-
-interface ResumoRgfRow {
-  an_exercicio: number;
-  nr_periodo:   number;
-  id_municipio: number;
-  no_municipio: string | null;
-  total_contas: number;
+interface ExtratoRgfRow {
+  id_ente:          number;
+  no_ente:          string | null;
+  exercicio:        number;
+  periodo:          number;
+  total_entregas:   number;        // nº de linhas (prefeitura + câmara)
+  status_relatorio: string | null; // HO ou RE se houver entrega confirmada
+  data_entrega:     string | null; // ISO date string
 }
 
 interface AlertaInsert {
-  an_exercicio:    number;
-  nr_periodo:      number;
-  id_municipio:    number | null;
-  no_municipio:    string | null;
-  tipo_alerta:     string;
-  nivel:           string;
-  descricao:       string;
-  valor_observado: number | null;
+  an_exercicio:     number;
+  nr_periodo:       number;
+  id_municipio:     number | null;
+  no_municipio:     string | null;
+  tipo_alerta:      string;
+  nivel:            string;
+  descricao:        string;
+  valor_observado:  number | null;
   valor_referencia: number | null;
-  detalhe_json:    object | null;
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function nivelPrioridade(nivel: string): number {
-  if (nivel === "CRITICO") return 1;
-  if (nivel === "ALTO")    return 2;
-  return 3;
-}
-
-function percentil25(valores: number[]): number {
-  if (valores.length === 0) return 0;
-  const sorted = [...valores].sort((a, b) => a - b);
-  const idx = Math.floor(sorted.length * 0.25);
-  return sorted[Math.max(0, idx - 1)] ?? sorted[0];
+  detalhe_json:     object | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -115,117 +88,71 @@ function percentil25(valores: number[]): number {
 export async function executarMartSiconfiRgf(): Promise<void> {
   const inicio = Date.now();
   console.log("[mart:siconfi-rgf] Iniciando refresh das marts SICONFI/RGF...");
+  console.log("[mart:siconfi-rgf] Fonte: dw.fato_siconfi_extrato_entregas (co_entregavel=RGF)");
 
-  // ── 1. Descobrir período mais recente ──
-  const periodoRows = await pgQuery<{ an_exercicio: number; nr_periodo: number }>(`
-    SELECT an_exercicio, nr_periodo
-    FROM dw.fato_siconfi_rgf
-    GROUP BY an_exercicio, nr_periodo
-    ORDER BY an_exercicio DESC, nr_periodo DESC
-    LIMIT 1
+  // ── 1. Carregar entregas RGF agrupadas por município/período ──
+  // Agrega múltiplas entregas do mesmo ente/período (ex: prefeitura + câmara)
+  const extratoRows = await pgQuery<ExtratoRgfRow>(`
+    SELECT
+      id_ente,
+      MAX(no_ente)                                                             AS no_ente,
+      exercicio,
+      periodo,
+      COUNT(*)::int                                                            AS total_entregas,
+      MAX(CASE WHEN status_relatorio IN ('HO','RE') THEN status_relatorio
+               ELSE NULL END)                                                  AS status_relatorio,
+      MAX(CASE WHEN status_relatorio IN ('HO','RE') THEN data_status::date::text
+               ELSE NULL END)                                                  AS data_entrega
+    FROM dw.fato_siconfi_extrato_entregas
+    WHERE co_entregavel = 'RGF'
+    GROUP BY id_ente, exercicio, periodo
+    ORDER BY exercicio DESC, periodo DESC, id_ente
   `);
 
-  if (periodoRows.length === 0) {
-    console.log("[mart:siconfi-rgf] Nenhum dado em dw.fato_siconfi_rgf — encerrando.");
-    console.log("[PENDENTE] rgf_despesa_pessoal: aguardando dados reais da API para implementação.");
+  if (extratoRows.length === 0) {
+    console.log("[mart:siconfi-rgf] Nenhum dado RGF em dw.fato_siconfi_extrato_entregas.");
+    console.log("[mart:siconfi-rgf] Execute: cd etl && npm run siconfi-rgf:full:postgres");
     return;
   }
 
-  const { an_exercicio: ANO_RECENTE, nr_periodo: PERIODO_RECENTE } = periodoRows[0];
-  console.log(`[mart:siconfi-rgf] Período mais recente: ${ANO_RECENTE}/${PERIODO_RECENTE}`);
+  // ── 2. Descobrir período mais recente com entregas ──
+  const periodoRecente = extratoRows.find((r) => r.status_relatorio != null) ?? extratoRows[0];
+  const ANO_RECENTE    = periodoRecente.exercicio;
+  const PER_RECENTE    = periodoRecente.periodo;
+  console.log(`[mart:siconfi-rgf] Período mais recente com entrega: ${ANO_RECENTE}/${PER_RECENTE}`);
 
-  // ── 2. Carregar contagens por ente/período ──
-  const fatoRows = await pgQuery<FatoRgfRow>(`
-    SELECT an_exercicio, nr_periodo, id_ente, no_ente
-    FROM dw.fato_siconfi_rgf
-    ORDER BY an_exercicio, nr_periodo, id_ente
-  `);
-
-  // Agrupa: contagem de registros por município/período
-  const resumoMap = new Map<string, ResumoRgfRow>();
-  for (const f of fatoRows) {
-    const key = `${f.an_exercicio}|${f.nr_periodo}|${f.id_ente}`;
-    if (!resumoMap.has(key)) {
-      resumoMap.set(key, {
-        an_exercicio: f.an_exercicio,
-        nr_periodo:   f.nr_periodo,
-        id_municipio: f.id_ente,
-        no_municipio: f.no_ente,
-        total_contas: 0,
-      });
-    }
-    const r = resumoMap.get(key)!;
-    r.total_contas++;
-  }
-
-  const resumos = [...resumoMap.values()];
-
-  // Municípios com dado no período mais recente
+  // Municípios com entrega confirmada (HO/RE) no período mais recente
   const municipiosComDado = new Set(
-    resumos
-      .filter((r) => r.an_exercicio === ANO_RECENTE && r.nr_periodo === PERIODO_RECENTE)
-      .map((r) => r.id_municipio)
+    extratoRows
+      .filter(
+        (r) =>
+          r.exercicio === ANO_RECENTE &&
+          r.periodo   === PER_RECENTE &&
+          r.status_relatorio != null,
+      )
+      .map((r) => r.id_ente),
   );
+  console.log(`[mart:siconfi-rgf] Municípios com entrega no período recente: ${municipiosComDado.size}/${TOTAL_MUNICIPIOS}`);
 
   // ── 3. Gerar alertas ──
   const alertas: AlertaInsert[] = [];
 
-  // Alerta: rgf_sem_dado_recente — CRITICO
-  // Município sem nenhum dado RGF no período mais recente carregado.
   for (const mun of MUNICIPIOS_ACRE) {
     if (!municipiosComDado.has(mun.id_municipio)) {
       alertas.push({
         an_exercicio:     ANO_RECENTE,
-        nr_periodo:       PERIODO_RECENTE,
+        nr_periodo:       PER_RECENTE,
         id_municipio:     mun.id_municipio,
         no_municipio:     mun.no_municipio,
         tipo_alerta:      "rgf_sem_dado_recente",
         nivel:            "CRITICO",
-        descricao:        `Município sem entrega do RGF no período ${PERIODO_RECENTE}/${ANO_RECENTE}`,
+        descricao:        `Município sem entrega do RGF no ${PER_RECENTE}º quadrimestre de ${ANO_RECENTE}`,
         valor_observado:  0,
         valor_referencia: 1,
-        detalhe_json:     { periodo: PERIODO_RECENTE, exercicio: ANO_RECENTE },
+        detalhe_json:     { periodo: PER_RECENTE, exercicio: ANO_RECENTE },
       });
     }
   }
-
-  // Alerta: rgf_dado_incompleto — ALTO
-  // Total de registros abaixo do percentil 25 dos demais municípios no mesmo período.
-  // Só dispara quando há >= 5 municípios com dado (para o threshold ter validade estatística).
-  const resumosRecentes = resumos.filter(
-    (r) => r.an_exercicio === ANO_RECENTE && r.nr_periodo === PERIODO_RECENTE
-  );
-
-  if (resumosRecentes.length >= 5) {
-    const totalContasArr = resumosRecentes.map((r) => r.total_contas);
-    const threshold = percentil25(totalContasArr);
-
-    for (const r of resumosRecentes) {
-      if (r.total_contas < threshold && threshold > 0) {
-        alertas.push({
-          an_exercicio:     r.an_exercicio,
-          nr_periodo:       r.nr_periodo,
-          id_municipio:     r.id_municipio,
-          no_municipio:     r.no_municipio,
-          tipo_alerta:      "rgf_dado_incompleto",
-          nivel:            "ALTO",
-          descricao:        `RGF entregue com apenas ${r.total_contas} registro(s) — possível envio incompleto (p25=${threshold})`,
-          valor_observado:  r.total_contas,
-          valor_referencia: threshold,
-          detalhe_json:     { total_contas: r.total_contas, percentil25: threshold },
-        });
-      }
-    }
-  } else {
-    console.log(`[mart:siconfi-rgf] rgf_dado_incompleto: apenas ${resumosRecentes.length} municípios com dado — mínimo 5 necessário para threshold estatístico.`);
-  }
-
-  // [PENDENTE] rgf_despesa_pessoal:
-  // Verificaria se a Despesa com Pessoal está dentro do limite legal da LRF em relação à RCL.
-  // Requer identificar os campos "conta"/"cod_conta" no payload real (ex: anexo RGF-Anexo 01).
-  // Não implementado: campos não confirmados em dados reais para municípios do Acre.
-  // Será ativado quando a carga retornar itens concretos e os códigos de conta forem mapeados.
-  console.log("[PENDENTE] rgf_despesa_pessoal: aguardando dados reais da API para mapear cod_conta de Despesa com Pessoal e RCL.");
 
   console.log(`[mart:siconfi-rgf] Alertas gerados: ${alertas.length}`);
 
@@ -233,26 +160,33 @@ export async function executarMartSiconfiRgf(): Promise<void> {
 
     // ── 4. Rebuild mart.siconfi_rgf_resumo_municipio ──
     await client.query(`DELETE FROM mart.siconfi_rgf_resumo_municipio`);
-    for (const r of resumos) {
+
+    for (const r of extratoRows) {
+      const temEntrega = r.status_relatorio != null;
       await client.query(`
         INSERT INTO mart.siconfi_rgf_resumo_municipio
           (an_exercicio, nr_periodo, id_municipio, no_municipio,
-           total_contas, situacao_envio, atualizado_em)
-        VALUES ($1, $2, $3, $4, $5, 'COM_DADO', now())
+           total_contas, situacao_envio, status_relatorio, data_entrega, atualizado_em)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now())
         ON CONFLICT (an_exercicio, nr_periodo, id_municipio) DO UPDATE SET
-          no_municipio  = EXCLUDED.no_municipio,
-          total_contas  = EXCLUDED.total_contas,
-          situacao_envio = EXCLUDED.situacao_envio,
-          atualizado_em = now()
+          no_municipio     = EXCLUDED.no_municipio,
+          total_contas     = EXCLUDED.total_contas,
+          situacao_envio   = EXCLUDED.situacao_envio,
+          status_relatorio = EXCLUDED.status_relatorio,
+          data_entrega     = EXCLUDED.data_entrega,
+          atualizado_em    = now()
       `, [
-        r.an_exercicio,
-        r.nr_periodo,
-        r.id_municipio,
-        r.no_municipio,
-        r.total_contas,
+        r.exercicio,
+        r.periodo,
+        r.id_ente,
+        r.no_ente,
+        r.total_entregas,
+        temEntrega ? "COM_DADO" : "SEM_DADO",
+        r.status_relatorio ?? null,
+        r.data_entrega     ?? null,
       ]);
     }
-    console.log(`[mart:siconfi-rgf] ✓ siconfi_rgf_resumo_municipio (${resumos.length} linhas)`);
+    console.log(`[mart:siconfi-rgf] ✓ siconfi_rgf_resumo_municipio (${extratoRows.length} linhas)`);
 
     // ── 5. Rebuild mart.siconfi_rgf_alertas ──
     await client.query(`DELETE FROM mart.siconfi_rgf_alertas`);
@@ -271,13 +205,13 @@ export async function executarMartSiconfiRgf(): Promise<void> {
     console.log(`[mart:siconfi-rgf] ✓ siconfi_rgf_alertas (${alertas.length} alertas)`);
 
     // ── 6. Rebuild mart.siconfi_rgf_resumo_home ──
+    const comDado  = municipiosComDado.size;
     const criticos = alertas.filter(
-      (a) => a.nivel === "CRITICO" && a.an_exercicio === ANO_RECENTE && a.nr_periodo === PERIODO_RECENTE
+      (a) => a.nivel === "CRITICO" && a.an_exercicio === ANO_RECENTE && a.nr_periodo === PER_RECENTE,
     ).length;
     const altos = alertas.filter(
-      (a) => a.nivel === "ALTO" && a.an_exercicio === ANO_RECENTE && a.nr_periodo === PERIODO_RECENTE
+      (a) => a.nivel === "ALTO" && a.an_exercicio === ANO_RECENTE && a.nr_periodo === PER_RECENTE,
     ).length;
-    const comDado = municipiosComDado.size;
 
     await client.query(`DELETE FROM mart.siconfi_rgf_resumo_home`);
     await client.query(`
@@ -286,42 +220,36 @@ export async function executarMartSiconfiRgf(): Promise<void> {
          total_municipios, total_alertas, alertas_criticos, alertas_altos)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
     `, [
-      ANO_RECENTE, PERIODO_RECENTE,
+      ANO_RECENTE, PER_RECENTE,
       comDado,
       TOTAL_MUNICIPIOS - comDado,
       TOTAL_MUNICIPIOS,
-      alertas.filter(
-        (a) => a.an_exercicio === ANO_RECENTE && a.nr_periodo === PERIODO_RECENTE
-      ).length,
+      alertas.filter((a) => a.an_exercicio === ANO_RECENTE && a.nr_periodo === PER_RECENTE).length,
       criticos,
       altos,
     ]);
     console.log(
       `[mart:siconfi-rgf] ✓ siconfi_rgf_resumo_home ` +
-      `(${comDado}/${TOTAL_MUNICIPIOS} com dado, ${criticos} críticos, ${altos} altos)`
+      `(${comDado}/${TOTAL_MUNICIPIOS} com dado, ${criticos} críticos)`,
     );
   });
 
-  // Ordenação dos alertas para exibição (mais grave primeiro)
-  const alertasOrdenados = [...alertas]
-    .filter((a) => a.an_exercicio === ANO_RECENTE && a.nr_periodo === PERIODO_RECENTE)
-    .sort((a, b) => nivelPrioridade(a.nivel) - nivelPrioridade(b.nivel));
-
-  if (alertasOrdenados.length > 0) {
-    console.log("[mart:siconfi-rgf] Top alertas:");
-    for (const a of alertasOrdenados.slice(0, 5)) {
-      console.log(`  [${a.nivel}] ${a.tipo_alerta} — ${a.no_municipio ?? "global"}: ${a.descricao}`);
-    }
-  }
-
   const duracao = Date.now() - inicio;
   console.log(`[mart:siconfi-rgf] Refresh concluído em ${duracao}ms.`);
+
+  if (alertas.length > 0) {
+    console.log("[mart:siconfi-rgf] Municípios sem entrega RGF:");
+    for (const a of alertas.slice(0, 5)) {
+      console.log(`  [${a.nivel}] ${a.no_municipio}: ${a.descricao}`);
+    }
+    if (alertas.length > 5) console.log(`  ... e mais ${alertas.length - 5}`);
+  }
 
   try {
     await pgQuery(`
       INSERT INTO audit.etl_log (modulo, status, mensagem, registros, duracao_ms)
       VALUES ('mart_siconfi_rgf', 'OK', 'Refresh completo das marts SICONFI/RGF', $1, $2)
-    `, [resumos.length, duracao]);
+    `, [extratoRows.length, duracao]);
   } catch {
     // audit.etl_log pode não existir em ambiente de desenvolvimento
   }

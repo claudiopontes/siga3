@@ -72,14 +72,19 @@ CREATE INDEX IF NOT EXISTS idx_siconfi_rgf_fato_anexo
 -- -------------------------------------------------------
 -- C. mart.siconfi_rgf_resumo_municipio
 -- Resumo por município/período para consultas rápidas.
+-- Fonte: dw.fato_siconfi_extrato_entregas WHERE co_entregavel='RGF'
+-- (O endpoint /rgf do DataLake retorna 0 itens — dados de entrega
+--  estão disponíveis apenas via /extrato_entregas)
 -- -------------------------------------------------------
 CREATE TABLE IF NOT EXISTS mart.siconfi_rgf_resumo_municipio (
   an_exercicio           integer      NOT NULL,
   nr_periodo             integer      NOT NULL,
   id_municipio           integer      NOT NULL,
   no_municipio           text         NULL,
-  total_contas           integer      NOT NULL DEFAULT 0,
+  total_contas           integer      NOT NULL DEFAULT 0, -- nº de entregas no extrato (prefeitura + câmara)
   situacao_envio         text         NULL,              -- COM_DADO | SEM_DADO
+  status_relatorio       text         NULL,              -- HO | RE | null
+  data_entrega           date         NULL,              -- data do status no SICONFI
   atualizado_em          timestamptz  NOT NULL DEFAULT now(),
   PRIMARY KEY (an_exercicio, nr_periodo, id_municipio)
 );
