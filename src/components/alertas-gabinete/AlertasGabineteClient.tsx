@@ -81,6 +81,18 @@ type SocialAlertaRow = {
   descricao: string;
 };
 
+type SiconfiRreoResumoRow = {
+  an_exercicio: number | null;
+  nr_periodo: number | null;
+  municipios_com_dado: number;
+  municipios_sem_dado: number;
+  total_municipios: number;
+  alertas_criticos: number;
+  alertas_altos: number;
+  alertas_medios: number;
+  alertas_baixos: number;
+};
+
 
 
 const NIVEL_ORDER: Record<AlertaRow["nivel_alerta"], number> = {
@@ -474,6 +486,8 @@ export default function AlertasGabineteClient() {
   const [carregandoSaude, setCarregandoSaude] = useState(true);
   const [alertasSocial, setAlertasSocial] = useState<SocialAlertaRow[]>([]);
   const [carregandoSocial, setCarregandoSocial] = useState(true);
+  const [resumoSiconfi, setResumoSiconfi] = useState<SiconfiRreoResumoRow | null>(null);
+  const [carregandoSiconfi, setCarregandoSiconfi] = useState(true);
 
   // Busca alertas de vulnerabilidade social (MIS/MDS)
   useEffect(() => {
@@ -490,6 +504,26 @@ export default function AlertasGabineteClient() {
       }
     }
     void carregarSocial();
+    return () => { cancelado = true; };
+  }, []);
+
+  // Busca resumo SICONFI/RREO para card da home
+  useEffect(() => {
+    let cancelado = false;
+    async function carregarSiconfi() {
+      try {
+        const res = await fetch("/api/alertas/siconfi-rreo/resumo").then((r) => r.json());
+        if (cancelado) return;
+        if (res && typeof res === "object" && !("error" in res)) {
+          setResumoSiconfi(res as SiconfiRreoResumoRow);
+        }
+      } catch {
+        // silencioso — card mostrará sem dados
+      } finally {
+        if (!cancelado) setCarregandoSiconfi(false);
+      }
+    }
+    void carregarSiconfi();
     return () => { cancelado = true; };
   }, []);
 
@@ -613,12 +647,16 @@ export default function AlertasGabineteClient() {
           saude_totalAlertas: resumoSaude?.total_alertas ?? null,
           saude_totalCriticos: resumoSaude?.total_criticos ?? null,
           saude_municipiosRiscoCritico: resumoSaude?.municipios_risco_critico ?? null,
+          siconfi_municipiosComDado: resumoSiconfi?.municipios_com_dado ?? null,
+          siconfi_municipiosSemDado: resumoSiconfi?.municipios_sem_dado ?? null,
+          siconfi_alertasCriticos: resumoSiconfi?.alertas_criticos ?? null,
+          siconfi_alertasAltos: resumoSiconfi?.alertas_altos ?? null,
         },
     observacoes: [
       "Dados carregados diretamente dos cards visíveis na tela de alertas do gabinete.",
       "Valores representam contagens agregadas. Detalhes por jurisdicionado nos painéis específicos.",
     ],
-    fontes: ["CAUC/SICONFI", "eProcessos TCE-AC", "SIOPS/Saúde"],
+    fontes: ["CAUC/SICONFI", "eProcessos TCE-AC", "SIOPS/Saúde", "SICONFI/RREO"],
   });
 
   if (erro) {
@@ -949,6 +987,96 @@ export default function AlertasGabineteClient() {
                 className="mt-3 inline-flex items-center gap-1 rounded-lg bg-blue-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
               >
                 Ver Painel
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M5 12h14" /><path d="m12 5 7 7-7 7" />
+                </svg>
+              </Link>
+            </div>
+          );
+        })()}
+
+        {/* Card Execução Orçamentária — SICONFI/RREO */}
+        {carregandoSiconfi ? (
+          <CardSkeleton />
+        ) : (() => {
+          const semDados = !resumoSiconfi;
+          const criticos = resumoSiconfi?.alertas_criticos ?? 0;
+          const altos    = resumoSiconfi?.alertas_altos    ?? 0;
+          const comDado  = resumoSiconfi?.municipios_com_dado  ?? 0;
+          const semDado  = resumoSiconfi?.municipios_sem_dado  ?? 0;
+          const total    = resumoSiconfi?.total_municipios     ?? 22;
+          const periodo  = resumoSiconfi?.nr_periodo   ?? null;
+          const exercicio = resumoSiconfi?.an_exercicio ?? null;
+          return (
+            <div className={`rounded-xl border bg-white p-4 dark:bg-gray-800 ${
+              criticos > 0
+                ? "border-red-200 dark:border-red-800/50"
+                : altos > 0
+                  ? "border-amber-200 dark:border-amber-800/50"
+                  : "border-gray-200 dark:border-gray-700"
+            }`}>
+              <div className="flex items-start justify-between gap-3">
+                <span className={`rounded-full p-1.5 ${
+                  criticos > 0
+                    ? "bg-red-50 text-red-500 dark:bg-red-900/20 dark:text-red-400"
+                    : "bg-indigo-50 text-indigo-500 dark:bg-indigo-900/20 dark:text-indigo-400"
+                }`}>
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <line x1="18" y1="20" x2="18" y2="10" />
+                    <line x1="12" y1="20" x2="12" y2="4" />
+                    <line x1="6"  y1="20" x2="6"  y2="14" />
+                    <line x1="2"  y1="20" x2="22" y2="20" />
+                  </svg>
+                </span>
+                {semDados ? (
+                  <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500 dark:bg-gray-700 dark:text-gray-400">Sem dados</span>
+                ) : criticos > 0 ? (
+                  <NivelBadge nivel="alto" />
+                ) : altos > 0 ? (
+                  <NivelBadge nivel="medio" />
+                ) : null}
+              </div>
+              <p className="mt-3 text-sm font-bold text-gray-900 dark:text-white">Execução Orçamentária</p>
+              {semDados ? (
+                <p className="mt-1 text-xs font-medium text-gray-400 dark:text-gray-500">Aguardando carga SICONFI/RREO.</p>
+              ) : (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {criticos > 0 && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-600 dark:bg-red-900/30 dark:text-red-400">
+                      <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
+                      {criticos} Crítico{criticos !== 1 ? "s" : ""}
+                    </span>
+                  )}
+                  {altos > 0 && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-orange-50 px-2 py-0.5 text-xs font-semibold text-orange-600 dark:bg-orange-900/30 dark:text-orange-400">
+                      <span className="h-1.5 w-1.5 rounded-full bg-orange-400" />
+                      {altos} Alto{altos !== 1 ? "s" : ""}
+                    </span>
+                  )}
+                  {criticos === 0 && altos === 0 && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-xs font-semibold text-green-600 dark:bg-green-900/30 dark:text-green-400">
+                      Tudo em dia
+                    </span>
+                  )}
+                </div>
+              )}
+              {!semDados && (
+                <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                  {comDado} de {total} municípios com RREO entregue.
+                  {semDado > 0 && ` ${semDado} sem entrega no período atual.`}
+                </p>
+              )}
+              {periodo && exercicio && (
+                <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                  RREO {periodo}º bimestre/{exercicio}.
+                </p>
+              )}
+              <p className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">SICONFI · Tesouro Nacional · STN</p>
+              <Link
+                href="/painel-siconfi"
+                className="mt-3 inline-flex items-center gap-1 rounded-lg bg-blue-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
+              >
+                Ver painel
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M5 12h14" /><path d="m12 5 7 7-7 7" />
                 </svg>

@@ -28,6 +28,7 @@ const baseNavItems: NavItem[] = [
     subItems: [
       { name: "Combustível", path: "/painel-combustivel" },
       { name: "Receita Pública", path: "/painel-receita-publica", pro: false },
+      { name: "Execução Orçamentária", path: "/painel-siconfi" },
       { name: "Despesa Pública", path: "/painel-despesa" },
       { name: "Pesquisa de Credores", path: "/pesquisa-credores" },
       { name: "Cobertura Florestal", path: "/painel-cobertura-florestal" },
