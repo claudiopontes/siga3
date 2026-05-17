@@ -3,20 +3,14 @@
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import {
-  Droplets,
-  DollarSign,
-  Building2,
-  Activity,
-  ShieldCheck,
-  Heart,
-  AlertTriangle,
-  ChevronRight,
+  Droplets, DollarSign, Building2, Activity,
+  ShieldCheck, Heart, AlertTriangle,
+  ChevronRight, CheckCircle2,
 } from "lucide-react";
 
 // ---------------------------------------------------------------------------
 // Tipos
 // ---------------------------------------------------------------------------
-
 
 interface SiopsResumoHub {
   total_criticos: number;
@@ -24,91 +18,141 @@ interface SiopsResumoHub {
 }
 
 // ---------------------------------------------------------------------------
-// Card de módulo de análise
+// Sub-componentes
 // ---------------------------------------------------------------------------
 
-interface ModuloCardProps {
-  titulo:          string;
-  descricao:       string;
-  fonte:           string;
-  icone:           React.ReactNode;
-  href?:           string;
-  status:          "disponivel" | "preparacao";
-  criticos?:       number;
-  altos?:          number;
-  corIcone?:       string;
-  corBorda?:       string;
-  corFonteBadge?:  string;
+function AreaStatusPill({
+  nome, carregando, semDados, criticos, altos,
+}: {
+  nome: string;
+  carregando: boolean;
+  semDados: boolean;
+  criticos: number;
+  altos: number;
+}) {
+  if (carregando)
+    return <span className="inline-block h-6 w-16 animate-pulse rounded-full bg-gray-200 dark:bg-gray-700" />;
+
+  const cls = semDados
+    ? "bg-gray-100 text-gray-400 dark:bg-gray-700/50 dark:text-gray-500"
+    : criticos > 0
+      ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+      : altos > 0
+        ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+        : "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400";
+  const dot = semDados
+    ? "bg-gray-300"
+    : criticos > 0 ? "bg-red-500" : altos > 0 ? "bg-amber-400" : "bg-emerald-500";
+
+  return (
+    <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${cls}`}>
+      <span className={`h-1.5 w-1.5 rounded-full ${dot}`} />
+      {nome}
+      {!semDados && (criticos > 0 || altos > 0) && (
+        <span className="font-bold opacity-80">{criticos + altos}</span>
+      )}
+    </span>
+  );
 }
 
-function ModuloCard({
-  titulo, descricao, fonte, icone, href, status,
-  criticos = 0, altos = 0,
-  corIcone    = "text-gray-400 dark:text-gray-500",
-  corBorda    = "border-gray-200 dark:border-gray-700",
-  corFonteBadge = "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300",
-}: ModuloCardProps) {
-  const disponivel = status === "disponivel";
+function ItemAlerta({
+  icone, titulo, descricao, valor, nivel, href,
+}: {
+  icone: React.ReactNode;
+  titulo: string;
+  descricao: string;
+  valor: number;
+  nivel: "critico" | "alto";
+  href: string;
+}) {
+  const nivelBg = nivel === "critico"
+    ? "bg-red-50 text-red-500 dark:bg-red-900/20 dark:text-red-400"
+    : "bg-amber-50 text-amber-500 dark:bg-amber-900/20 dark:text-amber-400";
+  const badgeCls = nivel === "critico"
+    ? "bg-red-50 text-red-600 dark:bg-red-900/30 dark:text-red-400"
+    : "bg-amber-50 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400";
+  const dotCls = nivel === "critico" ? "bg-red-500" : "bg-amber-400";
 
-  const card = (
-    <div
-      className={`group flex h-full flex-col rounded-xl border ${corBorda} bg-white p-5 transition-all dark:bg-gray-800 ${
-        disponivel ? "cursor-pointer hover:shadow-md hover:shadow-gray-100 dark:hover:shadow-none" : "opacity-60"
-      }`}
-    >
-      {/* Topo: ícone */}
-      <div className="mb-4">
-        <div className="inline-flex rounded-lg bg-gray-50 p-2 dark:bg-gray-700/50">
-          <div className={`h-5 w-5 ${corIcone}`}>{icone}</div>
+  return (
+    <Link href={href} className="block">
+      <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 transition hover:border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-gray-600">
+        <span className={`shrink-0 rounded-lg p-2 ${nivelBg}`}>{icone}</span>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-gray-800 dark:text-white">{titulo}</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400">{descricao}</p>
         </div>
+        <span className={`shrink-0 inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-bold ${badgeCls}`}>
+          <span className={`h-1.5 w-1.5 rounded-full ${dotCls}`} />
+          {new Intl.NumberFormat("pt-BR").format(valor)}
+        </span>
+        <ChevronRight className="h-4 w-4 shrink-0 text-gray-300 dark:text-gray-600" />
       </div>
+    </Link>
+  );
+}
 
-      {/* Título e descrição */}
-      <h3 className="mb-1 text-sm font-semibold text-gray-800 dark:text-white">{titulo}</h3>
-      <p className="mb-4 flex-1 text-xs leading-relaxed text-gray-500 dark:text-gray-400">{descricao}</p>
+function AcessoRapido({
+  titulo, fonte, icone, href, criticos = 0, altos = 0,
+  corIcone = "text-gray-400 dark:text-gray-500",
+}: {
+  titulo: string;
+  fonte: string;
+  icone: React.ReactNode;
+  href: string;
+  criticos?: number;
+  altos?: number;
+  corIcone?: string;
+}) {
+  const temAlerta = criticos > 0 || altos > 0;
 
-      {/* Rodapé: contadores + fonte + ação */}
-      <div className="space-y-3">
-        {/* Contadores de alerta */}
-        {disponivel && (criticos > 0 || altos > 0) && (
-          <div className="flex flex-wrap items-center gap-2">
-            {criticos > 0 && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-600 dark:bg-red-900/30 dark:text-red-400">
-                <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
-                {criticos} Crítico{criticos !== 1 ? "s" : ""}
-              </span>
-            )}
-            {altos > 0 && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-orange-50 px-2 py-0.5 text-xs font-semibold text-orange-600 dark:bg-orange-900/30 dark:text-orange-400">
-                <span className="h-1.5 w-1.5 rounded-full bg-orange-400" />
-                {altos} Alto{altos !== 1 ? "s" : ""}
-              </span>
-            )}
-          </div>
-        )}
-        {/* Fonte */}
-        <div>
-          <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${corFonteBadge}`}>{fonte}</span>
+  return (
+    <Link href={href} className="block">
+      <div className={`group flex items-center gap-3 rounded-xl border bg-white p-3.5 transition-all dark:bg-gray-800 ${
+        temAlerta
+          ? "border-red-200 hover:shadow-sm dark:border-red-800/40"
+          : "border-gray-200 hover:shadow-sm dark:border-gray-700"
+      }`}>
+        <div className={`shrink-0 rounded-lg bg-gray-50 p-2 dark:bg-gray-700/50 ${corIcone}`}>
+          {icone}
         </div>
-
-        {/* Botão de ação */}
-        <div className="flex items-center justify-end border-t border-gray-100 pt-2 dark:border-gray-700/60">
-          {disponivel && href ? (
-            <span className="flex items-center gap-1 text-xs font-medium text-blue-600 group-hover:gap-2 dark:text-blue-400 transition-all">
-              Abrir análise <ChevronRight className="h-3.5 w-3.5" />
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-gray-800 dark:text-white">{titulo}</p>
+          <p className="truncate text-xs text-gray-400 dark:text-gray-500">{fonte}</p>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          {criticos > 0 && (
+            <span className="rounded-full bg-red-50 px-2 py-0.5 text-xs font-bold text-red-600 dark:bg-red-900/30 dark:text-red-400">
+              {criticos} crítico{criticos !== 1 ? "s" : ""}
             </span>
-          ) : (
-            <span className="text-xs text-gray-400 dark:text-gray-500">Em breve</span>
           )}
+          {altos > 0 && (
+            <span className="rounded-full bg-orange-50 px-2 py-0.5 text-xs font-bold text-orange-600 dark:bg-orange-900/30 dark:text-orange-400">
+              {altos} alto{altos !== 1 ? "s" : ""}
+            </span>
+          )}
+          {!temAlerta && (
+            <CheckCircle2 className="h-4 w-4 text-emerald-500 dark:text-emerald-400" />
+          )}
+          <ChevronRight className="h-4 w-4 text-gray-300 transition-transform group-hover:translate-x-0.5 dark:text-gray-600" />
         </div>
       </div>
+    </Link>
+  );
+}
+
+function CardEmBreve({ titulo, fonte, icone }: { titulo: string; fonte: string; icone: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-3 rounded-xl border border-dashed border-gray-200 bg-white px-4 py-3 opacity-60 dark:border-gray-700 dark:bg-gray-800">
+      <span className="shrink-0 rounded-lg bg-gray-50 p-2 text-gray-400 dark:bg-gray-700/50">{icone}</span>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-semibold text-gray-700 dark:text-gray-300">{titulo}</p>
+        <p className="text-[11px] text-gray-400 dark:text-gray-500">{fonte}</p>
+      </div>
+      <span className="shrink-0 inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500 dark:bg-gray-700 dark:text-gray-400">
+        Em breve
+      </span>
     </div>
   );
-
-  if (disponivel && href) {
-    return <Link href={href} className="block h-full">{card}</Link>;
-  }
-  return card;
 }
 
 // ---------------------------------------------------------------------------
@@ -118,6 +162,7 @@ function ModuloCard({
 export default function PainelSaudeClient() {
   const [contagem,    setContagem]    = useState<Record<string, { criticos: number; altos: number }>>({});
   const [siopsResumo, setSiopsResumo] = useState<SiopsResumoHub | null>(null);
+  const [carregando,  setCarregando]  = useState(true);
   const [erro,        setErro]        = useState<string | null>(null);
 
   useEffect(() => {
@@ -131,21 +176,27 @@ export default function PainelSaudeClient() {
       })
       .catch((e: unknown) => {
         setErro(e instanceof Error ? e.message : "Erro ao carregar dados.");
-      });
+      })
+      .finally(() => setCarregando(false));
   }, []);
 
-  const contagemPorFonte = contagem;
+  // Contagens por fonte
+  const sisaguaCount      = contagem["SISAGUA"]       ?? { criticos: 0, altos: 0 };
+  const cnesUbsCount      = contagem["CNES_UBS"]      ?? { criticos: 0, altos: 0 };
+  const infodengueCount   = contagem["INFODENGUE"]    ?? { criticos: 0, altos: 0 };
+  const pniCoberturaCount = contagem["PNI_COBERTURA"] ?? { criticos: 0, altos: 0 };
+  const mortalidadeCount  = contagem["SIM_SINASC"]    ?? { criticos: 0, altos: 0 };
+  const siopsCount        = { criticos: siopsResumo?.total_criticos ?? 0, altos: siopsResumo?.total_altos ?? 0 };
 
-  const sisaguaCount      = contagemPorFonte["SISAGUA"]       ?? { criticos: 0, altos: 0 };
-  const cnesUbsCount      = contagemPorFonte["CNES_UBS"]      ?? { criticos: 0, altos: 0 };
-  const infodengueCount   = contagemPorFonte["INFODENGUE"]    ?? { criticos: 0, altos: 0 };
-  const pniCoberturaCount = contagemPorFonte["PNI_COBERTURA"] ?? { criticos: 0, altos: 0 };
-  const mortalidadeCount  = contagemPorFonte["SIM_SINASC"]    ?? { criticos: 0, altos: 0 };
-  // SIOPS: usa o resumo do painel de detalhe (mesma fonte, mesmo período)
-  const siopsCount      = { criticos: siopsResumo?.total_criticos ?? 0, altos: siopsResumo?.total_altos ?? 0 };
+  // Totais
+  const totalCriticos = sisaguaCount.criticos + siopsCount.criticos + infodengueCount.criticos
+    + pniCoberturaCount.criticos + mortalidadeCount.criticos;
+  const totalAltos    = sisaguaCount.altos + siopsCount.altos + infodengueCount.altos
+    + pniCoberturaCount.altos + mortalidadeCount.altos;
 
-  // ---------------------------------------------------------------------------
-  // Render
+  const temAlerta   = !carregando && (totalCriticos > 0 || totalAltos > 0);
+  const tudoRegular = !carregando && !temAlerta;
+
   // ---------------------------------------------------------------------------
 
   if (erro) {
@@ -158,103 +209,180 @@ export default function PainelSaudeClient() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
 
-      {/* ── Módulos de análise ── */}
+      {/* ── Barra de situação geral ── */}
+      <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
+        <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
+          Situação geral
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <AreaStatusPill nome="Qualidade da Água" carregando={carregando} semDados={false}
+            criticos={sisaguaCount.criticos} altos={sisaguaCount.altos} />
+          <AreaStatusPill nome="Orçamento" carregando={carregando} semDados={!siopsResumo && !carregando}
+            criticos={siopsCount.criticos} altos={siopsCount.altos} />
+          <AreaStatusPill nome="Vacinação" carregando={carregando} semDados={false}
+            criticos={pniCoberturaCount.criticos} altos={pniCoberturaCount.altos} />
+          <AreaStatusPill nome="Mortalidade" carregando={carregando} semDados={false}
+            criticos={mortalidadeCount.criticos} altos={mortalidadeCount.altos} />
+          <AreaStatusPill nome="Vigilância" carregando={carregando} semDados={false}
+            criticos={infodengueCount.criticos} altos={infodengueCount.altos} />
+        </div>
+      </div>
+
+      {/* ── Verificar agora ── */}
+      {!carregando && temAlerta && (
+        <div className="space-y-2">
+          <p className="px-1 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
+            Verificar agora
+          </p>
+
+          {(sisaguaCount.criticos > 0 || sisaguaCount.altos > 0) && (
+            <ItemAlerta
+              icone={<Droplets className="h-5 w-5" />}
+              titulo="Qualidade da Água"
+              descricao="Amostras, E. coli, coliformes e parâmetros fora do padrão"
+              valor={sisaguaCount.criticos + sisaguaCount.altos}
+              nivel={sisaguaCount.criticos > 0 ? "critico" : "alto"}
+              href="/painel-saude/qualidade-agua"
+            />
+          )}
+
+          {(siopsCount.criticos > 0 || siopsCount.altos > 0) && (
+            <ItemAlerta
+              icone={<DollarSign className="h-5 w-5" />}
+              titulo="Orçamento e Aplicação"
+              descricao="Aplicação mínima em saúde, despesa total e variações atípicas"
+              valor={siopsCount.criticos + siopsCount.altos}
+              nivel={siopsCount.criticos > 0 ? "critico" : "alto"}
+              href="/painel-saude/orcamento"
+            />
+          )}
+
+          {(pniCoberturaCount.criticos > 0 || pniCoberturaCount.altos > 0) && (
+            <ItemAlerta
+              icone={<ShieldCheck className="h-5 w-5" />}
+              titulo="Vacinação"
+              descricao="Doses aplicadas, cobertura vacinal e municípios abaixo da referência"
+              valor={pniCoberturaCount.criticos + pniCoberturaCount.altos}
+              nivel={pniCoberturaCount.criticos > 0 ? "critico" : "alto"}
+              href="/painel-saude/vacinacao"
+            />
+          )}
+
+          {(mortalidadeCount.criticos > 0 || mortalidadeCount.altos > 0) && (
+            <ItemAlerta
+              icone={<Heart className="h-5 w-5" />}
+              titulo="Mortalidade e Nascidos Vivos"
+              descricao="Mortalidade infantil, óbitos maternos, nascimentos e pré-natal"
+              valor={mortalidadeCount.criticos + mortalidadeCount.altos}
+              nivel={mortalidadeCount.criticos > 0 ? "critico" : "alto"}
+              href="/painel-saude/mortalidade"
+            />
+          )}
+
+          {(infodengueCount.criticos > 0 || infodengueCount.altos > 0) && (
+            <ItemAlerta
+              icone={<AlertTriangle className="h-5 w-5" />}
+              titulo="Vigilância Epidemiológica"
+              descricao="Dengue, chikungunya e zika — alertas semanais por município"
+              valor={infodengueCount.criticos + infodengueCount.altos}
+              nivel={infodengueCount.criticos > 0 ? "critico" : "alto"}
+              href="/painel-saude/vigilancia"
+            />
+          )}
+        </div>
+      )}
+
+      {/* ── Tudo regular ── */}
+      {tudoRegular && (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-5 dark:border-emerald-800/40 dark:bg-emerald-900/20">
+          <div className="flex items-center gap-3">
+            <div className="shrink-0 rounded-full bg-emerald-100 p-2.5 dark:bg-emerald-900/40">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-emerald-600 dark:text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><path d="M22 4 12 14.01l-3-3" />
+              </svg>
+            </div>
+            <div>
+              <p className="font-semibold text-emerald-800 dark:text-emerald-300">Tudo regular</p>
+              <p className="text-sm text-emerald-700/80 dark:text-emerald-400/80">
+                Nenhuma área de saúde apresenta alertas críticos ou altos no momento.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Análises disponíveis ── */}
       <div>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-
-          <ModuloCard
+        <p className="mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
+          Análises disponíveis
+        </p>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          <AcessoRapido
             titulo="Qualidade da Água"
-            descricao="Amostras, E. coli, coliformes e parâmetros fora do padrão."
             fonte="SISAGUA"
             icone={<Droplets className="h-5 w-5" />}
             href="/painel-saude/qualidade-agua"
-            status="disponivel"
             criticos={sisaguaCount.criticos}
             altos={sisaguaCount.altos}
             corIcone="text-cyan-500 dark:text-cyan-400"
-            corBorda="border-cyan-200 dark:border-cyan-800/40"
-            corFonteBadge="bg-cyan-50 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300"
           />
-
-          <ModuloCard
+          <AcessoRapido
             titulo="Orçamento e Aplicação"
-            descricao="Aplicação mínima em saúde, despesa total, dados incompletos e variações atípicas."
             fonte="SIOPS"
             icone={<DollarSign className="h-5 w-5" />}
             href="/painel-saude/orcamento"
-            status="disponivel"
             criticos={siopsCount.criticos}
             altos={siopsCount.altos}
             corIcone="text-blue-500 dark:text-blue-400"
-            corBorda="border-blue-200 dark:border-blue-800/40"
-            corFonteBadge="bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300"
           />
-
-          <ModuloCard
-            titulo="Estrutura da Rede"
-            descricao="Estabelecimentos, UBS ativas, unidades inativas e atualização cadastral."
-            fonte="CNES/UBS"
-            icone={<Building2 className="h-5 w-5" />}
-            status="preparacao"
-            criticos={cnesUbsCount.criticos}
-            altos={cnesUbsCount.altos}
-            corIcone="text-teal-500 dark:text-teal-400"
-            corBorda="border-teal-200 dark:border-teal-800/40"
-            corFonteBadge="bg-teal-50 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300"
-          />
-
-          <ModuloCard
-            titulo="Produção Assistencial"
-            descricao="Atendimentos, internações, produção ambulatorial e valores aprovados."
-            fonte="SIA/SIH"
-            icone={<Activity className="h-5 w-5" />}
-            status="preparacao"
-          />
-
-          <ModuloCard
+          <AcessoRapido
             titulo="Vacinação"
-            descricao="Doses aplicadas, cobertura vacinal e municípios abaixo da referência."
             fonte="PNI/RNDS"
             icone={<ShieldCheck className="h-5 w-5" />}
             href="/painel-saude/vacinacao"
-            status="disponivel"
             criticos={pniCoberturaCount.criticos}
             altos={pniCoberturaCount.altos}
             corIcone="text-emerald-500 dark:text-emerald-400"
-            corBorda="border-emerald-200 dark:border-emerald-800/40"
-            corFonteBadge="bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
           />
-
-          <ModuloCard
+          <AcessoRapido
             titulo="Mortalidade e Nascidos Vivos"
-            descricao="Mortalidade infantil, óbitos maternos, nascimentos, pré-natal e baixo peso."
             fonte="SIM/SINASC"
             icone={<Heart className="h-5 w-5" />}
             href="/painel-saude/mortalidade"
-            status="disponivel"
             criticos={mortalidadeCount.criticos}
             altos={mortalidadeCount.altos}
             corIcone="text-rose-500 dark:text-rose-400"
-            corBorda="border-rose-200 dark:border-rose-800/40"
-            corFonteBadge="bg-rose-50 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300"
           />
-
-          <ModuloCard
+          <AcessoRapido
             titulo="Vigilância Epidemiológica"
-            descricao="Dengue, chikungunya e zika — alertas semanais por município do Acre."
             fonte="InfoDengue"
             icone={<AlertTriangle className="h-5 w-5" />}
             href="/painel-saude/vigilancia"
-            status="disponivel"
             criticos={infodengueCount.criticos}
             altos={infodengueCount.altos}
             corIcone="text-rose-500 dark:text-rose-400"
-            corBorda="border-rose-200 dark:border-rose-800/40"
-            corFonteBadge="bg-rose-50 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300"
           />
+        </div>
+      </div>
 
+      {/* ── Em desenvolvimento ── */}
+      <div>
+        <p className="mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
+          Em desenvolvimento
+        </p>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          <CardEmBreve
+            titulo="Estrutura da Rede"
+            fonte="CNES/UBS"
+            icone={<Building2 className="h-5 w-5" />}
+          />
+          <CardEmBreve
+            titulo="Produção Assistencial"
+            fonte="SIA/SIH"
+            icone={<Activity className="h-5 w-5" />}
+          />
         </div>
       </div>
 

@@ -3,7 +3,12 @@
 import { useEffect, useMemo, useState } from "react";
 import type React from "react";
 import Link from "next/link";
+import { ChevronRight, CheckCircle2 } from "lucide-react";
 import { useContextoAquiry } from "@/components/aquiry/useContextoAquiry";
+
+// ---------------------------------------------------------------------------
+// Tipos
+// ---------------------------------------------------------------------------
 
 type AlertaRow = {
   codigo_ibge: string;
@@ -93,7 +98,9 @@ type SiconfiRreoResumoRow = {
   alertas_baixos: number;
 };
 
-
+// ---------------------------------------------------------------------------
+// Constantes
+// ---------------------------------------------------------------------------
 
 const NIVEL_ORDER: Record<AlertaRow["nivel_alerta"], number> = {
   alto: 0,
@@ -103,7 +110,6 @@ const NIVEL_ORDER: Record<AlertaRow["nivel_alerta"], number> = {
 
 const NIVEL_PROCESSO_ORDER: Record<string, number> = { alto: 0, medio: 1, baixo: 2 };
 
-// TODO: substituir filtro fixo por gabinete vinculado ao usuário autenticado.
 const GABINETE_ATUAL_ID = 20;
 const LIMITE_REGISTROS_MODAL = 20;
 
@@ -125,86 +131,65 @@ const MODAIS_PROCESSUAIS: Record<TipoModalProcessual, { titulo: string; subtitul
 const ALERTAS_SUGERIDOS = [
   {
     titulo: "Dados atrasados",
-    descricao: "Bases sem atualização dentro do prazo esperado ou cargas com falha.",
     prioridade: "Operacional",
-    tom: "slate",
     icone: (
       <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <circle cx="12" cy="12" r="10" />
-        <path d="M12 6v6l4 2" />
+        <circle cx="12" cy="12" r="10" /><path d="M12 6v6l4 2" />
       </svg>
     ),
   },
   {
     titulo: "Pagamentos atípicos",
-    descricao: "Valores relevantes, pagamentos fracionados ou concentração em curto período.",
     prioridade: "Financeiro",
-    tom: "emerald",
     icone: (
       <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <rect x="2" y="5" width="20" height="14" rx="2" />
-        <path d="M2 10h20" />
-        <path d="M7 15h4" />
+        <rect x="2" y="5" width="20" height="14" rx="2" /><path d="M2 10h20" /><path d="M7 15h4" />
       </svg>
     ),
   },
   {
     titulo: "Fornecedores sensíveis",
-    descricao: "Alta recorrência, concentração por ente ou atuação simultânea em muitos contratos.",
     prioridade: "Contratações",
-    tom: "amber",
     icone: (
       <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-        <circle cx="9" cy="7" r="4" />
-        <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
-        <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+        <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" />
+        <path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" />
       </svg>
     ),
   },
   {
     titulo: "Contratos e prazos",
-    descricao: "Contratos vencidos, aditivos sucessivos ou vigências próximas do fim.",
     prioridade: "Prazo",
-    tom: "rose",
     icone: (
       <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-        <path d="M14 2v6h6" />
-        <path d="M12 18v-6" />
-        <path d="M9 15h6" />
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6" />
+        <path d="M12 18v-6" /><path d="M9 15h6" />
       </svg>
     ),
   },
   {
     titulo: "Convênios e transferências",
-    descricao: "Prestação de contas pendente, saldo parado ou baixa execução financeira.",
     prioridade: "Transferências",
-    tom: "sky",
     icone: (
       <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <path d="M7 7h10v10H7z" />
-        <path d="M3 12h4" />
-        <path d="M17 12h4" />
-        <path d="M12 3v4" />
-        <path d="M12 17v4" />
+        <path d="M7 7h10v10H7z" /><path d="M3 12h4" /><path d="M17 12h4" /><path d="M12 3v4" /><path d="M12 17v4" />
       </svg>
     ),
   },
   {
     titulo: "Obras e medições",
-    descricao: "Medições acima do ritmo físico, obras paradas ou execução sem evidência recente.",
     prioridade: "Obras",
-    tom: "orange",
     icone: (
       <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <path d="M3 21h18" />
-        <path d="M6 21V9l6-4 6 4v12" />
-        <path d="M9 21v-8h6v8" />
+        <path d="M3 21h18" /><path d="M6 21V9l6-4 6 4v12" /><path d="M9 21v-8h6v8" />
       </svg>
     ),
   },
 ];
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
 const NIVEL_BADGE_COR: Record<string, string> = {
   alto:  "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
@@ -212,14 +197,10 @@ const NIVEL_BADGE_COR: Record<string, string> = {
   baixo: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
 };
 const NIVEL_BADGE_DOT: Record<string, string> = {
-  alto:  "bg-red-500",
-  medio: "bg-orange-400",
-  baixo: "bg-green-500",
+  alto: "bg-red-500", medio: "bg-orange-400", baixo: "bg-green-500",
 };
 const NIVEL_BADGE_LABEL: Record<string, string> = {
-  alto:  "Crítico",
-  medio: "Alto",
-  baixo: "Baixo",
+  alto: "Crítico", medio: "Alto", baixo: "Baixo",
 };
 
 function NivelBadge({ nivel }: { nivel: string | null | undefined }) {
@@ -232,36 +213,146 @@ function NivelBadge({ nivel }: { nivel: string | null | undefined }) {
   );
 }
 
-function ImplantacaoBadge() {
-  return (
-    <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500 dark:bg-gray-700 dark:text-gray-400">
-      Em implantação
-    </span>
-  );
-}
-
-function CardSkeleton() {
-  return (
-    <div className="animate-pulse rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
-      <div className="mb-2 h-3 w-28 rounded bg-gray-200 dark:bg-gray-700" />
-      <div className="h-7 w-14 rounded bg-gray-200 dark:bg-gray-700" />
-      <div className="mt-2 h-3 w-36 rounded bg-gray-200 dark:bg-gray-700" />
-    </div>
-  );
-}
-
 function formatarNumero(value: number | null | undefined) {
   if (value === null || value === undefined) return "—";
   return new Intl.NumberFormat("pt-BR").format(value);
 }
 
+// ---------------------------------------------------------------------------
+// Sub-componentes de layout
+// ---------------------------------------------------------------------------
+
+function AreaStatusPill({
+  nome, carregando, semDados, criticos, altos,
+}: {
+  nome: string;
+  carregando: boolean;
+  semDados: boolean;
+  criticos: number;
+  altos: number;
+}) {
+  if (carregando)
+    return <span className="inline-block h-6 w-16 animate-pulse rounded-full bg-gray-200 dark:bg-gray-700" />;
+
+  const cls = semDados
+    ? "bg-gray-100 text-gray-400 dark:bg-gray-700/50 dark:text-gray-500"
+    : criticos > 0
+      ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+      : altos > 0
+        ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
+        : "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400";
+  const dot = semDados
+    ? "bg-gray-300"
+    : criticos > 0 ? "bg-red-500" : altos > 0 ? "bg-amber-400" : "bg-emerald-500";
+
+  return (
+    <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${cls}`}>
+      <span className={`h-1.5 w-1.5 rounded-full ${dot}`} />
+      {nome}
+      {!semDados && (criticos > 0 || altos > 0) && (
+        <span className="font-bold opacity-80">{criticos + altos}</span>
+      )}
+    </span>
+  );
+}
+
+function ItemAlerta({
+  icone, titulo, descricao, valor, nivel, href, onClick,
+}: {
+  icone: React.ReactNode;
+  titulo: string;
+  descricao: string;
+  valor: number;
+  nivel: "critico" | "alto";
+  href?: string;
+  onClick?: () => void;
+}) {
+  const nivelBg = nivel === "critico"
+    ? "bg-red-50 text-red-500 dark:bg-red-900/20 dark:text-red-400"
+    : "bg-amber-50 text-amber-500 dark:bg-amber-900/20 dark:text-amber-400";
+  const badgeCls = nivel === "critico"
+    ? "bg-red-50 text-red-600 dark:bg-red-900/30 dark:text-red-400"
+    : "bg-amber-50 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400";
+  const dotCls = nivel === "critico" ? "bg-red-500" : "bg-amber-400";
+
+  const inner = (
+    <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 transition hover:border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-gray-600">
+      <span className={`shrink-0 rounded-lg p-2 ${nivelBg}`}>{icone}</span>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-semibold text-gray-800 dark:text-white">{titulo}</p>
+        <p className="text-xs text-gray-500 dark:text-gray-400">{descricao}</p>
+      </div>
+      <span className={`shrink-0 inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-bold ${badgeCls}`}>
+        <span className={`h-1.5 w-1.5 rounded-full ${dotCls}`} />
+        {formatarNumero(valor)}
+      </span>
+      <ChevronRight className="h-4 w-4 shrink-0 text-gray-300 dark:text-gray-600" />
+    </div>
+  );
+
+  if (href) return <Link href={href} className="block">{inner}</Link>;
+  if (onClick) return <button type="button" onClick={onClick} className="block w-full text-left">{inner}</button>;
+  return <div>{inner}</div>;
+}
+
+function AcessoRapido({
+  titulo, fonte, icone, href, criticos = 0, altos = 0,
+  corIcone = "text-gray-400 dark:text-gray-500",
+}: {
+  titulo: string;
+  fonte: string;
+  icone: React.ReactNode;
+  href: string;
+  criticos?: number;
+  altos?: number;
+  corIcone?: string;
+}) {
+  const temAlerta = criticos > 0 || altos > 0;
+
+  const inner = (
+    <div className={`group flex items-center gap-3 rounded-xl border bg-white p-3.5 transition-all dark:bg-gray-800 ${
+      temAlerta
+        ? "border-red-200 hover:shadow-sm dark:border-red-800/40"
+        : "border-gray-200 hover:shadow-sm dark:border-gray-700"
+    }`}>
+      <div className={`shrink-0 rounded-lg bg-gray-50 p-2 dark:bg-gray-700/50 ${corIcone}`}>
+        {icone}
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-semibold text-gray-800 dark:text-white">{titulo}</p>
+        <p className="truncate text-xs text-gray-400 dark:text-gray-500">{fonte}</p>
+      </div>
+      <div className="flex shrink-0 items-center gap-2">
+        {criticos > 0 && (
+          <span className="rounded-full bg-red-50 px-2 py-0.5 text-xs font-bold text-red-600 dark:bg-red-900/30 dark:text-red-400">
+            {criticos} crítico{criticos !== 1 ? "s" : ""}
+          </span>
+        )}
+        {altos > 0 && (
+          <span className="rounded-full bg-orange-50 px-2 py-0.5 text-xs font-bold text-orange-600 dark:bg-orange-900/30 dark:text-orange-400">
+            {altos} alto{altos !== 1 ? "s" : ""}
+          </span>
+        )}
+        {!temAlerta && (
+          <CheckCircle2 className="h-4 w-4 text-emerald-500 dark:text-emerald-400" />
+        )}
+        <ChevronRight className="h-4 w-4 text-gray-300 transition-transform group-hover:translate-x-0.5 dark:text-gray-600" />
+      </div>
+    </div>
+  );
+
+  return <Link href={href} className="block">{inner}</Link>;
+}
+
+// ---------------------------------------------------------------------------
+// Ícones dos processos
+// ---------------------------------------------------------------------------
+
 function DocumentoAlertaIcon() {
   return (
     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-      <path d="M14 2v6h6" />
-      <path d="M12 17h.01" />
-      <path d="M12 11v3" />
+      <path d="M14 2v6h6" /><path d="M12 17h.01" /><path d="M12 11v3" />
     </svg>
   );
 }
@@ -269,10 +360,8 @@ function DocumentoAlertaIcon() {
 function RelogioProcessualIcon() {
   return (
     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <circle cx="12" cy="12" r="10" />
-      <path d="M12 6v6l3 2" />
-      <path d="M7 3.5 5 2" />
-      <path d="m17 3.5 2-1.5" />
+      <circle cx="12" cy="12" r="10" /><path d="M12 6v6l3 2" />
+      <path d="M7 3.5 5 2" /><path d="m17 3.5 2-1.5" />
     </svg>
   );
 }
@@ -281,95 +370,14 @@ function PrazoVencidoIcon() {
   return (
     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-      <path d="M12 9v4" />
-      <path d="M12 17h.01" />
+      <path d="M12 9v4" /><path d="M12 17h.01" />
     </svg>
   );
 }
 
-function ProcessoCard({
-  titulo,
-  descricao,
-  prioridade,
-  valor,
-  icone,
-  destaque = false,
-  semDados,
-  onDetalhes,
-}: {
-  titulo: string;
-  descricao: string;
-  prioridade: string;
-  valor: number | null;
-  icone: React.ReactNode;
-  destaque?: boolean;
-  semDados: boolean;
-  onDetalhes: () => void;
-}) {
-  return (
-    <div className={`rounded-xl border bg-white p-4 transition hover:border-gray-300 dark:bg-gray-800 dark:hover:border-gray-600 ${
-      !semDados && (valor ?? 0) > 0 ? "border-red-200 dark:border-red-800/50" : "border-gray-200 dark:border-gray-700"
-    }`}>
-      <div className="flex items-start justify-between gap-3">
-        <span className={`rounded-full p-1.5 ${
-          !semDados && (valor ?? 0) > 0
-            ? "bg-red-50 text-red-500 dark:bg-red-900/20 dark:text-red-400"
-            : "bg-gray-50 text-gray-500 dark:bg-gray-900/40 dark:text-gray-300"
-        }`}>
-          {icone}
-        </span>
-        {semDados ? (
-          <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500 dark:bg-gray-700 dark:text-gray-400">
-            Sem dados
-          </span>
-        ) : destaque ? (
-          <NivelBadge nivel="alto" />
-        ) : null}
-      </div>
-      <p className="mt-3 text-sm font-bold text-gray-900 dark:text-white">
-        {titulo}
-      </p>
-      {semDados ? (
-        <p className="mt-1 text-xs font-medium text-gray-400 dark:text-gray-500">
-          Aguardando carga processual
-        </p>
-      ) : (
-        <div className="mt-2 flex flex-wrap gap-2">
-          {(valor ?? 0) > 0 ? (
-            <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-600 dark:bg-red-900/30 dark:text-red-400">
-              <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
-              {formatarNumero(valor)} processo{(valor ?? 0) !== 1 ? "s" : ""}
-            </span>
-          ) : (
-            <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-xs font-semibold text-green-600 dark:bg-green-900/30 dark:text-green-400">
-              Tudo em dia
-            </span>
-          )}
-        </div>
-      )}
-      <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-        {descricao}
-      </p>
-      <div className="mt-2 flex flex-wrap items-center gap-2">
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
-          {prioridade}
-        </p>
-      </div>
-      <button
-        type="button"
-        onClick={onDetalhes}
-        disabled={semDados}
-        className="mt-3 inline-flex items-center gap-1 rounded-lg bg-blue-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-blue-500 dark:hover:bg-blue-600"
-      >
-        Ver detalhes
-        <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <path d="M5 12h14" />
-          <path d="m12 5 7 7-7 7" />
-        </svg>
-      </button>
-    </div>
-  );
-}
+// ---------------------------------------------------------------------------
+// Modal processual
+// ---------------------------------------------------------------------------
 
 function ordenarAlertasProcessuais(rows: ProcessoAlertaRow[]) {
   return [...rows].sort((a, b) => {
@@ -385,9 +393,7 @@ function ordenarAlertasProcessuais(rows: ProcessoAlertaRow[]) {
 }
 
 function ModalProcessual({
-  tipo,
-  registros,
-  onClose,
+  tipo, registros, onClose,
 }: {
   tipo: TipoModalProcessual;
   registros: ProcessoAlertaRow[];
@@ -399,79 +405,76 @@ function ModalProcessual({
   const temMaisRegistros = registrosOrdenados.length > LIMITE_REGISTROS_MODAL;
 
   return (
-    <>
-      <div className="fixed inset-0 z-[120000] flex items-center justify-center p-3 sm:p-5">
-        <button
-          type="button"
-          aria-label="Fechar detalhes processuais"
-          className="absolute inset-0 bg-gray-900/70 backdrop-blur-[1px]"
-          onClick={onClose}
-        />
-        <div className="relative z-10 flex max-h-[90vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900">
-          <div className="flex items-start justify-between gap-3 border-b border-gray-100 px-4 py-3 dark:border-gray-700">
-            <div>
-              <h2 className="text-base font-bold text-gray-900 dark:text-white">{config.titulo}</h2>
-              <p className="mt-0.5 max-w-3xl text-xs text-gray-500 dark:text-gray-400">{config.subtitulo}</p>
-            </div>
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
-            >
-              Fechar
-            </button>
+    <div className="fixed inset-0 z-120000 flex items-center justify-center p-3 sm:p-5">
+      <button
+        type="button"
+        aria-label="Fechar detalhes processuais"
+        className="absolute inset-0 bg-gray-900/70 backdrop-blur-[1px]"
+        onClick={onClose}
+      />
+      <div className="relative z-10 flex max-h-[90vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900">
+        <div className="flex items-start justify-between gap-3 border-b border-gray-100 px-4 py-3 dark:border-gray-700">
+          <div>
+            <h2 className="text-base font-bold text-gray-900 dark:text-white">{config.titulo}</h2>
+            <p className="mt-0.5 max-w-3xl text-xs text-gray-500 dark:text-gray-400">{config.subtitulo}</p>
           </div>
-
-          {registrosOrdenados.length === 0 ? (
-            <div className="px-4 py-10 text-center text-sm text-gray-500 dark:text-gray-400">
-              Nenhum processo encontrado para este alerta.
-            </div>
-          ) : (
-            <div className="overflow-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-gray-100 bg-gray-50 dark:border-gray-700 dark:bg-gray-900/40">
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Nível</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Processo</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Classe</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Órgão</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Atividade atual</th>
-                    <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Dias no setor</th>
-                    <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Atraso</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50 dark:divide-gray-700/50">
-                  {registrosVisiveis.map((alerta) => (
-                    <tr key={`${alerta.tipo_alerta}-${alerta.processo}-${alerta.duracao_setor_dias}`} className="hover:bg-gray-50 dark:hover:bg-gray-800/60">
-                      <td className="px-4 py-3"><NivelBadge nivel={alerta.nivel_alerta} /></td>
-                      <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">{alerta.processo ?? "—"}</td>
-                      <td className="max-w-xs px-4 py-3 text-xs text-gray-700 dark:text-gray-300">{alerta.classe ?? "—"}</td>
-                      <td className="max-w-sm px-4 py-3 text-xs text-gray-500 dark:text-gray-400">{alerta.orgao ?? "Órgão não informado"}</td>
-                      <td className="max-w-xs px-4 py-3 text-xs text-gray-500 dark:text-gray-400">{alerta.atividade_atual ?? "—"}</td>
-                      <td className="px-4 py-3 text-center text-xs font-bold text-gray-700 dark:text-gray-300">
-                        {formatarNumero(alerta.duracao_setor_dias)}
-                      </td>
-                      <td className="px-4 py-3 text-center text-xs font-bold text-red-600 dark:text-red-400">
-                        {formatarNumero(alerta.dias_em_atraso)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-
-          {temMaisRegistros ? (
-            <div className="border-t border-gray-100 px-4 py-3 text-xs text-gray-400 dark:border-gray-700 dark:text-gray-500">
-              Exibindo os 20 principais registros. A página analítica completa será implementada em etapa futura.
-            </div>
-          ) : null}
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-gray-200 px-2.5 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-gray-800"
+          >
+            Fechar
+          </button>
         </div>
-      </div>
 
-    </>
+        {registrosOrdenados.length === 0 ? (
+          <div className="px-4 py-10 text-center text-sm text-gray-500 dark:text-gray-400">
+            Nenhum processo encontrado para este alerta.
+          </div>
+        ) : (
+          <div className="overflow-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-100 bg-gray-50 dark:border-gray-700 dark:bg-gray-900/40">
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Nível</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Processo</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Classe</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Órgão</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Atividade atual</th>
+                  <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Dias no setor</th>
+                  <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Atraso</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50 dark:divide-gray-700/50">
+                {registrosVisiveis.map((alerta) => (
+                  <tr key={`${alerta.tipo_alerta}-${alerta.processo}-${alerta.duracao_setor_dias}`} className="hover:bg-gray-50 dark:hover:bg-gray-800/60">
+                    <td className="px-4 py-3"><NivelBadge nivel={alerta.nivel_alerta} /></td>
+                    <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">{alerta.processo ?? "—"}</td>
+                    <td className="max-w-xs px-4 py-3 text-xs text-gray-700 dark:text-gray-300">{alerta.classe ?? "—"}</td>
+                    <td className="max-w-sm px-4 py-3 text-xs text-gray-500 dark:text-gray-400">{alerta.orgao ?? "Órgão não informado"}</td>
+                    <td className="max-w-xs px-4 py-3 text-xs text-gray-500 dark:text-gray-400">{alerta.atividade_atual ?? "—"}</td>
+                    <td className="px-4 py-3 text-center text-xs font-bold text-gray-700 dark:text-gray-300">{formatarNumero(alerta.duracao_setor_dias)}</td>
+                    <td className="px-4 py-3 text-center text-xs font-bold text-red-600 dark:text-red-400">{formatarNumero(alerta.dias_em_atraso)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {temMaisRegistros && (
+          <div className="border-t border-gray-100 px-4 py-3 text-xs text-gray-400 dark:border-gray-700 dark:text-gray-500">
+            Exibindo os 20 principais registros. A página analítica completa será implementada em etapa futura.
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Componente principal
+// ---------------------------------------------------------------------------
 
 export default function AlertasGabineteClient() {
   const [alertas, setAlertas] = useState<AlertaRow[]>([]);
@@ -489,7 +492,6 @@ export default function AlertasGabineteClient() {
   const [resumoSiconfi, setResumoSiconfi] = useState<SiconfiRreoResumoRow | null>(null);
   const [carregandoSiconfi, setCarregandoSiconfi] = useState(true);
 
-  // Busca alertas de vulnerabilidade social (MIS/MDS)
   useEffect(() => {
     let cancelado = false;
     async function carregarSocial() {
@@ -497,9 +499,7 @@ export default function AlertasGabineteClient() {
         const res = await fetch("/api/social/mis/alertas").then((r) => r.json());
         if (cancelado) return;
         if (Array.isArray(res)) setAlertasSocial(res as SocialAlertaRow[]);
-      } catch {
-        // silencioso
-      } finally {
+      } catch { /* silencioso */ } finally {
         if (!cancelado) setCarregandoSocial(false);
       }
     }
@@ -507,19 +507,15 @@ export default function AlertasGabineteClient() {
     return () => { cancelado = true; };
   }, []);
 
-  // Busca resumo SICONFI/RREO para card da home
   useEffect(() => {
     let cancelado = false;
     async function carregarSiconfi() {
       try {
         const res = await fetch("/api/alertas/siconfi-rreo/resumo").then((r) => r.json());
         if (cancelado) return;
-        if (res && typeof res === "object" && !("error" in res)) {
+        if (res && typeof res === "object" && !("error" in res))
           setResumoSiconfi(res as SiconfiRreoResumoRow);
-        }
-      } catch {
-        // silencioso — card mostrará sem dados
-      } finally {
+      } catch { /* silencioso */ } finally {
         if (!cancelado) setCarregandoSiconfi(false);
       }
     }
@@ -527,7 +523,6 @@ export default function AlertasGabineteClient() {
     return () => { cancelado = true; };
   }, []);
 
-  // Busca resumo consolidado de Saúde Pública
   useEffect(() => {
     let cancelado = false;
     async function carregarSaude() {
@@ -555,7 +550,6 @@ export default function AlertasGabineteClient() {
     return () => { cancelado = true; };
   }, []);
 
-  // Busca remessas contábeis via API local (PostgreSQL)
   useEffect(() => {
     let cancelado = false;
     async function carregarRemessas() {
@@ -564,9 +558,7 @@ export default function AlertasGabineteClient() {
         const resResumo = await fetch(`/api/remessas/resumo?ano=${anoAtual}`).then((r) => r.json());
         if (cancelado) return;
         if (Array.isArray(resResumo)) setResumoRemessas(resResumo as RemessaResumoRow[]);
-      } catch {
-        // silencioso — card mostrará sem dados
-      } finally {
+      } catch { /* silencioso */ } finally {
         if (!cancelado) setCarregandoRemessas(false);
       }
     }
@@ -576,15 +568,11 @@ export default function AlertasGabineteClient() {
 
   useEffect(() => {
     let cancelado = false;
-
     async function carregarAlertas() {
       try {
         const res = await fetch("/api/alertas-gabinete");
         if (cancelado) return;
-        if (!res.ok) {
-          setErro("Erro ao carregar dados.");
-          return;
-        }
+        if (!res.ok) { setErro("Erro ao carregar dados."); return; }
         const d = await res.json() as {
           alertas: AlertaRow[];
           resumoProcessos: ProcessoResumoRow | null;
@@ -599,37 +587,72 @@ export default function AlertasGabineteClient() {
         if (!cancelado) setCarregando(false);
       }
     }
-
     void carregarAlertas();
-
-    return () => {
-      cancelado = true;
-    };
+    return () => { cancelado = true; };
   }, []);
 
+  // Derivados CAUC
   const comPendencia = useMemo(
-    () =>
-      alertas
-        .filter((row) => row.total_pendencias > 0)
-        .sort((a, b) => {
-          const ordemNivel = NIVEL_ORDER[a.nivel_alerta] - NIVEL_ORDER[b.nivel_alerta];
-          if (ordemNivel !== 0) return ordemNivel;
-          return b.total_pendencias - a.total_pendencias;
-        }),
-    [alertas]
+    () => alertas.filter((row) => row.total_pendencias > 0).sort((a, b) => {
+      const ordemNivel = NIVEL_ORDER[a.nivel_alerta] - NIVEL_ORDER[b.nivel_alerta];
+      if (ordemNivel !== 0) return ordemNivel;
+      return b.total_pendencias - a.total_pendencias;
+    }),
+    [alertas],
   );
-
   const totalPendencias = useMemo(
     () => comPendencia.reduce((soma, row) => soma + Number(row.total_pendencias), 0),
-    [comPendencia]
+    [comPendencia],
+  );
+  const maiorNivel = comPendencia[0]?.nivel_alerta;
+  const caucCriticos = comPendencia.filter((a) => a.nivel_alerta === "alto").length;
+  const caucAltos    = comPendencia.filter((a) => a.nivel_alerta === "medio").length;
+
+  // Derivados processos
+  const semDadosProcessuais = !resumoProcessos;
+  const procSensiveis = resumoProcessos?.processos_sensiveis                     ?? 0;
+  const procMais15    = resumoProcessos?.processos_mais_15_dias                  ?? 0;
+  const procVencido   = resumoProcessos?.processos_prazo_regulamentar_vencido    ?? 0;
+
+  const registrosModalProcessual = useMemo(
+    () => (modalProcessual ? alertasProcessos.filter((a) => a.tipo_alerta === modalProcessual) : []),
+    [alertasProcessos, modalProcessual],
   );
 
-  const maiorNivel = comPendencia[0]?.nivel_alerta;
-  const semDadosProcessuais = !resumoProcessos;
-  const registrosModalProcessual = useMemo(
-    () => (modalProcessual ? alertasProcessos.filter((alerta) => alerta.tipo_alerta === modalProcessual) : []),
-    [alertasProcessos, modalProcessual]
+  // Derivados remessas
+  const remessaResumo  = resumoRemessas[0];
+  const remessaCriticos = remessaResumo?.total_criticas ?? 0;
+  const remessaAltos    = remessaResumo?.total_altas    ?? 0;
+
+  // Derivados saúde
+  const saudeCriticos = resumoSaude?.total_criticos ?? 0;
+  const saudeAltos    = resumoSaude?.total_altos    ?? 0;
+
+  // Derivados social
+  const socialCriticos = useMemo(
+    () => alertasSocial.filter((a) => a.nivel_alerta === "ALTO").length,
+    [alertasSocial],
   );
+  const socialAltos = useMemo(
+    () => alertasSocial.filter((a) => a.nivel_alerta === "MEDIO").length,
+    [alertasSocial],
+  );
+
+  // Derivados SICONFI
+  const siconfiCriticos = resumoSiconfi?.alertas_criticos ?? 0;
+  const siconfiAltos    = resumoSiconfi?.alertas_altos    ?? 0;
+
+  // Estado geral
+  const alertasCarregando = carregando || carregandoRemessas || carregandoSaude || carregandoSocial || carregandoSiconfi;
+  const temAlerta = !alertasCarregando && (
+    comPendencia.length > 0 ||
+    (!semDadosProcessuais && (procSensiveis > 0 || procMais15 > 0 || procVencido > 0)) ||
+    remessaCriticos > 0 || remessaAltos > 0 ||
+    saudeCriticos > 0 || saudeAltos > 0 ||
+    socialCriticos > 0 || socialAltos > 0 ||
+    siconfiCriticos > 0 || siconfiAltos > 0
+  );
+  const tudoRegular = !alertasCarregando && !temAlerta;
 
   useContextoAquiry({
     titulo: "Alertas do Gabinete — Varadouro Digital",
@@ -669,454 +692,316 @@ export default function AlertasGabineteClient() {
 
   return (
     <div className="space-y-5">
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-        {carregando ? (
-          <CardSkeleton />
-        ) : (
-          <div className={`rounded-xl border bg-white p-4 transition hover:border-gray-300 dark:bg-gray-800 dark:hover:border-gray-600 ${
-            maiorNivel === "alto" ? "border-red-200 dark:border-red-800/50" : "border-gray-200 dark:border-gray-700"
-          }`}>
-            <div className="flex items-start justify-between gap-3">
-              <span className={`rounded-full p-1.5 ${
-                maiorNivel === "alto"
-                  ? "bg-red-50 text-red-500 dark:bg-red-900/20 dark:text-red-400"
-                  : "bg-blue-50 text-blue-500 dark:bg-blue-900/20 dark:text-blue-400"
-              }`}>
+
+      {/* ── Barra de situação geral ── */}
+      <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
+        <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
+          Situação geral
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <AreaStatusPill
+            nome="CAUC"
+            carregando={carregando}
+            semDados={false}
+            criticos={caucCriticos}
+            altos={caucAltos}
+          />
+          <AreaStatusPill
+            nome="Processos"
+            carregando={carregando}
+            semDados={semDadosProcessuais}
+            criticos={procVencido}
+            altos={procSensiveis + procMais15}
+          />
+          <AreaStatusPill
+            nome="Remessas"
+            carregando={carregandoRemessas}
+            semDados={!carregandoRemessas && !remessaResumo}
+            criticos={remessaCriticos}
+            altos={remessaAltos}
+          />
+          <AreaStatusPill
+            nome="Saúde"
+            carregando={carregandoSaude}
+            semDados={!carregandoSaude && !resumoSaude}
+            criticos={saudeCriticos}
+            altos={saudeAltos}
+          />
+          <AreaStatusPill
+            nome="Social"
+            carregando={carregandoSocial}
+            semDados={!carregandoSocial && alertasSocial.length === 0}
+            criticos={socialCriticos}
+            altos={socialAltos}
+          />
+          <AreaStatusPill
+            nome="SICONFI"
+            carregando={carregandoSiconfi}
+            semDados={!carregandoSiconfi && !resumoSiconfi}
+            criticos={siconfiCriticos}
+            altos={siconfiAltos}
+          />
+        </div>
+      </div>
+
+      {/* ── Verificar agora ── */}
+      {!alertasCarregando && temAlerta && (
+        <div className="space-y-2">
+          <p className="px-1 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
+            Verificar agora
+          </p>
+
+          {comPendencia.length > 0 && (
+            <ItemAlerta
+              icone={
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
                 </svg>
-              </span>
-              {maiorNivel ? <NivelBadge nivel={maiorNivel} /> : null}
-            </div>
-            <p className="mt-3 text-sm font-bold text-gray-900 dark:text-white">Regularidade CAUC</p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {comPendencia.length > 0 ? (
-                <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-600 dark:bg-red-900/30 dark:text-red-400">
-                  <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
-                  {comPendencia.length} município{comPendencia.length !== 1 ? "s" : ""} com pendência
-                </span>
-              ) : (
-                <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-xs font-semibold text-green-600 dark:bg-green-900/30 dark:text-green-400">
-                  Tudo em dia
-                </span>
-              )}
-            </div>
-            <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-              {totalPendencias} pendências totais. Detalhamento por município e item no painel CAUC.
-            </p>
-            <div className="mt-2">
-              <span className="rounded px-1.5 py-0.5 text-xs font-medium bg-gray-100 dark:bg-gray-700">
-                <span className="font-medium text-violet-600 dark:text-violet-400">CAUC</span>
-                <span className="text-gray-400 dark:text-gray-500">{" · "}SICONFI/STN</span>
-              </span>
-            </div>
-            <Link
+              }
+              titulo="Regularidade CAUC"
+              descricao={`${comPendencia.length} município${comPendencia.length !== 1 ? "s" : ""} com pendência · ${totalPendencias} pendências totais`}
+              valor={comPendencia.length}
+              nivel={caucCriticos > 0 ? "critico" : "alto"}
               href="/painel-cauc"
-              className="mt-3 inline-flex items-center gap-1 rounded-lg bg-blue-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
-            >
-              Ver Painel
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M5 12h14" />
-                <path d="m12 5 7 7-7 7" />
-              </svg>
-            </Link>
-          </div>
-        )}
+            />
+          )}
 
-        {carregando ? (
-          <>
-            <CardSkeleton />
-            <CardSkeleton />
-            <CardSkeleton />
-          </>
-        ) : (
-          <>
-            <ProcessoCard
-              titulo="Processos sensíveis"
-              descricao="Cautelares, denúncias, representações, petições e pedidos de vista no gabinete."
-              prioridade="eProcess TCE/AC"
-              valor={resumoProcessos?.processos_sensiveis ?? null}
-              icone={<DocumentoAlertaIcon />}
-              semDados={semDadosProcessuais}
-              onDetalhes={() => setModalProcessual("processo_sensivel")}
-            />
-            <ProcessoCard
-              titulo="Processos há mais de 15 dias"
-              descricao="Processos aguardando movimentação há mais de 15 dias no gabinete atual."
-              prioridade="eProcess TCE/AC"
-              valor={resumoProcessos?.processos_mais_15_dias ?? null}
-              icone={<RelogioProcessualIcon />}
-              semDados={semDadosProcessuais}
-              onDetalhes={() => setModalProcessual("mais_15_dias")}
-            />
-            <ProcessoCard
-              titulo="Prazo regulamentar vencido"
-              descricao="Processos cujo tempo de registro ultrapassou o prazo regulamentar da classe."
-              prioridade="eProcess TCE/AC"
-              valor={resumoProcessos?.processos_prazo_regulamentar_vencido ?? null}
+          {!semDadosProcessuais && procVencido > 0 && (
+            <ItemAlerta
               icone={<PrazoVencidoIcon />}
-              destaque
-              semDados={semDadosProcessuais}
-              onDetalhes={() => setModalProcessual("prazo_regulamentar_vencido")}
+              titulo="Prazo regulamentar vencido"
+              descricao="Processos cujo prazo regulamentar foi ultrapassado"
+              valor={procVencido}
+              nivel="critico"
+              onClick={() => setModalProcessual("prazo_regulamentar_vencido")}
             />
-          </>
-        )}
+          )}
 
-        {/* Card remessas contábeis — dados reais */}
-        {carregandoRemessas ? (
-          <CardSkeleton />
-        ) : (() => {
-          const resumo = resumoRemessas[0];
-          const totalCriticos = resumo?.total_criticas ?? 0;
-          const totalAltos = resumo?.total_altas ?? 0;
-          const totalAlertas = totalCriticos + totalAltos;
-          const semDados = !resumo;
-          return (
-            <div className={`rounded-xl border bg-white p-4 dark:bg-gray-800 ${
-              totalCriticos > 0
-                ? "border-red-200 dark:border-red-800/50"
-                : totalAltos > 0
-                  ? "border-amber-200 dark:border-amber-800/50"
-                  : "border-gray-200 dark:border-gray-700"
-            }`}>
-              <div className="flex items-start justify-between gap-3">
-                <span className={`rounded-full p-1.5 ${
-                  totalCriticos > 0
-                    ? "bg-red-50 text-red-500 dark:bg-red-900/20 dark:text-red-400"
-                    : "bg-orange-50 text-orange-500 dark:bg-orange-900/20 dark:text-orange-400"
-                }`}>
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                    <path d="M14 2v6h6" />
-                    <path d="M12 17h.01" /><path d="M12 11v3" />
-                  </svg>
-                </span>
-                {semDados ? (
-                  <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500 dark:bg-gray-700 dark:text-gray-400">Sem dados</span>
-                ) : totalCriticos > 0 ? (
-                  <NivelBadge nivel="alto" />
-                ) : totalAltos > 0 ? (
-                  <NivelBadge nivel="medio" />
-                ) : null}
-              </div>
-              <p className="mt-3 text-sm font-bold text-gray-900 dark:text-white">Remessas contábeis</p>
-              {semDados ? (
-                <p className="mt-1 text-xs font-medium text-gray-400 dark:text-gray-500">Aguardando carga de dados</p>
-              ) : (
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {totalCriticos > 0 && (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-600 dark:bg-red-900/30 dark:text-red-400">
-                      <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
-                      {totalCriticos} Crítico{totalCriticos !== 1 ? "s" : ""}
-                    </span>
-                  )}
-                  {totalAltos > 0 && (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-orange-50 px-2 py-0.5 text-xs font-semibold text-orange-600 dark:bg-orange-900/30 dark:text-orange-400">
-                      <span className="h-1.5 w-1.5 rounded-full bg-orange-400" />
-                      {totalAltos} Alto{totalAltos !== 1 ? "s" : ""}
-                    </span>
-                  )}
-                  {totalAlertas === 0 && (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-xs font-semibold text-green-600 dark:bg-green-900/30 dark:text-green-400">
-                      Tudo em dia
-                    </span>
-                  )}
-                </div>
-              )}
-              <p className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">Prestação de contas</p>
-              <Link
-                href="/remessas/calendario"
-                className="mt-3 inline-flex items-center gap-1 rounded-lg bg-blue-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
-              >
-                Ver Painel
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M5 12h14" /><path d="m12 5 7 7-7 7" />
+          {!semDadosProcessuais && procSensiveis > 0 && (
+            <ItemAlerta
+              icone={<DocumentoAlertaIcon />}
+              titulo="Processos sensíveis"
+              descricao="Cautelares, denúncias, representações e petições no gabinete"
+              valor={procSensiveis}
+              nivel="alto"
+              onClick={() => setModalProcessual("processo_sensivel")}
+            />
+          )}
+
+          {!semDadosProcessuais && procMais15 > 0 && (
+            <ItemAlerta
+              icone={<RelogioProcessualIcon />}
+              titulo="Processos há mais de 15 dias"
+              descricao="Processos aguardando movimentação por mais de 15 dias"
+              valor={procMais15}
+              nivel="alto"
+              onClick={() => setModalProcessual("mais_15_dias")}
+            />
+          )}
+
+          {(remessaCriticos > 0 || remessaAltos > 0) && (
+            <ItemAlerta
+              icone={
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                  <path d="M14 2v6h6" /><path d="M12 17h.01" /><path d="M12 11v3" />
                 </svg>
-              </Link>
+              }
+              titulo="Remessas contábeis"
+              descricao="Remessas com pendências, entregas fora do prazo ou sem confirmação"
+              valor={remessaCriticos + remessaAltos}
+              nivel={remessaCriticos > 0 ? "critico" : "alto"}
+              href="/remessas/calendario"
+            />
+          )}
+
+          {(saudeCriticos > 0 || saudeAltos > 0) && (
+            <ItemAlerta
+              icone={
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M12 2a5 5 0 1 0 0 10A5 5 0 0 0 12 2z" />
+                  <path d="M12 12c-5.33 0-8 2.67-8 4v2h16v-2c0-1.33-2.67-4-8-4z" />
+                  <path d="M12 7v5" /><path d="M9.5 9.5h5" />
+                </svg>
+              }
+              titulo="Saúde Pública"
+              descricao="Alertas em aplicações, estrutura da rede, qualidade da água e vigilância epidemiológica"
+              valor={saudeCriticos + saudeAltos}
+              nivel={saudeCriticos > 0 ? "critico" : "alto"}
+              href="/painel-saude"
+            />
+          )}
+
+          {(socialCriticos > 0 || socialAltos > 0) && (
+            <ItemAlerta
+              icone={
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                  <circle cx="9" cy="7" r="4" />
+                  <path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                </svg>
+              }
+              titulo="Vulnerabilidade Social"
+              descricao="Alertas de vulnerabilidade social por município do Acre"
+              valor={socialCriticos + socialAltos}
+              nivel={socialCriticos > 0 ? "critico" : "alto"}
+              href="/painel-social"
+            />
+          )}
+
+          {(siconfiCriticos > 0 || siconfiAltos > 0) && (
+            <ItemAlerta
+              icone={
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" />
+                  <line x1="6" y1="20" x2="6" y2="14" /><line x1="2" y1="20" x2="22" y2="20" />
+                </svg>
+              }
+              titulo="Execução Orçamentária"
+              descricao={resumoSiconfi?.municipios_sem_dado
+                ? `${resumoSiconfi.municipios_sem_dado} município${resumoSiconfi.municipios_sem_dado !== 1 ? "s" : ""} sem entrega RREO no período`
+                : "Alertas de execução orçamentária nos municípios"}
+              valor={siconfiCriticos + siconfiAltos}
+              nivel={siconfiCriticos > 0 ? "critico" : "alto"}
+              href="/painel-siconfi"
+            />
+          )}
+        </div>
+      )}
+
+      {/* ── Tudo regular ── */}
+      {tudoRegular && (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-5 dark:border-emerald-800/40 dark:bg-emerald-900/20">
+          <div className="flex items-center gap-3">
+            <div className="shrink-0 rounded-full bg-emerald-100 p-2.5 dark:bg-emerald-900/40">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-emerald-600 dark:text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><path d="M22 4 12 14.01l-3-3" />
+              </svg>
             </div>
-          );
-        })()}
-
-
-        {/* Card Saúde Pública — consolidado SIOPS + CNES/UBS + SISAGUA */}
-        {carregandoSaude ? (
-          <CardSkeleton />
-        ) : (() => {
-          const semDados = !resumoSaude;
-          const criticos = resumoSaude?.total_criticos ?? 0;
-          const altos = resumoSaude?.total_altos ?? 0;
-          const munCritico = resumoSaude?.municipios_risco_critico ?? 0;
-          const munAfetados = resumoSaude?.total_municipios_afetados ?? 0;
-          return (
-            <div className={`rounded-xl border bg-white p-4 dark:bg-gray-800 ${
-              criticos > 0
-                ? "border-red-200 dark:border-red-800/50"
-                : altos > 0
-                  ? "border-amber-200 dark:border-amber-800/50"
-                  : "border-gray-200 dark:border-gray-700"
-            }`}>
-              <div className="flex items-start justify-between gap-3">
-                <span className={`rounded-full p-1.5 ${
-                  criticos > 0
-                    ? "bg-red-50 text-red-500 dark:bg-red-900/20 dark:text-red-400"
-                    : "bg-teal-50 text-teal-500 dark:bg-teal-900/20 dark:text-teal-400"
-                }`}>
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M12 2a5 5 0 1 0 0 10A5 5 0 0 0 12 2z" />
-                    <path d="M12 12c-5.33 0-8 2.67-8 4v2h16v-2c0-1.33-2.67-4-8-4z" />
-                    <path d="M12 7v5" /><path d="M9.5 9.5h5" />
-                  </svg>
-                </span>
-                {semDados ? (
-                  <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500 dark:bg-gray-700 dark:text-gray-400">Sem dados</span>
-                ) : criticos > 0 ? (
-                  <NivelBadge nivel="alto" />
-                ) : altos > 0 ? (
-                  <NivelBadge nivel="medio" />
-                ) : null}
-              </div>
-              <p className="mt-3 text-sm font-bold text-gray-900 dark:text-white">Saúde Pública</p>
-              {semDados ? (
-                <p className="mt-1 text-xs font-medium text-gray-400 dark:text-gray-500">Dados de saúde ainda não carregados.</p>
-              ) : (
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {criticos > 0 && (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-600 dark:bg-red-900/30 dark:text-red-400">
-                      <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
-                      {criticos} Crítico{criticos !== 1 ? "s" : ""}
-                    </span>
-                  )}
-                  {altos > 0 && (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-orange-50 px-2 py-0.5 text-xs font-semibold text-orange-600 dark:bg-orange-900/30 dark:text-orange-400">
-                      <span className="h-1.5 w-1.5 rounded-full bg-orange-400" />
-                      {altos} Alto{altos !== 1 ? "s" : ""}
-                    </span>
-                  )}
-                  {criticos === 0 && altos === 0 && (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-xs font-semibold text-green-600 dark:bg-green-900/30 dark:text-green-400">
-                      Tudo em dia
-                    </span>
-                  )}
-                </div>
-              )}
-              <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                Alertas de aplicação, estrutura da rede, qualidade da água e vigilância epidemiológica.
+            <div>
+              <p className="font-semibold text-emerald-800 dark:text-emerald-300">Tudo regular</p>
+              <p className="text-sm text-emerald-700/80 dark:text-emerald-400/80">
+                Nenhuma área apresenta alertas críticos ou altos no momento.
               </p>
-              <p className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">SIOPS · CNES/UBS · SISAGUA · InfoDengue</p>
-              <Link
-                href="/painel-saude"
-                className="mt-3 inline-flex items-center gap-1 rounded-lg bg-blue-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
-              >
-                Ver painel
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M5 12h14" /><path d="m12 5 7 7-7 7" />
-                </svg>
-              </Link>
             </div>
-          );
-        })()}
-
-        {/* Card Vulnerabilidade Social — dados MIS/MDS */}
-        {carregandoSocial ? (
-          <CardSkeleton />
-        ) : (() => {
-          const semDados = alertasSocial.length === 0;
-          const totalCriticos = alertasSocial.filter((a) => a.nivel_alerta === "ALTO").length;
-          const totalAltos    = alertasSocial.filter((a) => a.nivel_alerta === "MEDIO").length;
-          const nivelMax = totalCriticos > 0 ? "alto" : totalAltos > 0 ? "medio" : null;
-          const munCritico = alertasSocial.find((a) => a.nivel_alerta === "ALTO")?.nome_municipio ?? null;
-          return (
-            <div className={`rounded-xl border bg-white p-4 dark:bg-gray-800 ${
-              totalCriticos > 0
-                ? "border-red-200 dark:border-red-800/50"
-                : totalAltos > 0
-                  ? "border-amber-200 dark:border-amber-800/50"
-                  : "border-gray-200 dark:border-gray-700"
-            }`}>
-              <div className="flex items-start justify-between gap-3">
-                <span className={`rounded-full p-1.5 ${
-                  totalCriticos > 0
-                    ? "bg-red-50 text-red-500 dark:bg-red-900/20 dark:text-red-400"
-                    : "bg-purple-50 text-purple-500 dark:bg-purple-900/20 dark:text-purple-400"
-                }`}>
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-                    <circle cx="9" cy="7" r="4" />
-                    <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-                    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-                  </svg>
-                </span>
-                {semDados ? (
-                  <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500 dark:bg-gray-700 dark:text-gray-400">Sem dados</span>
-                ) : nivelMax ? (
-                  <NivelBadge nivel={nivelMax} />
-                ) : null}
-              </div>
-              <p className="mt-3 text-sm font-bold text-gray-900 dark:text-white">Vulnerabilidade Social</p>
-              {semDados ? (
-                <p className="mt-1 text-xs font-medium text-gray-400 dark:text-gray-500">Aguardando carga de dados</p>
-              ) : (
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {totalCriticos > 0 && (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-600 dark:bg-red-900/30 dark:text-red-400">
-                      <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
-                      {totalCriticos} Crítico{totalCriticos !== 1 ? "s" : ""}
-                    </span>
-                  )}
-                  {totalAltos > 0 && (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-orange-50 px-2 py-0.5 text-xs font-semibold text-orange-600 dark:bg-orange-900/30 dark:text-orange-400">
-                      <span className="h-1.5 w-1.5 rounded-full bg-orange-400" />
-                      {totalAltos} Alto{totalAltos !== 1 ? "s" : ""}
-                    </span>
-                  )}
-                  {totalCriticos === 0 && totalAltos === 0 && (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-xs font-semibold text-green-600 dark:bg-green-900/30 dark:text-green-400">
-                      Sem alertas ativos
-                    </span>
-                  )}
-                </div>
-              )}
-              {munCritico && (
-                <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                  Destaque: <span className="font-medium text-gray-700 dark:text-gray-300">{munCritico}</span>
-                </p>
-              )}
-              <p className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">MIS · MDS</p>
-              <Link
-                href="/painel-social"
-                className="mt-3 inline-flex items-center gap-1 rounded-lg bg-blue-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
-              >
-                Ver Painel
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M5 12h14" /><path d="m12 5 7 7-7 7" />
-                </svg>
-              </Link>
-            </div>
-          );
-        })()}
-
-        {/* Card Execução Orçamentária — SICONFI/RREO */}
-        {carregandoSiconfi ? (
-          <CardSkeleton />
-        ) : (() => {
-          const semDados = !resumoSiconfi;
-          const criticos = resumoSiconfi?.alertas_criticos ?? 0;
-          const altos    = resumoSiconfi?.alertas_altos    ?? 0;
-          const comDado  = resumoSiconfi?.municipios_com_dado  ?? 0;
-          const semDado  = resumoSiconfi?.municipios_sem_dado  ?? 0;
-          const total    = resumoSiconfi?.total_municipios     ?? 22;
-          const periodo  = resumoSiconfi?.nr_periodo   ?? null;
-          const exercicio = resumoSiconfi?.an_exercicio ?? null;
-          return (
-            <div className={`rounded-xl border bg-white p-4 dark:bg-gray-800 ${
-              criticos > 0
-                ? "border-red-200 dark:border-red-800/50"
-                : altos > 0
-                  ? "border-amber-200 dark:border-amber-800/50"
-                  : "border-gray-200 dark:border-gray-700"
-            }`}>
-              <div className="flex items-start justify-between gap-3">
-                <span className={`rounded-full p-1.5 ${
-                  criticos > 0
-                    ? "bg-red-50 text-red-500 dark:bg-red-900/20 dark:text-red-400"
-                    : "bg-indigo-50 text-indigo-500 dark:bg-indigo-900/20 dark:text-indigo-400"
-                }`}>
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <line x1="18" y1="20" x2="18" y2="10" />
-                    <line x1="12" y1="20" x2="12" y2="4" />
-                    <line x1="6"  y1="20" x2="6"  y2="14" />
-                    <line x1="2"  y1="20" x2="22" y2="20" />
-                  </svg>
-                </span>
-                {semDados ? (
-                  <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500 dark:bg-gray-700 dark:text-gray-400">Sem dados</span>
-                ) : criticos > 0 ? (
-                  <NivelBadge nivel="alto" />
-                ) : altos > 0 ? (
-                  <NivelBadge nivel="medio" />
-                ) : null}
-              </div>
-              <p className="mt-3 text-sm font-bold text-gray-900 dark:text-white">Execução Orçamentária</p>
-              {semDados ? (
-                <p className="mt-1 text-xs font-medium text-gray-400 dark:text-gray-500">Aguardando carga SICONFI/RREO.</p>
-              ) : (
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {criticos > 0 && (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-600 dark:bg-red-900/30 dark:text-red-400">
-                      <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
-                      {criticos} Crítico{criticos !== 1 ? "s" : ""}
-                    </span>
-                  )}
-                  {altos > 0 && (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-orange-50 px-2 py-0.5 text-xs font-semibold text-orange-600 dark:bg-orange-900/30 dark:text-orange-400">
-                      <span className="h-1.5 w-1.5 rounded-full bg-orange-400" />
-                      {altos} Alto{altos !== 1 ? "s" : ""}
-                    </span>
-                  )}
-                  {criticos === 0 && altos === 0 && (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 text-xs font-semibold text-green-600 dark:bg-green-900/30 dark:text-green-400">
-                      Tudo em dia
-                    </span>
-                  )}
-                </div>
-              )}
-              {!semDados && (
-                <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                  {comDado} de {total} municípios com RREO entregue.
-                  {semDado > 0 && ` ${semDado} sem entrega no período atual.`}
-                </p>
-              )}
-              {periodo && exercicio && (
-                <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">
-                  RREO {periodo}º bimestre/{exercicio}.
-                </p>
-              )}
-              <p className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">SICONFI · Tesouro Nacional · STN</p>
-              <Link
-                href="/painel-siconfi"
-                className="mt-3 inline-flex items-center gap-1 rounded-lg bg-blue-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
-              >
-                Ver painel
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M5 12h14" /><path d="m12 5 7 7-7 7" />
-                </svg>
-              </Link>
-            </div>
-          );
-        })()}
-
-        {ALERTAS_SUGERIDOS.map((alerta) => (
-          <div
-            key={alerta.titulo}
-            className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800"
-          >
-            <div className="flex items-start justify-between gap-3">
-              <span className="rounded-full bg-gray-50 p-1.5 text-gray-500 dark:bg-gray-900/40 dark:text-gray-300">
-                {alerta.icone}
-              </span>
-              <ImplantacaoBadge />
-            </div>
-            <p className="mt-3 text-sm font-bold text-gray-900 dark:text-white">
-              {alerta.titulo}
-            </p>
-            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              {alerta.descricao}
-            </p>
-            <p className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
-              {alerta.prioridade}
-            </p>
           </div>
-        ))}
+        </div>
+      )}
+
+      {/* ── Painéis disponíveis ── */}
+      <div>
+        <p className="mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
+          Painéis disponíveis
+        </p>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          <AcessoRapido
+            titulo="Regularidade CAUC"
+            fonte="CAUC · SICONFI/STN"
+            icone={
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+              </svg>
+            }
+            href="/painel-cauc"
+            criticos={caucCriticos}
+            altos={caucAltos}
+            corIcone="text-violet-500 dark:text-violet-400"
+          />
+          <AcessoRapido
+            titulo="Remessas Contábeis"
+            fonte="Prestação de Contas · TCE-AC"
+            icone={
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <path d="M14 2v6h6" /><path d="M12 17h.01" /><path d="M12 11v3" />
+              </svg>
+            }
+            href="/remessas/calendario"
+            criticos={remessaCriticos}
+            altos={remessaAltos}
+            corIcone="text-orange-500 dark:text-orange-400"
+          />
+          <AcessoRapido
+            titulo="Saúde Pública"
+            fonte="SIOPS · CNES · SISAGUA · InfoDengue"
+            icone={
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M12 2a5 5 0 1 0 0 10A5 5 0 0 0 12 2z" />
+                <path d="M12 12c-5.33 0-8 2.67-8 4v2h16v-2c0-1.33-2.67-4-8-4z" />
+                <path d="M12 7v5" /><path d="M9.5 9.5h5" />
+              </svg>
+            }
+            href="/painel-saude"
+            criticos={saudeCriticos}
+            altos={saudeAltos}
+            corIcone="text-teal-500 dark:text-teal-400"
+          />
+          <AcessoRapido
+            titulo="Vulnerabilidade Social"
+            fonte="MIS · MDS"
+            icone={
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                <circle cx="9" cy="7" r="4" />
+                <path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" />
+              </svg>
+            }
+            href="/painel-social"
+            criticos={socialCriticos}
+            altos={socialAltos}
+            corIcone="text-purple-500 dark:text-purple-400"
+          />
+          <AcessoRapido
+            titulo="Execução Orçamentária"
+            fonte="SICONFI · Tesouro Nacional"
+            icone={
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" />
+                <line x1="6" y1="20" x2="6" y2="14" /><line x1="2" y1="20" x2="22" y2="20" />
+              </svg>
+            }
+            href="/painel-siconfi"
+            criticos={siconfiCriticos}
+            altos={siconfiAltos}
+            corIcone="text-indigo-500 dark:text-indigo-400"
+          />
+        </div>
       </div>
 
-      {modalProcessual ? (
+      {/* ── Em desenvolvimento ── */}
+      <div>
+        <p className="mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
+          Em desenvolvimento
+        </p>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {ALERTAS_SUGERIDOS.map((alerta) => (
+            <div
+              key={alerta.titulo}
+              className="flex items-center gap-3 rounded-xl border border-dashed border-gray-200 bg-white px-4 py-3 opacity-60 dark:border-gray-700 dark:bg-gray-800"
+            >
+              <span className="shrink-0 rounded-lg bg-gray-50 p-2 text-gray-400 dark:bg-gray-700/50">
+                {alerta.icone}
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold text-gray-700 dark:text-gray-300">{alerta.titulo}</p>
+                <p className="text-[11px] text-gray-400 dark:text-gray-500">{alerta.prioridade}</p>
+              </div>
+              <span className="shrink-0 inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500 dark:bg-gray-700 dark:text-gray-400">
+                Em breve
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Modal processual */}
+      {modalProcessual && (
         <ModalProcessual
           tipo={modalProcessual}
           registros={registrosModalProcessual}
           onClose={() => setModalProcessual(null)}
         />
-      ) : null}
-
+      )}
 
     </div>
   );
