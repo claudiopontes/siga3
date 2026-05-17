@@ -194,10 +194,11 @@ export default function PainelSiconfiClient() {
 
         <ModuloCard
           titulo="Entregas e Pendências"
-          descricao="Acompanhamento de demonstrativos entregues, ausentes ou pendentes por ente e período — RREO, RGF e DCA."
-          fonte="SICONFI/Extrato"
+          descricao="Acompanhamento de municípios com dados RREO presentes ou ausentes por exercício e período."
+          fonte="SICONFI/RREO"
           icone={<FileText className="h-5 w-5" />}
-          status="preparacao"
+          href="/painel-siconfi/entregas"
+          status="disponivel"
           corIcone="text-violet-500 dark:text-violet-400"
           corBorda="border-violet-200 dark:border-violet-800/40"
           corFonteBadge="bg-violet-50 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300"

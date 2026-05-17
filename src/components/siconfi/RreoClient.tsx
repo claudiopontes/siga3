@@ -222,8 +222,8 @@ export default function RreoClient() {
         const resolvedPeriodo = data.nr_periodo;
         if (resolvedAno && resolvedPeriodo) {
           fetch(`/api/siconfi/rreo/ocorrencias?an_exercicio=${resolvedAno}&nr_periodo=${resolvedPeriodo}`)
-            .then((r2) => (r2.ok ? r2.json() as Promise<OcorrenciasResponse> : Promise.resolve({ ocorrencias: [] })))
-            .then((oData) => setOcorrencias(oData.ocorrencias ?? []))
+            .then((r2) => r2.ok ? r2.json() as Promise<OcorrenciasResponse> : undefined)
+            .then((oData) => setOcorrencias(oData?.ocorrencias ?? []))
             .catch(() => setOcorrencias([]));
         }
       })

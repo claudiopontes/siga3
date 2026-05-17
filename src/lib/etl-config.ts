@@ -180,9 +180,27 @@ export const ETL_CONFIG: Record<string, EtlConfigEntry> = {
   },
   mart_siconfi_rreo: {
     nomeExibicao: "RREO (SICONFI)",
-    periodicidade: "bimestral",
-    toleranciaDias: 60,
+    periodicidade: "diaria",
+    toleranciaDias: 1,
     ativoPainel: true,
+    execucao: {
+      tipoCargaPadrao: "full",
+      modoCargaPadrao: "full_delete_insert",
+      escopoCarga: "exercicio_corrente",
+      campoReferencia: "an_exercicio",
+      preservaHistoricoAnterior: true,
+      requerConfirmacaoManual: true,
+      observacaoRegraNegocio:
+        "Carga bimestral dos dados RREO via API pública do SICONFI/Tesouro Nacional. Cobre o exercício corrente e o anterior. Reconstrói automaticamente os marts siconfi_rreo_resumo_municipio e siconfi_rreo_alertas.",
+    },
+    execucaoManual: {
+      permiteExecucaoManual: true,
+      permiteFullManual: true,
+      permiteIncrementalManual: false,
+      labelBotao: "Recarregar",
+      mensagemConfirmacao:
+        "Esta ação irá recarregar os dados RREO de todos os municípios do Acre a partir da API pública do SICONFI/Tesouro Nacional. A carga pode levar vários minutos. Deseja continuar?",
+    },
   },
   mart_pni_cobertura: {
     nomeExibicao: "Cobertura Vacinal (PNI)",

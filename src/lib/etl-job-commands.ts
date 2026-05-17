@@ -55,7 +55,7 @@ export const ETL_JOB_COMMANDS: Record<string, { command: string; args: string[] 
   },
   mart_siconfi_rreo: {
     command: NPM_COMMAND,
-    args: ["--prefix", "etl", "run", "carga-siconfi-rreo:postgres"],
+    args: ["--prefix", "etl", "run", "carga-siconfi-rreo:incremental"],
   },
   mis_bolsa_familia_bpc: {
     command: NPM_COMMAND,
