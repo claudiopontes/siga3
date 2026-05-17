@@ -130,51 +130,6 @@ export default function PainelSiconfiClient() {
   return (
     <div className="space-y-6">
 
-      {/* ── Cabeçalho ── */}
-      <div className="rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <h1 className="text-lg font-bold text-gray-900 dark:text-white">
-              Execução Orçamentária
-            </h1>
-            <p className="mt-1 max-w-2xl text-sm text-gray-500 dark:text-gray-400">
-              Acompanhamento fiscal e orçamentário dos municípios do Acre com dados do{" "}
-              <span className="font-medium text-gray-700 dark:text-gray-300">SICONFI</span>{" "}
-              (Tesouro Nacional). Consolida RREO, entregas de demonstrativos, alertas fiscais e,
-              futuramente, RGF e DCA.
-            </p>
-          </div>
-          {resumo && (
-            <div className="flex flex-wrap gap-3 text-center">
-              <div className="rounded-lg border border-gray-100 bg-gray-50 px-4 py-2 dark:border-gray-700 dark:bg-gray-700/50">
-                <p className="text-xs text-gray-500 dark:text-gray-400">Com RREO</p>
-                <p className="text-xl font-bold text-gray-900 dark:text-white">{resumo.municipios_com_dado}</p>
-              </div>
-              <div className="rounded-lg border border-gray-100 bg-gray-50 px-4 py-2 dark:border-gray-700 dark:bg-gray-700/50">
-                <p className="text-xs text-gray-500 dark:text-gray-400">Sem entrega</p>
-                <p className={`text-xl font-bold ${resumo.municipios_sem_dado > 0 ? "text-red-600 dark:text-red-400" : "text-gray-900 dark:text-white"}`}>
-                  {resumo.municipios_sem_dado}
-                </p>
-              </div>
-              {resumo.nr_periodo && resumo.an_exercicio && (
-                <div className="rounded-lg border border-indigo-100 bg-indigo-50 px-4 py-2 dark:border-indigo-800/40 dark:bg-indigo-900/20">
-                  <p className="text-xs text-indigo-500 dark:text-indigo-400">Período</p>
-                  <p className="text-sm font-bold text-indigo-700 dark:text-indigo-300">
-                    {resumo.nr_periodo}º bim./{resumo.an_exercicio}
-                  </p>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
-        {erro && (
-          <p className="mt-3 text-xs text-amber-600 dark:text-amber-400">
-            Não foi possível carregar o resumo: {erro}
-          </p>
-        )}
-      </div>
-
       {/* ── Módulos de análise ── */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
 

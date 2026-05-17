@@ -19,26 +19,30 @@ const AppHeader: React.FC = () => {
   const pathname = usePathname();
   const { isMobileOpen, toggleSidebar, toggleMobileSidebar } = useSidebar();
 
-  const isCombustivelPage    = pathname === "/painel-combustivel";
-  const isEmpenhoPage        = pathname === "/painel-combustivel-empenhos";
-  const isReceitaPage        = pathname === "/painel-receita-publica";
-  const isDespesaPage        = pathname === "/painel-despesa";
-  const isSaudePage          = pathname === "/painel-saude";
-  const isPautasPage          = pathname === "/pautas-julgamento";
-  const isPautasDetalhePage   = pathname.startsWith("/pautas-julgamento/");
-  const isProcessosPage       = pathname === "/eprocessos-ce/processos";
-  const isProcessoDetalhePage = pathname.startsWith("/eprocessos-ce/processos/");
-  const isCredoresPage       = pathname === "/pesquisa-credores";
-  const isFlorestalPage      = pathname === "/painel-cobertura-florestal";
-  const isCaucPage           = pathname === "/painel-cauc";
-  const isSocialPage         = pathname === "/painel-social";
-  const isMapaPage           = pathname === "/gabinete-digital/mapa";
-  const isCalendarPage       = pathname === "/calendar";
-  const isProfilePage        = pathname === "/profile";
-  const isUsuariosPage       = pathname === "/seguranca/usuarios";
-  const isEtlStatusPage      = pathname === "/seguranca/etl";
-  const isEtlConfigPage      = pathname === "/seguranca/etl/configuracao";
-  const isRemessasPage       = pathname.startsWith("/remessas");
+  const isCombustivelPage      = pathname === "/painel-combustivel";
+  const isEmpenhoPage          = pathname === "/painel-combustivel-empenhos";
+  const isReceitaPage          = pathname === "/painel-receita-publica";
+  const isDespesaPage          = pathname === "/painel-despesa";
+  const isSaudePage            = pathname === "/painel-saude";
+  const isPautasPage           = pathname === "/pautas-julgamento";
+  const isPautasDetalhePage    = pathname.startsWith("/pautas-julgamento/");
+  const isProcessosPage        = pathname === "/eprocessos-ce/processos";
+  const isProcessoDetalhePage  = pathname.startsWith("/eprocessos-ce/processos/");
+  const isCredoresPage         = pathname === "/pesquisa-credores";
+  const isFlorestalPage        = pathname === "/painel-cobertura-florestal";
+  const isCaucPage             = pathname === "/painel-cauc";
+  const isSocialPage           = pathname === "/painel-social";
+  const isMapaPage             = pathname === "/gabinete-digital/mapa";
+  const isCalendarPage         = pathname === "/calendar";
+  const isProfilePage          = pathname === "/profile";
+  const isUsuariosPage         = pathname === "/seguranca/usuarios";
+  const isEtlStatusPage        = pathname === "/seguranca/etl";
+  const isEtlConfigPage        = pathname === "/seguranca/etl/configuracao";
+  const isRemessasPage         = pathname.startsWith("/remessas");
+  const isPainelSiconfiPage    = pathname === "/painel-siconfi";
+  const isRreoPage             = pathname === "/painel-siconfi/rreo";
+  const isEntregasSiconfiPage  = pathname === "/painel-siconfi/entregas";
+  const isRreoMunicipioPage    = pathname.startsWith("/painel-siconfi/rreo/");
 
   const breadcrumbs: Record<string, { crumbs: { label: string; href?: string }[] }> = {
     "/": { crumbs: [{ label: "Home" }] },
@@ -50,6 +54,12 @@ const AppHeader: React.FC = () => {
     "/painel-social": { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "Vulnerabilidade Social" }] },
     "/painel-cobertura-florestal": { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "Cobertura Florestal" }] },
     "/painel-cauc": { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "CAUC Municípios" }] },
+    "/painel-siconfi": { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "Execução Orçamentária" }] },
+    "/painel-siconfi/rreo": { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "Execução Orçamentária", href: "/painel-siconfi" }, { label: "RREO" }] },
+    "/painel-siconfi/entregas": { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "Execução Orçamentária", href: "/painel-siconfi" }, { label: "Entregas e Pendências" }] },
+    ...(pathname.startsWith("/painel-siconfi/rreo/") ? {
+      [pathname]: { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "Execução Orçamentária", href: "/painel-siconfi" }, { label: "RREO", href: "/painel-siconfi/rreo" }, { label: "Detalhe do Município" }] }
+    } : {}),
     "/painel-saude": { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "Saúde Pública" }] },
     "/painel-saude/qualidade-agua": { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "Saúde Pública", href: "/painel-saude" }, { label: "Qualidade da Água" }] },
     "/painel-saude/vigilancia": { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "Saúde Pública", href: "/painel-saude" }, { label: "Vigilância Epidemiológica" }] },
@@ -292,6 +302,50 @@ const AppHeader: React.FC = () => {
                 <span className="text-xs text-gray-400 dark:text-gray-500">
                   <span className="font-medium text-blue-600 dark:text-blue-400">SIPAC</span>
                   {" · "}TCE-AC
+                </span>
+              </div>
+            )}
+            {isPainelSiconfiPage && (
+              <div className="flex flex-col">
+                <span className="truncate text-sm text-gray-600 dark:text-gray-300">
+                  Acompanhamento fiscal e orçamentário dos municípios do Acre.
+                </span>
+                <span className="text-xs text-gray-400 dark:text-gray-500">
+                  <span className="font-medium text-indigo-600 dark:text-indigo-400">SICONFI</span>
+                  {" · "}Tesouro Nacional
+                </span>
+              </div>
+            )}
+            {isRreoPage && (
+              <div className="flex flex-col">
+                <span className="truncate text-sm text-gray-600 dark:text-gray-300">
+                  Relatório Resumido da Execução Orçamentária bimestral dos municípios do Acre.
+                </span>
+                <span className="text-xs text-gray-400 dark:text-gray-500">
+                  <span className="font-medium text-indigo-600 dark:text-indigo-400">SICONFI</span>
+                  {" · "}RREO · Tesouro Nacional
+                </span>
+              </div>
+            )}
+            {isEntregasSiconfiPage && (
+              <div className="flex flex-col">
+                <span className="truncate text-sm text-gray-600 dark:text-gray-300">
+                  Entregas e pendências de demonstrativos fiscais dos municípios do Acre.
+                </span>
+                <span className="text-xs text-gray-400 dark:text-gray-500">
+                  <span className="font-medium text-indigo-600 dark:text-indigo-400">SICONFI</span>
+                  {" · "}Extrato de Entregas · Tesouro Nacional
+                </span>
+              </div>
+            )}
+            {isRreoMunicipioPage && (
+              <div className="flex flex-col">
+                <span className="truncate text-sm text-gray-600 dark:text-gray-300">
+                  Histórico RREO e alertas fiscais do município selecionado.
+                </span>
+                <span className="text-xs text-gray-400 dark:text-gray-500">
+                  <span className="font-medium text-indigo-600 dark:text-indigo-400">SICONFI</span>
+                  {" · "}RREO · Tesouro Nacional
                 </span>
               </div>
             )}

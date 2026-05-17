@@ -2,7 +2,6 @@
 
 import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { ChevronLeft } from "lucide-react";
 
 // ---------------------------------------------------------------------------
 // Tipos
@@ -270,27 +269,6 @@ export default function RreoClient() {
 
   return (
     <div className="space-y-5">
-
-      {/* ── Cabeçalho ── */}
-      <div className="rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
-        <div className="mb-1 flex items-center gap-2">
-          <Link
-            href="/painel-siconfi"
-            className="inline-flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
-          >
-            <ChevronLeft className="h-3.5 w-3.5" />
-            Execução Orçamentária
-          </Link>
-        </div>
-        <h1 className="text-lg font-bold text-gray-900 dark:text-white">
-          RREO — Relatório Resumido da Execução Orçamentária
-        </h1>
-        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-          Acompanhamento bimestral da execução orçamentária dos municípios do Acre com base nos
-          dados do SICONFI/Tesouro Nacional. Identificação de pendências de entrega e variações
-          para verificação prioritária pelo gabinete.
-        </p>
-      </div>
 
       {/* ── KPI Cards ── */}
       {resumo && (

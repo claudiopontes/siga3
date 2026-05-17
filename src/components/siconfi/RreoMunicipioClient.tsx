@@ -339,31 +339,6 @@ export default function RreoMunicipioClient({ idMunicipio }: { idMunicipio: stri
   return (
     <div className="space-y-5">
 
-      {/* ── Cabeçalho com breadcrumb ── */}
-      <div className="rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
-        <nav className="mb-2 flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500">
-          <Link href="/painel-siconfi" className="hover:text-gray-600 dark:hover:text-gray-300">
-            Execução Orçamentária
-          </Link>
-          <span>/</span>
-          <Link href="/painel-siconfi/rreo" className="hover:text-gray-600 dark:hover:text-gray-300">
-            RREO
-          </Link>
-          <span>/</span>
-          <span className="text-gray-600 dark:text-gray-300">{nomeMunicipio}</span>
-        </nav>
-
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h1 className="text-lg font-bold text-gray-900 dark:text-white">{nomeMunicipio}</h1>
-            <p className="mt-0.5 text-xs text-gray-400 dark:text-gray-500">
-              IBGE: {id_municipio} · RREO — Execução Orçamentária
-            </p>
-          </div>
-          <NivelBadge nivel={nivelAtual} />
-        </div>
-      </div>
-
       {/* ── KPI Cards do período mais recente ── */}
       {maisRecente && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">

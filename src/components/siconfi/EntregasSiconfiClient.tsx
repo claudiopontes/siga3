@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, Info } from "lucide-react";
+import { ChevronRight, Info } from "lucide-react";
 
 // ---------------------------------------------------------------------------
 // Tipos
@@ -238,30 +238,6 @@ export default function EntregasSiconfiClient() {
 
   return (
     <div className="space-y-5">
-
-      {/* ── Cabeçalho ── */}
-      <div className="rounded-xl border border-gray-200 bg-white p-5 dark:border-gray-700 dark:bg-gray-800">
-        <nav className="mb-2 flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500">
-          <Link
-            href="/painel-siconfi"
-            className="flex items-center gap-0.5 hover:text-gray-600 dark:hover:text-gray-300"
-          >
-            <ChevronLeft className="h-3.5 w-3.5" />
-            Execução Orçamentária
-          </Link>
-          <span>/</span>
-          <span className="text-gray-600 dark:text-gray-300">Entregas e Pendências</span>
-        </nav>
-
-        <h1 className="text-lg font-bold text-gray-900 dark:text-white">
-          Entregas e Pendências — RREO
-        </h1>
-        <p className="mt-1 max-w-2xl text-sm text-gray-500 dark:text-gray-400">
-          Acompanhamento da presença de dados RREO dos municípios do Acre a partir das
-          informações carregadas do SICONFI/Tesouro Nacional. Identifica quais municípios
-          possuem dados disponíveis para análise e quais estão sem informação no período.
-        </p>
-      </div>
 
       {/* ── Aviso institucional ── */}
       {temExtrato ? (
