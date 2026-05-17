@@ -142,18 +142,116 @@ async function main() {
   }
   console.log();
 
-  console.log("── Resumo ──");
+  // 9. Descobre endpoints disponíveis e testa variações de RREO
+  console.log(`── 9. DESCOBERTA DE ENDPOINTS — metadata catalog + variações RREO ──`);
+
+  // Catálogo de endpoints disponíveis no schema tt
+  const rMeta = await get(`/../metadata-catalog/tt`);
+  console.log(`   [metadata-catalog/tt] HTTP ${rMeta.status}`);
+  if (rMeta.ok) {
+    const d = rMeta.dados as Record<string, unknown>;
+    const items = Array.isArray(d?.items) ? d.items as Record<string, unknown>[] : [];
+    console.log(`   Endpoints disponíveis (${items.length}):`);
+    for (const item of items.slice(0, 30)) {
+      console.log(`     ${item.name ?? item.path ?? JSON.stringify(item).slice(0, 80)}`);
+    }
+  } else {
+    console.log(`   Resposta: ${preview(rMeta.dados, 300)}`);
+  }
+  console.log();
+
+  // Testa endpoints alternativos para RREO
+  const endpointsParaTestar = [
+    // Descobre endpoints do catálogo ORDS (sem o prefixo /tt)
+    `/../`,
+    // Testa com código de ESTADO (12=Acre) em vez de município
+    `/rreo?an_exercicio=2023&nr_periodo=1&id_ente=12&limit=5`,
+    // Testa FINBRA
+    `/finbra_rreo?an_exercicio=2023&nr_periodo=1&id_ente=1200401&limit=5`,
+    `/rreo_municipio?an_exercicio=2023&nr_periodo=1&id_ente=1200401&limit=5`,
+    // Sem qualquer filtro
+    `/rreo?an_exercicio=2023&nr_periodo=1&limit=5`,
+    // Co_tipo diferente
+    `/rreo?an_exercicio=2023&nr_periodo=1&id_ente=1200401&co_tipo_demonstrativo=RREO&limit=5`,
+    // Tenta co_poder (prefeitura) — alguns endpoints usam isso
+    `/rreo?an_exercicio=2023&nr_periodo=1&id_ente=1200401&co_poder=1&limit=5`,
+    // Endpoint alternativo com _mun
+    `/rreo_mun?an_exercicio=2023&nr_periodo=1&id_ente=1200401&limit=5`,
+  ];
+  console.log(`── 9b. Testando variações de endpoint RREO ──`);
+  for (const path of endpointsParaTestar) {
+    const r = await get(path);
+    const d = r.dados as Record<string, unknown>;
+    const items = Array.isArray(d?.items) ? d.items : Array.isArray(r.dados) ? r.dados : [];
+    console.log(`   HTTP ${r.status}  items=${(items as unknown[]).length}  ${path.split("?")[0]}`);
+    if ((items as unknown[]).length > 0) {
+      console.log(`   ✅ ENCONTROU DADOS! Campos: ${Object.keys((items as Record<string, unknown>[])[0]).join(", ")}`);
+      console.log(`   Primeiro: ${preview((items as unknown[])[0])}`);
+    }
+    await new Promise((res) => setTimeout(res, 500));
+  }
+  console.log();
+
+  // 10. Diagnóstico — compara id_ente vs id_municipio para dados históricos (2023) e atuais (2026)
+  console.log(`── 10. DIAGNÓSTICO parâmetros de filtro — id_ente vs id_municipio ──`);
+
+  const MUNICIPIOS_TESTE = [
+    { id: 1200401, nome: "Rio Branco" },
+    { id: 1200104, nome: "Brasiléia" },
+    { id: 1200013, nome: "Acrelândia" },
+  ];
+
+  for (const ano of [2023, 2024, 2025, 2026]) {
+    console.log(`\n  ── Exercício ${ano}/período 1 ──`);
+    for (const m of MUNICIPIOS_TESTE.slice(0, 1)) {  // só Rio Branco para não demorar
+      console.log(`  ${m.nome} (id=${m.id})`);
+
+      // Testa id_ente (parâmetro correto segundo documentação)
+      const rEnte = await get(`/rreo?an_exercicio=${ano}&nr_periodo=1&id_ente=${m.id}&limit=5`);
+      const dEnte = rEnte.dados as Record<string, unknown>;
+      const itemsEnte = Array.isArray(dEnte?.items) ? dEnte.items as unknown[] : [];
+      console.log(`    [id_ente]      HTTP ${rEnte.status}  items=${itemsEnte.length}`);
+      if (itemsEnte.length > 0) console.log(`    Primeiro: ${preview(itemsEnte[0])}`);
+
+      // Testa id_municipio (parâmetro antigo do ETL — retornava vazio)
+      const rMun = await get(`/rreo?an_exercicio=${ano}&nr_periodo=1&id_municipio=${m.id}&limit=5`);
+      const dMun = rMun.dados as Record<string, unknown>;
+      const itemsMun = Array.isArray(dMun?.items) ? dMun.items as unknown[] : [];
+      console.log(`    [id_municipio] HTTP ${rMun.status}  items=${itemsMun.length}`);
+
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+  }
+
+  // Testa por estado com id_ente para confirmar que dados existem
+  console.log(`\n  [por estado]  co_ibge_estado=12  an_exercicio=2024  nr_periodo=1`);
+  const rUf = await get(`/rreo?an_exercicio=2024&nr_periodo=1&co_ibge_estado=12&limit=50`);
+  const dUf = rUf.dados as Record<string, unknown>;
+  const itemsUf = Array.isArray(dUf?.items) ? dUf.items as unknown[] : [];
+  console.log(`    HTTP ${rUf.status}  items=${itemsUf.length}`);
+  if (itemsUf.length > 0) {
+    const municipios = [...new Map((itemsUf as Record<string, unknown>[]).map((i) => [i.id_ente ?? i.id_municipio, i.no_ente ?? i.no_municipio])).entries()];
+    console.log(`    Municípios com dado: ${municipios.length}`);
+    for (const [id, nome] of municipios.slice(0, 5)) console.log(`      id=${id}  nome=${nome}`);
+    console.log(`    Campos disponíveis: ${Object.keys((itemsUf[0] as Record<string, unknown>) ?? {}).join(", ")}`);
+  } else {
+    console.log(`    Resposta bruta: ${preview(rUf.dados, 400)}`);
+  }
+
+  console.log("\n── Resumo ──");
   console.log("  Endpoint base : /rreo");
-  console.log("  Parâmetros chave:");
+  console.log("  Parâmetros OBRIGATÓRIOS para dados municipais:");
   console.log("    an_exercicio          — ano (ex: 2023)");
-  console.log("    nr_periodo            — período (1-6 bimestres ou 1-2 semestral)");
-  console.log("    id_municipio          — código IBGE 7 dígitos");
-  console.log("    co_ibge_estado        — código UF (12=Acre)");
-  console.log("    no_anexo              — ex: 'RREO-Anexo 12' (saúde)");
-  console.log("    co_tipo_demonstrativo — 'RREO'");
+  console.log("    nr_periodo            — período (1-6 bimestral | 1-2 semestral)");
+  console.log("    id_ente               — código IBGE 7 dígitos do município");
+  console.log("    co_tipo_demonstrativo — DEVE ser 'RREO' (sem isso retorna vazio!)");
+  console.log();
+  console.log("  Campos retornados pela API:");
+  console.log("    exercicio, demonstrativo, periodo, periodicidade, instituicao,");
+  console.log("    cod_ibge, uf, populacao, anexo, esfera, rotulo, coluna, cod_conta, conta, valor");
   console.log();
   console.log("  Para carregar os dados execute:");
-  console.log("    npm run carga-siconfi-rreo:postgres");
+  console.log("    npm run carga-siconfi-rreo:incremental");
 }
 
 main().catch((err) => {

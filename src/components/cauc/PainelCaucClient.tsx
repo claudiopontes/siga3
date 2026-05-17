@@ -500,19 +500,9 @@ export default function PainelCaucClient() {
         </div>
       )}
 
-      {/* Cabeçalho */}
-      <div className="rounded-xl border border-gray-200 bg-white px-4 py-3 dark:border-gray-700 dark:bg-gray-800">
-        <div>
-          <h1 className="text-base font-bold text-gray-900 dark:text-white">
-            CAUC — Municípios do Acre
-          </h1>
-          <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-            Situação dos requisitos do Cadastro Único de Convênios (CAUC)
-          </p>
-        </div>
-        <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-700/50 dark:bg-amber-900/20 dark:text-amber-400">
-          ⚠️ <strong>Dado gerencial para alerta interno.</strong> Não substitui o extrato oficial do CAUC nem deve ser apresentado como certidão.
-        </div>
+      {/* Aviso gerencial */}
+      <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-700/50 dark:bg-amber-900/20 dark:text-amber-400">
+        ⚠️ <strong>Dado gerencial para alerta interno.</strong> Não substitui o extrato oficial do CAUC nem deve ser apresentado como certidão.
       </div>
     </div>
   );

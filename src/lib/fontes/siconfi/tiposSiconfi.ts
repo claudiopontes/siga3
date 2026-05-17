@@ -70,3 +70,38 @@ export interface SiconfiConsultaExtratoParams {
   idEnte: number;
   anoReferencia: number;
 }
+
+// ---------------------------------------------------------------------------
+// RGF — Relatório de Gestão Fiscal
+// Campos reais confirmados na API DataLake /rreo (co_tipo_demonstrativo=RGF)
+// e /rgf (endpoint próprio). A estrutura de campos é idêntica ao RREO.
+// Periodicidade: Q (quadrimestral) — 3 períodos por ano (1, 2, 3).
+// Obs: o endpoint /rgf retorna os mesmos campos que /rreo com demonstrativo=RGF.
+// ---------------------------------------------------------------------------
+export interface SiconfiItemRgf {
+  exercicio:      number;
+  demonstrativo:  string;        // "RGF"
+  periodo:        number;        // 1, 2 ou 3
+  periodicidade:  string;        // "Q" (quadrimestral)
+  instituicao:    string;        // ex: "Prefeitura Municipal de Rio Branco - AC"
+  cod_ibge:       number;        // código IBGE 7 dígitos
+  uf:             string;        // ex: "AC"
+  populacao:      number | null;
+  anexo:          string;        // ex: "RGF-Anexo 01"
+  esfera:         string;        // "M" = Municipal, "E" = Estadual
+  rotulo:         string | null; // ex: "Padrão"
+  coluna:         string;        // ex: "DESPESAS EMPENHADAS"
+  cod_conta:      string;        // código da conta
+  conta:          string;        // descrição da conta
+  valor:          number | null;
+}
+
+// Parâmetros para consulta RGF
+export interface SiconfiConsultaRgfParams {
+  anoExercicio:       number;
+  periodo:            number;
+  tipoDemonstrativo?: string;   // padrão "RGF"
+  idEnte:             number;
+  anexo?:             string;
+  esfera?:            string;
+}

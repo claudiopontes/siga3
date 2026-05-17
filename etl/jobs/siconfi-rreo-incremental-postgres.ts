@@ -106,16 +106,22 @@ interface ExtratoResponse {
 }
 
 interface RreoItem {
-  an_exercicio:          number;
-  nr_periodo:            number;
-  id_municipio:          number;
-  no_municipio:          string;
-  co_tipo_demonstrativo: string;
-  no_anexo:              string;
-  co_conta:              string;
-  no_conta:              string;
-  no_coluna:             string;
-  vl_conta:              string | number | null;
+  // Campos reais retornados pela API DataLake /rreo com co_tipo_demonstrativo=RREO
+  exercicio:      number;
+  demonstrativo:  string;
+  periodo:        number;
+  periodicidade:  string;
+  instituicao:    string;
+  cod_ibge:       number;
+  uf:             string;
+  populacao:      number | null;
+  anexo:          string;
+  esfera:         string;
+  rotulo:         string | null;
+  coluna:         string;
+  cod_conta:      string;
+  conta:          string;
+  valor:          number | null;
 }
 
 interface RreoResponse {
@@ -149,12 +155,16 @@ function sleep(ms: number): Promise<void> {
 }
 
 function derivarCoEntregavel(entregavel: string): string | null {
-  const e = entregavel.toLowerCase();
-  if (e.includes("relatório resumido de execução orçamentária")) return "RREO";
-  if (e.includes("relatório de gestão fiscal"))                  return "RGF";
-  if (e.includes("balanço anual") || e.includes("dca"))          return "DCA";
-  if (e.includes("msc encerramento"))                            return "MSC_ENCERRAMENTO";
-  if (e.includes("msc"))                                         return "MSC";
+  // Normaliza acentos para comparação robusta (API pode retornar encoding variado)
+  // eslint-disable-next-line no-misleading-character-class
+  const norm = (s: string) =>
+    s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+  const e = norm(entregavel);
+  if (e.includes("relatorio resumido de execucao orcamentaria") || e === "rreo") return "RREO";
+  if (e.includes("relatorio de gestao fiscal") || e === "rgf")                   return "RGF";
+  if (e.includes("balanco anual") || e.includes("dca"))                          return "DCA";
+  if (e.includes("msc encerramento"))                                             return "MSC_ENCERRAMENTO";
+  if (e.includes("msc"))                                                          return "MSC";
   return null;
 }
 
@@ -322,11 +332,11 @@ function detectarAlteracoes(snapshot: Snapshot, novoEstado: Snapshot): PeriodoAl
 // ---------------------------------------------------------------------------
 
 async function fetchRreo(
-  an_exercicio: number, nr_periodo: number, id_municipio: number,
+  an_exercicio: number, nr_periodo: number, id_ente: number,
   offset = 0, retries = 0,
 ): Promise<RreoResponse | null> {
   if (retries >= 3) return null;
-  const url = `${BASE_URL}/rreo?an_exercicio=${an_exercicio}&nr_periodo=${nr_periodo}&id_municipio=${id_municipio}&limit=200&offset=${offset}`;
+  const url = `${BASE_URL}/rreo?an_exercicio=${an_exercicio}&nr_periodo=${nr_periodo}&id_ente=${id_ente}&co_tipo_demonstrativo=RREO&limit=200&offset=${offset}`;
   try {
     const resp = await fetch(url, {
       headers: { Accept: "application/json", "User-Agent": "Varadouro-Digital-ETL/1.0 (interno TCE-AC)" },
@@ -334,7 +344,7 @@ async function fetchRreo(
     });
     if (resp.status === 429) {
       await sleep(30000 * (retries + 1));
-      return fetchRreo(an_exercicio, nr_periodo, id_municipio, offset, retries + 1);
+      return fetchRreo(an_exercicio, nr_periodo, id_ente, offset, retries + 1);
     }
     if (!resp.ok) return null;
     return (await resp.json()) as RreoResponse;
@@ -344,12 +354,12 @@ async function fetchRreo(
 }
 
 async function fetchRreoAllPages(
-  an_exercicio: number, nr_periodo: number, id_municipio: number,
+  an_exercicio: number, nr_periodo: number, id_ente: number,
 ): Promise<RreoItem[]> {
   const all: RreoItem[] = [];
   let offset = 0;
   while (true) {
-    const page = await fetchRreo(an_exercicio, nr_periodo, id_municipio, offset);
+    const page = await fetchRreo(an_exercicio, nr_periodo, id_ente, offset);
     if (!page?.items?.length) break;
     all.push(...page.items);
     if (!page.hasMore) break;
@@ -395,9 +405,9 @@ async function carregarRreo(periodos: PeriodoAlterado[]): Promise<{
           VALUES ($1, $2, $3, $4, $5, $6, $7)
         `, [
           p.exercicio, p.periodo, p.id_ente,
-          items[0]?.co_tipo_demonstrativo ?? "RREO",
+          items[0]?.demonstrativo ?? "RREO",
           null,
-          `/rreo?an_exercicio=${p.exercicio}&nr_periodo=${p.periodo}&id_municipio=${p.id_ente}`,
+          `/rreo?an_exercicio=${p.exercicio}&nr_periodo=${p.periodo}&id_ente=${p.id_ente}&co_tipo_demonstrativo=RREO`,
           JSON.stringify(items),
         ]);
 
@@ -408,15 +418,15 @@ async function carregarRreo(periodos: PeriodoAlterado[]): Promise<{
                co_tipo_demonstrativo, no_anexo, coluna, conta, valor)
             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
           `, [
-            item.an_exercicio ?? p.exercicio,
-            item.nr_periodo   ?? p.periodo,
-            item.id_municipio ?? p.id_ente,
-            item.no_municipio ?? p.no_ente,
-            item.co_tipo_demonstrativo ?? "RREO",
-            item.no_anexo  ?? null,
-            item.no_coluna ?? null,
-            item.no_conta  ?? item.co_conta ?? null,
-            parseValor(item.vl_conta),
+            item.exercicio   ?? p.exercicio,
+            item.periodo     ?? p.periodo,
+            item.cod_ibge    ?? p.id_ente,
+            item.instituicao ?? p.no_ente,
+            item.demonstrativo ?? "RREO",
+            item.anexo  ?? null,
+            item.coluna ?? null,
+            item.conta  ?? item.cod_conta ?? null,
+            parseValor(item.valor),
           ]);
         }
       });
@@ -432,6 +442,43 @@ async function carregarRreo(periodos: PeriodoAlterado[]): Promise<{
   }
 
   return { registros, erros, periodosCarregados };
+}
+
+// ---------------------------------------------------------------------------
+// Fase 3b — Recuperação de lacunas
+// Detecta períodos HO/RE no extrato sem dado RREO no DW.
+// Ocorre quando a API retornou vazio na carga original (dado ainda não indexado
+// pelo SICONFI), mas data_status não muda em execuções posteriores, impedindo
+// a re-detecção pelo mecanismo de snapshot normal.
+// ---------------------------------------------------------------------------
+
+async function buscarLacunasRreo(): Promise<PeriodoAlterado[]> {
+  try {
+    const rows = await pgQuery<{
+      id_ente: number; no_ente: string; exercicio: number; periodo: number;
+    }>(`
+      SELECT DISTINCT f.id_ente, f.no_ente, f.exercicio, f.periodo
+      FROM dw.fato_siconfi_extrato_entregas f
+      WHERE f.co_entregavel = 'RREO'
+        AND f.status_relatorio IN ('HO', 'RE')
+        AND NOT EXISTS (
+          SELECT 1 FROM dw.fato_siconfi_rreo r
+          WHERE r.id_municipio = f.id_ente
+            AND r.an_exercicio  = f.exercicio
+            AND r.nr_periodo    = f.periodo
+        )
+      ORDER BY f.exercicio DESC, f.periodo DESC, f.id_ente
+    `);
+    return rows.map((r) => ({
+      id_ente:   r.id_ente,
+      no_ente:   r.no_ente,
+      exercicio: r.exercicio,
+      periodo:   r.periodo,
+      motivo:    "novo" as const,
+    }));
+  } catch {
+    return [];
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -529,7 +576,22 @@ export async function executarSiconfiRreoIncremental(): Promise<void> {
   }
 
   // ── Fase 3: RREO ──
-  const { registros: rreoRegistros, erros, periodosCarregados } = await carregarRreo(alterados);
+  let { registros: rreoRegistros, erros, periodosCarregados } = await carregarRreo(alterados);
+
+  // ── Fase 3b: Recuperação de lacunas ──
+  const lacunas = await buscarLacunasRreo();
+  if (lacunas.length > 0) {
+    console.log(`\n[incremental] ── Fase 3b: Lacunas RREO (${lacunas.length} período(s) HO/RE sem dado local) ──`);
+    for (const l of lacunas) {
+      console.log(`    [LACUNA] ${l.no_ente} ${l.exercicio}/${l.periodo}`);
+    }
+    const { registros: reg3b, erros: err3b, periodosCarregados: pc3b } = await carregarRreo(lacunas);
+    rreoRegistros += reg3b;
+    erros         += err3b;
+    pc3b.forEach((p) => periodosCarregados.add(p));
+  } else {
+    console.log("\n[incremental] ── Fase 3b: Nenhuma lacuna RREO encontrada ──");
+  }
 
   // ── Fase 4: Mart extrato ──
   const periodosExtratoParsed = [...periodosRreo].map((k) => {
@@ -552,7 +614,8 @@ export async function executarSiconfiRreoIncremental(): Promise<void> {
   const duracao = Date.now() - inicio;
   console.log(`\n[incremental] Concluído em ${Math.round(duracao / 1000)}s`);
   console.log(`  Períodos no DW (antes)   : ${snapshot.size}`);
-  console.log(`  Períodos detectados      : ${alterados.length}`);
+  console.log(`  Períodos alterados       : ${alterados.length}`);
+  console.log(`  Lacunas recuperadas      : ${lacunas.length}`);
   console.log(`  Registros RREO carregados: ${rreoRegistros}`);
   console.log(`  Erros                    : ${erros}`);
 
@@ -561,7 +624,7 @@ export async function executarSiconfiRreoIncremental(): Promise<void> {
       INSERT INTO audit.etl_log (modulo, status, mensagem, registros, duracao_ms)
       VALUES ('mart_siconfi_rreo', 'OK', $1, $2, $3)
     `, [
-      `Incremental: ${alterados.length} período(s) alterado(s), ${rreoRegistros} registros RREO`,
+      `Incremental: ${alterados.length} alterado(s), ${lacunas.length} lacuna(s), ${rreoRegistros} registros RREO`,
       rreoRegistros,
       duracao,
     ]);

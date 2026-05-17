@@ -89,7 +89,7 @@ function AcessoRapido({
         {icone}
       </div>
       <div className="min-w-0 flex-1">
-        <p className="text-sm font-semibold text-gray-800 dark:text-white">{titulo}</p>
+        <p className="truncate text-sm font-semibold text-gray-800 dark:text-white">{titulo}</p>
         <p className="truncate text-xs text-gray-400 dark:text-gray-500">{fonte}</p>
       </div>
       <div className="flex shrink-0 items-center gap-2">
@@ -347,28 +347,8 @@ export default function PainelSiconfiClient() {
         </div>
       )}
 
-      {/* ── Tudo regular ── */}
-      {!carregando && !temAlerta && resumo && (
-        <div className="flex items-center gap-3 rounded-xl border border-emerald-100 bg-emerald-50 px-5 py-4 dark:border-emerald-900/30 dark:bg-emerald-900/10">
-          <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-500 dark:text-emerald-400" />
-          <div>
-            <p className="text-sm font-semibold text-emerald-800 dark:text-emerald-300">
-              Nenhum ponto de atenção no período atual
-            </p>
-            <p className="text-xs text-emerald-600 dark:text-emerald-500">
-              Todos os municípios com entrega estão em situação regular
-              {periodoAtual ? ` — ${BIMESTRES[periodoAtual]}/${anoAtual}` : ""}
-            </p>
-          </div>
-        </div>
-      )}
-
-      {/* ── Análises disponíveis ── */}
-      <div>
-        <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
-          Análises disponíveis
-        </p>
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+      {/* ── Análises ── */}
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           <AcessoRapido
             titulo="RREO"
             fonte="Relatório Resumido da Execução Orçamentária · SICONFI"
@@ -391,7 +371,8 @@ export default function PainelSiconfiClient() {
             titulo="RGF"
             fonte="Relatório de Gestão Fiscal · SICONFI"
             icone={<FileSpreadsheet className="h-4 w-4" />}
-            status="preparacao"
+            href="/painel-siconfi/rgf"
+            status="disponivel"
             corIcone="text-sky-500 dark:text-sky-400"
           />
           <AcessoRapido
@@ -402,7 +383,6 @@ export default function PainelSiconfiClient() {
             corIcone="text-teal-500 dark:text-teal-400"
           />
         </div>
-      </div>
 
     </div>
   );

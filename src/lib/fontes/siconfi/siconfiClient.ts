@@ -12,8 +12,10 @@ import type {
   SiconfiApiResponse,
   SiconfiEnte,
   SiconfiItemRreo,
+  SiconfiItemRgf,
   SiconfiItemExtratoEntrega,
   SiconfiConsultaRreoParams,
+  SiconfiConsultaRgfParams,
   SiconfiConsultaExtratoParams,
 } from "./tiposSiconfi";
 
@@ -103,6 +105,36 @@ export async function consultarExtratoEntregasSiconfi(
       an_referencia: params.anoReferencia,
     }
   );
+}
+
+/**
+ * GET /rreo — dados do Relatório de Gestão Fiscal.
+ *
+ * O RGF usa o mesmo endpoint /rreo com co_tipo_demonstrativo=RGF,
+ * e também existe um endpoint dedicado /rgf (mesmo esquema de campos).
+ * Periodicidade: Q (quadrimestral) — 3 períodos por ano (1, 2, 3).
+ * Campos retornados: exercicio, demonstrativo, periodo, periodicidade,
+ *   instituicao, cod_ibge, uf, populacao, anexo, esfera, rotulo,
+ *   coluna, cod_conta, conta, valor.
+ *
+ * Nota: a API DataLake pode retornar array vazio para entes que não
+ *   publicaram o RGF naquele período — tratar silenciosamente.
+ */
+export async function consultarRgfSiconfi(
+  params: SiconfiConsultaRgfParams,
+  limit = 200,
+  offset = 0
+): Promise<SiconfiApiResponse<SiconfiItemRgf>> {
+  return fetchSiconfi<SiconfiApiResponse<SiconfiItemRgf>>("/rreo", {
+    an_exercicio:          params.anoExercicio,
+    nr_periodo:            params.periodo,
+    co_tipo_demonstrativo: params.tipoDemonstrativo ?? "RGF",
+    id_ente:               params.idEnte,
+    no_anexo:              params.anexo,
+    co_esfera:             params.esfera,
+    limit,
+    offset,
+  });
 }
 
 /**

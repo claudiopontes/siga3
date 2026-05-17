@@ -222,87 +222,17 @@ function formatarNumero(value: number | null | undefined) {
 // Sub-componentes de layout
 // ---------------------------------------------------------------------------
 
-function AreaStatusPill({
-  nome, carregando, semDados, criticos, altos,
-}: {
-  nome: string;
-  carregando: boolean;
-  semDados: boolean;
-  criticos: number;
-  altos: number;
-}) {
-  if (carregando)
-    return <span className="inline-block h-6 w-16 animate-pulse rounded-full bg-gray-200 dark:bg-gray-700" />;
-
-  const cls = semDados
-    ? "bg-gray-100 text-gray-400 dark:bg-gray-700/50 dark:text-gray-500"
-    : criticos > 0
-      ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
-      : altos > 0
-        ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
-        : "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400";
-  const dot = semDados
-    ? "bg-gray-300"
-    : criticos > 0 ? "bg-red-500" : altos > 0 ? "bg-amber-400" : "bg-emerald-500";
-
-  return (
-    <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${cls}`}>
-      <span className={`h-1.5 w-1.5 rounded-full ${dot}`} />
-      {nome}
-      {!semDados && (criticos > 0 || altos > 0) && (
-        <span className="font-bold opacity-80">{criticos + altos}</span>
-      )}
-    </span>
-  );
-}
-
-function ItemAlerta({
-  icone, titulo, descricao, valor, nivel, href, onClick,
-}: {
-  icone: React.ReactNode;
-  titulo: string;
-  descricao: string;
-  valor: number;
-  nivel: "critico" | "alto";
-  href?: string;
-  onClick?: () => void;
-}) {
-  const nivelBg = nivel === "critico"
-    ? "bg-red-50 text-red-500 dark:bg-red-900/20 dark:text-red-400"
-    : "bg-amber-50 text-amber-500 dark:bg-amber-900/20 dark:text-amber-400";
-  const badgeCls = nivel === "critico"
-    ? "bg-red-50 text-red-600 dark:bg-red-900/30 dark:text-red-400"
-    : "bg-amber-50 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400";
-  const dotCls = nivel === "critico" ? "bg-red-500" : "bg-amber-400";
-
-  const inner = (
-    <div className="flex items-center gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 transition hover:border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-gray-600">
-      <span className={`shrink-0 rounded-lg p-2 ${nivelBg}`}>{icone}</span>
-      <div className="min-w-0 flex-1">
-        <p className="text-sm font-semibold text-gray-800 dark:text-white">{titulo}</p>
-        <p className="text-xs text-gray-500 dark:text-gray-400">{descricao}</p>
-      </div>
-      <span className={`shrink-0 inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-bold ${badgeCls}`}>
-        <span className={`h-1.5 w-1.5 rounded-full ${dotCls}`} />
-        {formatarNumero(valor)}
-      </span>
-      <ChevronRight className="h-4 w-4 shrink-0 text-gray-300 dark:text-gray-600" />
-    </div>
-  );
-
-  if (href) return <Link href={href} className="block">{inner}</Link>;
-  if (onClick) return <button type="button" onClick={onClick} className="block w-full text-left">{inner}</button>;
-  return <div>{inner}</div>;
-}
 
 function AcessoRapido({
-  titulo, fonte, icone, href, criticos = 0, altos = 0,
+  titulo, descricao, fonte, icone, href, onClick, criticos = 0, altos = 0,
   corIcone = "text-gray-400 dark:text-gray-500",
 }: {
   titulo: string;
+  descricao: string;
   fonte: string;
   icone: React.ReactNode;
-  href: string;
+  href?: string;
+  onClick?: () => void;
   criticos?: number;
   altos?: number;
   corIcone?: string;
@@ -311,16 +241,18 @@ function AcessoRapido({
 
   const inner = (
     <div className={`group flex items-center gap-3 rounded-xl border bg-white p-3.5 transition-all dark:bg-gray-800 ${
-      temAlerta
+      criticos > 0
         ? "border-red-200 hover:shadow-sm dark:border-red-800/40"
-        : "border-gray-200 hover:shadow-sm dark:border-gray-700"
+        : altos > 0
+          ? "border-amber-200 hover:shadow-sm dark:border-amber-800/40"
+          : "border-gray-200 hover:shadow-sm dark:border-gray-700"
     }`}>
       <div className={`shrink-0 rounded-lg bg-gray-50 p-2 dark:bg-gray-700/50 ${corIcone}`}>
         {icone}
       </div>
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-semibold text-gray-800 dark:text-white">{titulo}</p>
-        <p className="truncate text-xs text-gray-400 dark:text-gray-500">{fonte}</p>
+        <p className="truncate text-xs text-gray-400 dark:text-gray-500">{descricao} · {fonte}</p>
       </div>
       <div className="flex shrink-0 items-center gap-2">
         {criticos > 0 && (
@@ -341,7 +273,9 @@ function AcessoRapido({
     </div>
   );
 
-  return <Link href={href} className="block">{inner}</Link>;
+  if (href) return <Link href={href} className="block">{inner}</Link>;
+  if (onClick) return <button type="button" onClick={onClick} className="block w-full text-left">{inner}</button>;
+  return <div>{inner}</div>;
 }
 
 // ---------------------------------------------------------------------------
@@ -644,15 +578,6 @@ export default function AlertasGabineteClient() {
 
   // Estado geral
   const alertasCarregando = carregando || carregandoRemessas || carregandoSaude || carregandoSocial || carregandoSiconfi;
-  const temAlerta = !alertasCarregando && (
-    comPendencia.length > 0 ||
-    (!semDadosProcessuais && (procSensiveis > 0 || procMais15 > 0 || procVencido > 0)) ||
-    remessaCriticos > 0 || remessaAltos > 0 ||
-    saudeCriticos > 0 || saudeAltos > 0 ||
-    socialCriticos > 0 || socialAltos > 0 ||
-    siconfiCriticos > 0 || siconfiAltos > 0
-  );
-  const tudoRegular = !alertasCarregando && !temAlerta;
 
   useContextoAquiry({
     titulo: "Alertas do Gabinete — Varadouro Digital",
@@ -693,288 +618,160 @@ export default function AlertasGabineteClient() {
   return (
     <div className="space-y-5">
 
-      {/* ── Barra de situação geral ── */}
-      <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
-        <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
-          Situação geral
-        </p>
-        <div className="flex flex-wrap gap-2">
-          <AreaStatusPill
-            nome="CAUC"
-            carregando={carregando}
-            semDados={false}
-            criticos={caucCriticos}
-            altos={caucAltos}
-          />
-          <AreaStatusPill
-            nome="Processos"
-            carregando={carregando}
-            semDados={semDadosProcessuais}
-            criticos={procVencido}
-            altos={procSensiveis + procMais15}
-          />
-          <AreaStatusPill
-            nome="Remessas"
-            carregando={carregandoRemessas}
-            semDados={!carregandoRemessas && !remessaResumo}
-            criticos={remessaCriticos}
-            altos={remessaAltos}
-          />
-          <AreaStatusPill
-            nome="Saúde"
-            carregando={carregandoSaude}
-            semDados={!carregandoSaude && !resumoSaude}
-            criticos={saudeCriticos}
-            altos={saudeAltos}
-          />
-          <AreaStatusPill
-            nome="Social"
-            carregando={carregandoSocial}
-            semDados={!carregandoSocial && alertasSocial.length === 0}
-            criticos={socialCriticos}
-            altos={socialAltos}
-          />
-          <AreaStatusPill
-            nome="SICONFI"
-            carregando={carregandoSiconfi}
-            semDados={!carregandoSiconfi && !resumoSiconfi}
-            criticos={siconfiCriticos}
-            altos={siconfiAltos}
-          />
-        </div>
-      </div>
+      {/* ── Grade unificada de painéis ── */}
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {alertasCarregando
+            ? Array.from({ length: 9 }).map((_, i) => (
+                <div key={i} className="h-16 animate-pulse rounded-xl bg-gray-100 dark:bg-gray-700/50" />
+              ))
+            : (() => {
+                const paineis = [
+                  {
+                    key: "cauc",
+                    titulo: "Regularidade CAUC",
+                    descricao: `${comPendencia.length} município${comPendencia.length !== 1 ? "s" : ""} com pendência · ${totalPendencias} total`,
+                    fonte: "CAUC · SICONFI/STN",
+                    icone: (
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                      </svg>
+                    ),
+                    href: "/painel-cauc" as string | undefined,
+                    onClick: undefined as (() => void) | undefined,
+                    criticos: caucCriticos,
+                    altos: caucAltos,
+                    corIcone: "text-violet-500 dark:text-violet-400",
+                  },
+                  {
+                    key: "proc-vencido",
+                    titulo: "Prazo Regulamentar Vencido",
+                    descricao: "Processos com prazo regulamentar ultrapassado",
+                    fonte: "eProcessos · TCE-AC",
+                    icone: <PrazoVencidoIcon />,
+                    href: undefined,
+                    onClick: !semDadosProcessuais ? () => setModalProcessual("prazo_regulamentar_vencido") : undefined,
+                    criticos: semDadosProcessuais ? 0 : procVencido,
+                    altos: 0,
+                    corIcone: "text-red-500 dark:text-red-400",
+                  },
+                  {
+                    key: "proc-sensiveis",
+                    titulo: "Processos Sensíveis",
+                    descricao: "Cautelares, denúncias, representações e petições",
+                    fonte: "eProcessos · TCE-AC",
+                    icone: <DocumentoAlertaIcon />,
+                    href: undefined,
+                    onClick: !semDadosProcessuais ? () => setModalProcessual("processo_sensivel") : undefined,
+                    criticos: 0,
+                    altos: semDadosProcessuais ? 0 : procSensiveis,
+                    corIcone: "text-rose-500 dark:text-rose-400",
+                  },
+                  {
+                    key: "proc-mais15",
+                    titulo: "Há Mais de 15 Dias",
+                    descricao: "Processos aguardando movimentação por mais de 15 dias",
+                    fonte: "eProcessos · TCE-AC",
+                    icone: <RelogioProcessualIcon />,
+                    href: undefined,
+                    onClick: !semDadosProcessuais ? () => setModalProcessual("mais_15_dias") : undefined,
+                    criticos: 0,
+                    altos: semDadosProcessuais ? 0 : procMais15,
+                    corIcone: "text-amber-500 dark:text-amber-400",
+                  },
+                  {
+                    key: "remessas",
+                    titulo: "Remessas Contábeis",
+                    descricao: "Entregas fora do prazo, sem confirmação ou com críticas",
+                    fonte: "Prestação de Contas · TCE-AC",
+                    icone: (
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                        <path d="M14 2v6h6" /><path d="M12 17h.01" /><path d="M12 11v3" />
+                      </svg>
+                    ),
+                    href: "/remessas/calendario",
+                    onClick: undefined,
+                    criticos: remessaCriticos,
+                    altos: remessaAltos,
+                    corIcone: "text-orange-500 dark:text-orange-400",
+                  },
+                  {
+                    key: "saude",
+                    titulo: "Saúde Pública",
+                    descricao: "Aplicação em saúde, qualidade da água, vacinação e vigilância",
+                    fonte: "SIOPS · SISAGUA · InfoDengue",
+                    icone: (
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M12 2a5 5 0 1 0 0 10A5 5 0 0 0 12 2z" />
+                        <path d="M12 12c-5.33 0-8 2.67-8 4v2h16v-2c0-1.33-2.67-4-8-4z" />
+                        <path d="M12 7v5" /><path d="M9.5 9.5h5" />
+                      </svg>
+                    ),
+                    href: "/painel-saude",
+                    onClick: undefined,
+                    criticos: saudeCriticos,
+                    altos: saudeAltos,
+                    corIcone: "text-teal-500 dark:text-teal-400",
+                  },
+                  {
+                    key: "social",
+                    titulo: "Vulnerabilidade Social",
+                    descricao: "Alertas de vulnerabilidade social por município do Acre",
+                    fonte: "MIS · MDS",
+                    icone: (
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                        <circle cx="9" cy="7" r="4" />
+                        <path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                      </svg>
+                    ),
+                    href: "/painel-social",
+                    onClick: undefined,
+                    criticos: socialCriticos,
+                    altos: socialAltos,
+                    corIcone: "text-purple-500 dark:text-purple-400",
+                  },
+                  {
+                    key: "siconfi",
+                    titulo: "Execução Orçamentária",
+                    descricao: resumoSiconfi?.municipios_sem_dado
+                      ? `${resumoSiconfi.municipios_sem_dado} município${resumoSiconfi.municipios_sem_dado !== 1 ? "s" : ""} sem entrega RREO no período`
+                      : "Entrega e análise do RREO por município",
+                    fonte: "SICONFI · Tesouro Nacional",
+                    icone: (
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" />
+                        <line x1="6" y1="20" x2="6" y2="14" /><line x1="2" y1="20" x2="22" y2="20" />
+                      </svg>
+                    ),
+                    href: "/painel-siconfi",
+                    onClick: undefined,
+                    criticos: siconfiCriticos,
+                    altos: siconfiAltos,
+                    corIcone: "text-indigo-500 dark:text-indigo-400",
+                  },
+                ].sort((a, b) => {
+                  if (b.criticos !== a.criticos) return b.criticos - a.criticos;
+                  return b.altos - a.altos;
+                });
 
-      {/* ── Verificar agora ── */}
-      {!alertasCarregando && temAlerta && (
-        <div className="space-y-2">
-          <p className="px-1 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
-            Verificar agora
-          </p>
-
-          {comPendencia.length > 0 && (
-            <ItemAlerta
-              icone={
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-                </svg>
-              }
-              titulo="Regularidade CAUC"
-              descricao={`${comPendencia.length} município${comPendencia.length !== 1 ? "s" : ""} com pendência · ${totalPendencias} pendências totais`}
-              valor={comPendencia.length}
-              nivel={caucCriticos > 0 ? "critico" : "alto"}
-              href="/painel-cauc"
-            />
-          )}
-
-          {!semDadosProcessuais && procVencido > 0 && (
-            <ItemAlerta
-              icone={<PrazoVencidoIcon />}
-              titulo="Prazo regulamentar vencido"
-              descricao="Processos cujo prazo regulamentar foi ultrapassado"
-              valor={procVencido}
-              nivel="critico"
-              onClick={() => setModalProcessual("prazo_regulamentar_vencido")}
-            />
-          )}
-
-          {!semDadosProcessuais && procSensiveis > 0 && (
-            <ItemAlerta
-              icone={<DocumentoAlertaIcon />}
-              titulo="Processos sensíveis"
-              descricao="Cautelares, denúncias, representações e petições no gabinete"
-              valor={procSensiveis}
-              nivel="alto"
-              onClick={() => setModalProcessual("processo_sensivel")}
-            />
-          )}
-
-          {!semDadosProcessuais && procMais15 > 0 && (
-            <ItemAlerta
-              icone={<RelogioProcessualIcon />}
-              titulo="Processos há mais de 15 dias"
-              descricao="Processos aguardando movimentação por mais de 15 dias"
-              valor={procMais15}
-              nivel="alto"
-              onClick={() => setModalProcessual("mais_15_dias")}
-            />
-          )}
-
-          {(remessaCriticos > 0 || remessaAltos > 0) && (
-            <ItemAlerta
-              icone={
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                  <path d="M14 2v6h6" /><path d="M12 17h.01" /><path d="M12 11v3" />
-                </svg>
-              }
-              titulo="Remessas contábeis"
-              descricao="Remessas com pendências, entregas fora do prazo ou sem confirmação"
-              valor={remessaCriticos + remessaAltos}
-              nivel={remessaCriticos > 0 ? "critico" : "alto"}
-              href="/remessas/calendario"
-            />
-          )}
-
-          {(saudeCriticos > 0 || saudeAltos > 0) && (
-            <ItemAlerta
-              icone={
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M12 2a5 5 0 1 0 0 10A5 5 0 0 0 12 2z" />
-                  <path d="M12 12c-5.33 0-8 2.67-8 4v2h16v-2c0-1.33-2.67-4-8-4z" />
-                  <path d="M12 7v5" /><path d="M9.5 9.5h5" />
-                </svg>
-              }
-              titulo="Saúde Pública"
-              descricao="Alertas em aplicações, estrutura da rede, qualidade da água e vigilância epidemiológica"
-              valor={saudeCriticos + saudeAltos}
-              nivel={saudeCriticos > 0 ? "critico" : "alto"}
-              href="/painel-saude"
-            />
-          )}
-
-          {(socialCriticos > 0 || socialAltos > 0) && (
-            <ItemAlerta
-              icone={
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-                  <circle cx="9" cy="7" r="4" />
-                  <path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" />
-                </svg>
-              }
-              titulo="Vulnerabilidade Social"
-              descricao="Alertas de vulnerabilidade social por município do Acre"
-              valor={socialCriticos + socialAltos}
-              nivel={socialCriticos > 0 ? "critico" : "alto"}
-              href="/painel-social"
-            />
-          )}
-
-          {(siconfiCriticos > 0 || siconfiAltos > 0) && (
-            <ItemAlerta
-              icone={
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" />
-                  <line x1="6" y1="20" x2="6" y2="14" /><line x1="2" y1="20" x2="22" y2="20" />
-                </svg>
-              }
-              titulo="Execução Orçamentária"
-              descricao={resumoSiconfi?.municipios_sem_dado
-                ? `${resumoSiconfi.municipios_sem_dado} município${resumoSiconfi.municipios_sem_dado !== 1 ? "s" : ""} sem entrega RREO no período`
-                : "Alertas de execução orçamentária nos municípios"}
-              valor={siconfiCriticos + siconfiAltos}
-              nivel={siconfiCriticos > 0 ? "critico" : "alto"}
-              href="/painel-siconfi"
-            />
-          )}
-        </div>
-      )}
-
-      {/* ── Tudo regular ── */}
-      {tudoRegular && (
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-5 dark:border-emerald-800/40 dark:bg-emerald-900/20">
-          <div className="flex items-center gap-3">
-            <div className="shrink-0 rounded-full bg-emerald-100 p-2.5 dark:bg-emerald-900/40">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-emerald-600 dark:text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><path d="M22 4 12 14.01l-3-3" />
-              </svg>
-            </div>
-            <div>
-              <p className="font-semibold text-emerald-800 dark:text-emerald-300">Tudo regular</p>
-              <p className="text-sm text-emerald-700/80 dark:text-emerald-400/80">
-                Nenhuma área apresenta alertas críticos ou altos no momento.
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Painéis disponíveis ── */}
-      <div>
-        <p className="mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
-          Painéis disponíveis
-        </p>
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          <AcessoRapido
-            titulo="Regularidade CAUC"
-            fonte="CAUC · SICONFI/STN"
-            icone={
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-              </svg>
-            }
-            href="/painel-cauc"
-            criticos={caucCriticos}
-            altos={caucAltos}
-            corIcone="text-violet-500 dark:text-violet-400"
-          />
-          <AcessoRapido
-            titulo="Remessas Contábeis"
-            fonte="Prestação de Contas · TCE-AC"
-            icone={
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                <path d="M14 2v6h6" /><path d="M12 17h.01" /><path d="M12 11v3" />
-              </svg>
-            }
-            href="/remessas/calendario"
-            criticos={remessaCriticos}
-            altos={remessaAltos}
-            corIcone="text-orange-500 dark:text-orange-400"
-          />
-          <AcessoRapido
-            titulo="Saúde Pública"
-            fonte="SIOPS · CNES · SISAGUA · InfoDengue"
-            icone={
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M12 2a5 5 0 1 0 0 10A5 5 0 0 0 12 2z" />
-                <path d="M12 12c-5.33 0-8 2.67-8 4v2h16v-2c0-1.33-2.67-4-8-4z" />
-                <path d="M12 7v5" /><path d="M9.5 9.5h5" />
-              </svg>
-            }
-            href="/painel-saude"
-            criticos={saudeCriticos}
-            altos={saudeAltos}
-            corIcone="text-teal-500 dark:text-teal-400"
-          />
-          <AcessoRapido
-            titulo="Vulnerabilidade Social"
-            fonte="MIS · MDS"
-            icone={
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-                <circle cx="9" cy="7" r="4" />
-                <path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" />
-              </svg>
-            }
-            href="/painel-social"
-            criticos={socialCriticos}
-            altos={socialAltos}
-            corIcone="text-purple-500 dark:text-purple-400"
-          />
-          <AcessoRapido
-            titulo="Execução Orçamentária"
-            fonte="SICONFI · Tesouro Nacional"
-            icone={
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" />
-                <line x1="6" y1="20" x2="6" y2="14" /><line x1="2" y1="20" x2="22" y2="20" />
-              </svg>
-            }
-            href="/painel-siconfi"
-            criticos={siconfiCriticos}
-            altos={siconfiAltos}
-            corIcone="text-indigo-500 dark:text-indigo-400"
-          />
-        </div>
-      </div>
-
-      {/* ── Em desenvolvimento ── */}
-      <div>
-        <p className="mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
-          Em desenvolvimento
-        </p>
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          {ALERTAS_SUGERIDOS.map((alerta) => (
+                return paineis.map((p) => (
+                  <AcessoRapido
+                    key={p.key}
+                    titulo={p.titulo}
+                    descricao={p.descricao}
+                    fonte={p.fonte}
+                    icone={p.icone}
+                    href={p.href}
+                    onClick={p.onClick}
+                    criticos={p.criticos}
+                    altos={p.altos}
+                    corIcone={p.corIcone}
+                  />
+                ));
+              })()
+          }
+          {!alertasCarregando && ALERTAS_SUGERIDOS.map((alerta) => (
             <div
               key={alerta.titulo}
               className="flex items-center gap-3 rounded-xl border border-dashed border-gray-200 bg-white px-4 py-3 opacity-60 dark:border-gray-700 dark:bg-gray-800"
@@ -992,7 +789,6 @@ export default function AlertasGabineteClient() {
             </div>
           ))}
         </div>
-      </div>
 
       {/* Modal processual */}
       {modalProcessual && (
