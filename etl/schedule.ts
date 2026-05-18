@@ -25,6 +25,11 @@ import { executarCredorEnriquecerCnpj } from "./jobs/credor-enriquecer-cnpj";
 import { executarMartCredorDespesa } from "./jobs/refresh-mart-credor-despesa";
 import { executarMartDespesa } from "./jobs/refresh-mart-despesa";
 import { executarMartRemessas } from "./jobs/refresh-mart-remessas";
+import { executarSiconfiRreoIncremental } from "./jobs/siconfi-rreo-incremental-postgres";
+import { executarMartSiconfiRreo } from "./jobs/refresh-mart-siconfi-rreo";
+import { executarSiconfiRgfFullPostgres } from "./jobs/siconfi-rgf-full-postgres";
+import { executarMartSiconfiRgf } from "./jobs/refresh-mart-siconfi-rgf";
+import { executarSiconfiExtratoEntregasPostgres } from "./jobs/siconfi-extrato-entregas-postgres";
 
 const TIMEZONE = process.env.ETL_TIMEZONE || "America/Rio_Branco";
 const FACT_ETL_CRON = process.env.FACT_ETL_CRON || "0 1 * * *"; // 01:00 daily
@@ -55,6 +60,12 @@ const RUN_MART_DESPESA_NIGHTLY =
   (process.env.RUN_MART_DESPESA_NIGHTLY ?? "true").toLowerCase() !== "false";
 const RUN_MART_REMESSAS_NIGHTLY =
   (process.env.RUN_MART_REMESSAS_NIGHTLY ?? "true").toLowerCase() !== "false";
+const RUN_SICONFI_RREO_NIGHTLY =
+  (process.env.RUN_SICONFI_RREO_NIGHTLY ?? "true").toLowerCase() !== "false";
+const RUN_SICONFI_RGF_NIGHTLY =
+  (process.env.RUN_SICONFI_RGF_NIGHTLY ?? "true").toLowerCase() !== "false";
+const RUN_SICONFI_EXTRATO_NIGHTLY =
+  (process.env.RUN_SICONFI_EXTRATO_NIGHTLY ?? "true").toLowerCase() !== "false";
 
 console.log("ETL scheduler started - Varadouro Digital");
 console.log(`Nightly pipeline: cron="${FACT_ETL_CRON}" timezone="${TIMEZONE}"`);
@@ -67,6 +78,9 @@ console.log(`Nightly Dimensoes Ente/Entidade SQL: ${RUN_DIM_ENTE_ENTIDADE_SQLSER
 console.log(`Nightly Fato Empenho: ${RUN_FATO_EMPENHO_NIGHTLY ? "enabled" : "disabled"}\n`);
 console.log(`Nightly CAUC: ${RUN_CAUC_NIGHTLY ? "enabled" : "disabled"}\n`);
 console.log(`Nightly Processos Gabinete: ${RUN_PROCESSOS_GABINETE_NIGHTLY ? "enabled" : "disabled"}\n`);
+console.log(`Nightly SICONFI RREO: ${RUN_SICONFI_RREO_NIGHTLY ? "enabled" : "disabled"}\n`);
+console.log(`Nightly SICONFI RGF: ${RUN_SICONFI_RGF_NIGHTLY ? "enabled" : "disabled"}\n`);
+console.log(`Nightly SICONFI Extrato: ${RUN_SICONFI_EXTRATO_NIGHTLY ? "enabled" : "disabled"}\n`);
 
 // Full nightly pipeline: once per day
 cron.schedule(
@@ -236,6 +250,43 @@ cron.schedule(
       });
     } else {
       console.log("[CRON] Step 16: mart remessas skipped by RUN_MART_REMESSAS_NIGHTLY=false");
+    }
+
+    if (RUN_SICONFI_RREO_NIGHTLY) {
+      console.log("[CRON] Step 17: SICONFI RREO incremental (SICONFI API -> dw.fato_siconfi_rreo)");
+      await executarSiconfiRreoIncremental().catch((error) => {
+        console.error("[CRON] siconfi rreo incremental failed:", error);
+      });
+
+      console.log("[CRON] Step 18: mart SICONFI RREO (alertas + resumo home)");
+      await executarMartSiconfiRreo().catch((error) => {
+        console.error("[CRON] mart siconfi rreo failed:", error);
+      });
+    } else {
+      console.log("[CRON] Steps 17-18: SICONFI RREO skipped by RUN_SICONFI_RREO_NIGHTLY=false");
+    }
+
+    if (RUN_SICONFI_RGF_NIGHTLY) {
+      console.log("[CRON] Step 19: SICONFI RGF full (SICONFI API -> dw.fato_siconfi_rgf)");
+      await executarSiconfiRgfFullPostgres().catch((error) => {
+        console.error("[CRON] siconfi rgf full failed:", error);
+      });
+
+      console.log("[CRON] Step 20: mart SICONFI RGF");
+      await executarMartSiconfiRgf().catch((error) => {
+        console.error("[CRON] mart siconfi rgf failed:", error);
+      });
+    } else {
+      console.log("[CRON] Steps 19-20: SICONFI RGF skipped by RUN_SICONFI_RGF_NIGHTLY=false");
+    }
+
+    if (RUN_SICONFI_EXTRATO_NIGHTLY) {
+      console.log("[CRON] Step 21: SICONFI extrato entregas (SICONFI API -> raw.siconfi_extrato_entregas)");
+      await executarSiconfiExtratoEntregasPostgres().catch((error) => {
+        console.error("[CRON] siconfi extrato entregas failed:", error);
+      });
+    } else {
+      console.log("[CRON] Step 21: SICONFI extrato skipped by RUN_SICONFI_EXTRATO_NIGHTLY=false");
     }
 
     console.log("[CRON] Nightly pipeline finished.");

@@ -26,9 +26,6 @@
  *   SICONFI_TIMEOUT_MS     — timeout por requisição (padrão: 30000)
  *   SICONFI_RATE_LIMIT_MS  — intervalo entre requisições (padrão: 1000)
  *   SICONFI_EXTRATO_ANOS   — anos separados por vírgula (padrão: ano-1,ano)
- *   SICONFI_ANO_INICIO     — ano inicial para fallback de carga full (padrão: 2021)
- *   SICONFI_ANO_FIM        — ano final (padrão: ano corrente)
- *   SICONFI_PERIODOS       — períodos por ano (padrão: "1,2,3,4,5,6")
  *
  * Uso: cd etl && npm run carga-siconfi-rreo:incremental
  */
@@ -51,10 +48,6 @@ const ANOS_EXTRATO: number[] = process.env.SICONFI_EXTRATO_ANOS
   ? process.env.SICONFI_EXTRATO_ANOS.split(",").map(Number).filter((n) => !isNaN(n))
   : [ANO_ATUAL - 1, ANO_ATUAL];
 
-// Usado como fallback de escopo para carga RREO quando não há controle por extrato
-const ANO_INICIO = parseInt(process.env.SICONFI_ANO_INICIO || String(ANO_ATUAL - 1), 10);
-const ANO_FIM    = parseInt(process.env.SICONFI_ANO_FIM    || String(ANO_ATUAL),     10);
-const PERIODOS   = (process.env.SICONFI_PERIODOS || "1,2,3,4,5,6").split(",").map(Number);
 
 const MUNICIPIOS_ACRE: Array<{ id_municipio: number; no_municipio: string }> = [
   { id_municipio: 1200013, no_municipio: "Acrelândia" },
@@ -155,8 +148,6 @@ function sleep(ms: number): Promise<void> {
 }
 
 function derivarCoEntregavel(entregavel: string): string | null {
-  // Normaliza acentos para comparação robusta (API pode retornar encoding variado)
-  // eslint-disable-next-line no-misleading-character-class
   const norm = (s: string) =>
     s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
   const e = norm(entregavel);
@@ -415,18 +406,21 @@ async function carregarRreo(periodos: PeriodoAlterado[]): Promise<{
           await client.query(`
             INSERT INTO dw.fato_siconfi_rreo
               (an_exercicio, nr_periodo, id_municipio, no_municipio,
-               co_tipo_demonstrativo, no_anexo, coluna, conta, valor)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+               co_tipo_demonstrativo, no_anexo, coluna, conta, valor,
+               instituicao, cod_conta)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
           `, [
-            item.exercicio   ?? p.exercicio,
-            item.periodo     ?? p.periodo,
-            item.cod_ibge    ?? p.id_ente,
-            item.instituicao ?? p.no_ente,
+            item.exercicio     ?? p.exercicio,
+            item.periodo       ?? p.periodo,
+            item.cod_ibge      ?? p.id_ente,
+            p.no_ente,                            // sempre o nome canônico do município
             item.demonstrativo ?? "RREO",
             item.anexo  ?? null,
             item.coluna ?? null,
-            item.conta  ?? item.cod_conta ?? null,
+            item.conta  ?? null,
             parseValor(item.valor),
+            item.instituicao ?? null,              // ex: "Prefeitura Municipal de X - AC"
+            item.cod_conta   ?? null,               // ex: "ReceitasExcetoIntraOrcamentarias"
           ]);
         }
       });
@@ -576,7 +570,9 @@ export async function executarSiconfiRreoIncremental(): Promise<void> {
   }
 
   // ── Fase 3: RREO ──
-  let { registros: rreoRegistros, erros, periodosCarregados } = await carregarRreo(alterados);
+  const { registros: r0, erros: e0, periodosCarregados } = await carregarRreo(alterados);
+  let rreoRegistros = r0;
+  let erros = e0;
 
   // ── Fase 3b: Recuperação de lacunas ──
   const lacunas = await buscarLacunasRreo();

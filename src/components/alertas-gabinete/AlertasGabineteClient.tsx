@@ -252,7 +252,7 @@ function AcessoRapido({
       </div>
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-semibold text-gray-800 dark:text-white">{titulo}</p>
-        <p className="truncate text-xs text-gray-400 dark:text-gray-500">{descricao} · {fonte}</p>
+        <p className="truncate text-xs text-gray-400 dark:text-gray-500">{descricao || fonte}</p>
       </div>
       <div className="flex shrink-0 items-center gap-2">
         {criticos > 0 && (
@@ -619,7 +619,7 @@ export default function AlertasGabineteClient() {
     <div className="space-y-5">
 
       {/* ── Grade unificada de painéis ── */}
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           {alertasCarregando
             ? Array.from({ length: 9 }).map((_, i) => (
                 <div key={i} className="h-16 animate-pulse rounded-xl bg-gray-100 dark:bg-gray-700/50" />

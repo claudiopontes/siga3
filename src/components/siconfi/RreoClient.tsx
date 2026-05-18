@@ -167,6 +167,36 @@ const TIPO_ALERTA_META: Record<string, TipoAlertaMeta> = {
     categoria: "Variação",
     cor:       "border-indigo-200 bg-indigo-50 dark:border-indigo-800/40 dark:bg-indigo-900/10",
   },
+  siconfi_pessoal_consolidado_acima_referencia: {
+    label:     "Pessoal consolidado acima da referência",
+    categoria: "Pessoal",
+    cor:       "border-red-200 bg-red-50 dark:border-red-800/40 dark:bg-red-900/10",
+  },
+  siconfi_pessoal_consolidado_proximo_referencia: {
+    label:     "Pessoal consolidado próximo da referência",
+    categoria: "Pessoal",
+    cor:       "border-orange-200 bg-orange-50 dark:border-orange-800/40 dark:bg-orange-900/10",
+  },
+  siconfi_pessoal_executivo_acima_referencia: {
+    label:     "Pessoal do Executivo acima da referência",
+    categoria: "Pessoal",
+    cor:       "border-red-200 bg-red-50 dark:border-red-800/40 dark:bg-red-900/10",
+  },
+  siconfi_pessoal_executivo_proximo_referencia: {
+    label:     "Pessoal do Executivo próximo da referência",
+    categoria: "Pessoal",
+    cor:       "border-orange-200 bg-orange-50 dark:border-orange-800/40 dark:bg-orange-900/10",
+  },
+  siconfi_pessoal_legislativo_acima_referencia: {
+    label:     "Pessoal do Legislativo acima da referência",
+    categoria: "Pessoal",
+    cor:       "border-red-200 bg-red-50 dark:border-red-800/40 dark:bg-red-900/10",
+  },
+  siconfi_pessoal_legislativo_proximo_referencia: {
+    label:     "Pessoal do Legislativo próximo da referência",
+    categoria: "Pessoal",
+    cor:       "border-orange-200 bg-orange-50 dark:border-orange-800/40 dark:bg-orange-900/10",
+  },
 };
 
 function tipoMeta(tipo: string): TipoAlertaMeta {
@@ -355,6 +385,36 @@ export default function RreoClient() {
                   {nivelMaximo === "ALTO" && oc.tipo_alerta === "rreo_variacao_atipica" && (
                     <p className="mt-2 text-[11px] text-indigo-600 dark:text-indigo-400">
                       Variação superior a 100% nas despesas em relação ao período anterior
+                    </p>
+                  )}
+                  {oc.tipo_alerta === "siconfi_pessoal_consolidado_acima_referencia" && (
+                    <p className="mt-2 text-[11px] text-red-600 dark:text-red-400">
+                      Triagem: relação consolidada (Exec.+Leg.) acima de 60% da RCL. Requer verificação por Poder.
+                    </p>
+                  )}
+                  {oc.tipo_alerta === "siconfi_pessoal_consolidado_proximo_referencia" && (
+                    <p className="mt-2 text-[11px] text-orange-600 dark:text-orange-400">
+                      Triagem: relação consolidada (Exec.+Leg.) entre 54% e 60% da RCL. Acompanhar evolução.
+                    </p>
+                  )}
+                  {oc.tipo_alerta === "siconfi_pessoal_executivo_acima_referencia" && (
+                    <p className="mt-2 text-[11px] text-red-600 dark:text-red-400">
+                      Análise por Poder com base no campo instituição do RREO. Verificar memória de cálculo antes de conclusão institucional.
+                    </p>
+                  )}
+                  {oc.tipo_alerta === "siconfi_pessoal_executivo_proximo_referencia" && (
+                    <p className="mt-2 text-[11px] text-orange-600 dark:text-orange-400">
+                      Análise por Poder com base no campo instituição do RREO. Verificar memória de cálculo antes de conclusão institucional.
+                    </p>
+                  )}
+                  {oc.tipo_alerta === "siconfi_pessoal_legislativo_acima_referencia" && (
+                    <p className="mt-2 text-[11px] text-red-600 dark:text-red-400">
+                      Análise por Poder com base no campo instituição do RREO. Verificar memória de cálculo antes de conclusão institucional.
+                    </p>
+                  )}
+                  {oc.tipo_alerta === "siconfi_pessoal_legislativo_proximo_referencia" && (
+                    <p className="mt-2 text-[11px] text-orange-600 dark:text-orange-400">
+                      Análise por Poder com base no campo instituição do RREO. Verificar memória de cálculo antes de conclusão institucional.
                     </p>
                   )}
                 </div>

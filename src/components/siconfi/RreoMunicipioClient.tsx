@@ -117,9 +117,15 @@ function KpiCard({
 // ---------------------------------------------------------------------------
 
 const TIPO_ALERTA_META: Record<string, { label: string; categoria: string }> = {
-  rreo_sem_dado_recente: { label: "Ausência de entrega",          categoria: "Entrega"  },
-  rreo_dado_incompleto:  { label: "Dado incompleto",              categoria: "Qualidade" },
-  rreo_variacao_atipica: { label: "Variação atípica de despesas", categoria: "Variação"  },
+  rreo_sem_dado_recente:                         { label: "Ausência de entrega",                       categoria: "Entrega"  },
+  rreo_dado_incompleto:                          { label: "Dado incompleto",                           categoria: "Qualidade" },
+  rreo_variacao_atipica:                         { label: "Variação atípica de despesas",              categoria: "Variação"  },
+  siconfi_pessoal_consolidado_acima_referencia:    { label: "Pessoal consolidado acima da referência",    categoria: "Pessoal"  },
+  siconfi_pessoal_consolidado_proximo_referencia:  { label: "Pessoal consolidado próximo da referência",  categoria: "Pessoal"  },
+  siconfi_pessoal_executivo_acima_referencia:      { label: "Pessoal do Executivo acima da referência",   categoria: "Pessoal"  },
+  siconfi_pessoal_executivo_proximo_referencia:    { label: "Pessoal do Executivo próximo da referência", categoria: "Pessoal"  },
+  siconfi_pessoal_legislativo_acima_referencia:    { label: "Pessoal do Legislativo acima da referência",   categoria: "Pessoal"  },
+  siconfi_pessoal_legislativo_proximo_referencia:  { label: "Pessoal do Legislativo próximo da referência", categoria: "Pessoal"  },
 };
 
 function tipoLabel(tipo: string): string {

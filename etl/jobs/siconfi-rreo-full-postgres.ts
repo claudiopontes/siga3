@@ -13,8 +13,8 @@
  *   limit/offset  — paginação (padrão 25, max 200)
  *
  * Resposta: { items: [...], hasMore, limit, offset, count }
- * Campos por item: an_exercicio, nr_periodo, id_municipio, no_municipio,
- *   co_tipo_demonstrativo, no_anexo, co_conta, no_conta, no_coluna, vl_conta
+ * Campos por item: exercicio, periodo, cod_ibge, instituicao, demonstrativo,
+ *   anexo, coluna, cod_conta, conta, valor, uf, esfera, rotulo, periodicidade, populacao
  *
  * Estratégia: por município × período × anexo, DELETE + INSERT idempotente.
  *
@@ -76,16 +76,22 @@ const MUNICIPIOS_ACRE: Array<{ id_municipio: number; no_municipio: string }> = [
 // ---------------------------------------------------------------------------
 
 interface RreoItem {
-  an_exercicio:          number;
-  nr_periodo:            number;
-  id_municipio:          number;
-  no_municipio:          string;
-  co_tipo_demonstrativo: string;
-  no_anexo:              string;
-  co_conta:              string;
-  no_conta:              string;
-  no_coluna:             string;
-  vl_conta:              string | number | null;
+  // Campos retornados pela API DataLake /rreo com co_tipo_demonstrativo=RREO
+  exercicio:      number;
+  demonstrativo:  string;
+  periodo:        number;
+  periodicidade:  string;
+  instituicao:    string;
+  cod_ibge:       number;
+  uf:             string;
+  populacao:      number | null;
+  anexo:          string;
+  esfera:         string;
+  rotulo:         string | null;
+  coluna:         string;
+  cod_conta:      string;
+  conta:          string;
+  valor:          number | null;
 }
 
 interface RreoResponse {
@@ -115,7 +121,7 @@ async function fetchRreo(
     console.log(`    [429] Limite de retries atingido — pulando ${an_exercicio}/${nr_periodo}/${id_municipio}`);
     return null;
   }
-  const url = `${BASE_URL}/rreo?an_exercicio=${an_exercicio}&nr_periodo=${nr_periodo}&id_municipio=${id_municipio}&limit=200&offset=${offset}`;
+  const url = `${BASE_URL}/rreo?an_exercicio=${an_exercicio}&nr_periodo=${nr_periodo}&id_ente=${id_municipio}&co_tipo_demonstrativo=RREO&limit=200&offset=${offset}`;
   try {
     const resp = await fetch(url, {
       headers: { "Accept": "application/json", "User-Agent": "Varadouro-Digital-ETL/1.0 (interno TCE-AC)" },
@@ -202,7 +208,7 @@ export async function executarSiconfiRreoFullPostgres(): Promise<void> {
               ano,
               periodo,
               municipio.id_municipio,
-              items[0]?.co_tipo_demonstrativo ?? "RREO",
+              items[0]?.demonstrativo ?? "RREO",
               null,
               `/rreo?an_exercicio=${ano}&nr_periodo=${periodo}&id_municipio=${municipio.id_municipio}`,
               JSON.stringify(items),
@@ -219,18 +225,21 @@ export async function executarSiconfiRreoFullPostgres(): Promise<void> {
               await client.query(`
                 INSERT INTO dw.fato_siconfi_rreo
                   (an_exercicio, nr_periodo, id_municipio, no_municipio,
-                   co_tipo_demonstrativo, no_anexo, coluna, conta, valor)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                   co_tipo_demonstrativo, no_anexo, coluna, conta, valor,
+                   instituicao, cod_conta)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
               `, [
-                item.an_exercicio ?? ano,
-                item.nr_periodo   ?? periodo,
-                item.id_municipio ?? municipio.id_municipio,
-                item.no_municipio ?? municipio.no_municipio,
-                item.co_tipo_demonstrativo ?? "RREO",
-                item.no_anexo  ?? null,
-                item.no_coluna ?? null,
-                item.no_conta  ?? item.co_conta ?? null,
-                parseValor(item.vl_conta),
+                item.exercicio  ?? ano,
+                item.periodo    ?? periodo,
+                item.cod_ibge   ?? municipio.id_municipio,
+                municipio.no_municipio,          // sempre o nome canônico do município
+                item.demonstrativo ?? "RREO",
+                item.anexo     ?? null,
+                item.coluna    ?? null,
+                item.conta     ?? null,
+                parseValor(item.valor),
+                item.instituicao ?? null,         // ex: "Prefeitura Municipal de X - AC"
+                item.cod_conta   ?? null,          // ex: "ReceitasExcetoIntraOrcamentarias"
               ]);
             }
           });

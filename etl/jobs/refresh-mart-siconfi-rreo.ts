@@ -237,6 +237,290 @@ export async function executarMartSiconfiRreo(): Promise<void> {
     }
   }
 
+  // ── Alerta: siconfi_pessoal_consolidado — Despesa com Pessoal / RCL ajustada (LRF Art. 19) ──
+  // NOTA: consolidado Executivo+Legislativo — campo 'instituicao' ausente em dw.fato_siconfi_rreo.
+  // Só é calculado para o 6º bimestre (acumulado anual completo), pois bimestres intermediários
+  // têm despesa parcial que não é comparável ao limite anual de 60% da RCL.
+  // Alerta serve exclusivamente para priorização de triagem. Não indica descumprimento legal.
+
+  // Localizar o exercício mais recente que possui 6º bimestre completo (acumulado anual)
+  const ultimoBimestre6 = await pgQuery<{ an_exercicio: number; nr_periodo: number }>(`
+    SELECT an_exercicio, nr_periodo
+    FROM dw.fato_siconfi_rreo
+    WHERE nr_periodo = 6
+    GROUP BY an_exercicio, nr_periodo
+    ORDER BY an_exercicio DESC
+    LIMIT 1
+  `);
+
+  if (ultimoBimestre6.length === 0) {
+    console.log("[mart:siconfi-rreo] Alertas pessoal consolidado: ignorado — sem 6º bimestre disponível");
+  } else {
+    const ANO_PESSOAL = ultimoBimestre6[0].an_exercicio;
+    const PER_PESSOAL = ultimoBimestre6[0].nr_periodo; // sempre 6
+
+    const pessoalAgg = await pgQuery<{
+      id_municipio: number;
+      no_municipio: string | null;
+      despesa_pessoal: number;
+    }>(`
+      SELECT
+        id_municipio,
+        MAX(no_municipio)  AS no_municipio,
+        SUM(valor)         AS despesa_pessoal
+      FROM dw.fato_siconfi_rreo
+      WHERE an_exercicio = $1
+        AND nr_periodo   = $2
+        AND no_anexo     = 'RREO-Anexo 01'
+        AND conta        ILIKE '%PESSOAL%ENCARGOS%'
+        AND coluna       ILIKE '%LIQUIDADAS%BIMESTRE%(h)%'
+      GROUP BY id_municipio
+    `, [ANO_PESSOAL, PER_PESSOAL]);
+
+    // RCL ajustada para cálculo dos limites de pessoal (fórmula IX = V-VI-VII-VIII)
+    const rclAgg = await pgQuery<{
+      id_municipio: number;
+      rcl: number;
+    }>(`
+      SELECT
+        id_municipio,
+        SUM(valor) AS rcl
+      FROM dw.fato_siconfi_rreo
+      WHERE an_exercicio = $1
+        AND nr_periodo   = $2
+        AND no_anexo     = 'RREO-Anexo 03'
+        AND conta        ILIKE '%RECEITA CORRENTE L%QUIDA AJUSTADA%IX%'
+        AND coluna       ILIKE '%TOTAL%12 MESES%'
+      GROUP BY id_municipio
+    `, [ANO_PESSOAL, PER_PESSOAL]);
+
+    const rclMap = new Map(rclAgg.map((r) => [r.id_municipio, Number(r.rcl)]));
+
+    let pessoalAnalisados = 0;
+    let pessoalComAlerta  = 0;
+
+    for (const p of pessoalAgg) {
+      const rcl = rclMap.get(p.id_municipio);
+      if (!rcl || rcl === 0 || p.despesa_pessoal == null) continue;
+
+      pessoalAnalisados++;
+      const despesa  = Number(p.despesa_pessoal);
+      const pct      = (despesa / rcl) * 100;
+      const refPer   = `${PER_PESSOAL}º bimestre de ${ANO_PESSOAL}`;
+
+      const detalhe = {
+        an_exercicio_referencia:     ANO_PESSOAL,
+        nr_periodo_referencia:       PER_PESSOAL,
+        percentual_consolidado:      +pct.toFixed(2),
+        despesa_pessoal_consolidada:  despesa,
+        rcl_ajustada:                 rcl,
+        referencia_global_pct:        60,
+        nota: "Consolidado Executivo+Legislativo. Verificar composição por Poder via alertas específicos por Executivo e Legislativo.",
+      };
+
+      if (pct >= 60) {
+        pessoalComAlerta++;
+        alertas.push({
+          an_exercicio:     ANO_PESSOAL,
+          nr_periodo:       PER_PESSOAL,
+          id_municipio:     p.id_municipio,
+          no_municipio:     p.no_municipio,
+          tipo_alerta:      "siconfi_pessoal_consolidado_acima_referencia",
+          nivel:            "CRITICO",
+          descricao:        `Despesa com pessoal consolidada acima da referência global de 60% da RCL ajustada. Verificar composição por Poder antes de qualquer conclusão. (${pct.toFixed(1)}% no ${refPer})`,
+          valor_observado:  despesa,
+          valor_referencia: rcl,
+          detalhe_json:     detalhe,
+        });
+      } else if (pct >= 54) {
+        pessoalComAlerta++;
+        alertas.push({
+          an_exercicio:     ANO_PESSOAL,
+          nr_periodo:       PER_PESSOAL,
+          id_municipio:     p.id_municipio,
+          no_municipio:     p.no_municipio,
+          tipo_alerta:      "siconfi_pessoal_consolidado_proximo_referencia",
+          nivel:            "ALTO",
+          descricao:        `Despesa com pessoal consolidada próxima da referência global de 60% da RCL ajustada. Verificar composição por Poder antes de qualquer conclusão. (${pct.toFixed(1)}% no ${refPer})`,
+          valor_observado:  despesa,
+          valor_referencia: rcl,
+          detalhe_json:     detalhe,
+        });
+      }
+    }
+
+    console.log(
+      `[mart:siconfi-rreo] Alertas pessoal consolidado (${ANO_PESSOAL}/6): ` +
+      `${pessoalComAlerta} alertas de ${pessoalAnalisados} municípios analisados` +
+      (pessoalAgg.length !== pessoalAnalisados
+        ? ` (${pessoalAgg.length - pessoalAnalisados} sem RCL ajustada)`
+        : "")
+    );
+
+    // ── Alertas por Poder: Executivo e Legislativo ──
+    // Executivo: instituicao ILIKE '%Prefeitura%' — limite LRF Art. 19: 54% da RCL
+    // Legislativo: instituicao ILIKE '%Câmara%' ou '%Legislativo%' — limite: 6% da RCL
+    // Nota: Câmaras municipais entregam RGF, não RREO — registros Legislativo serão 0.
+    //       Os alertas são gerados para quando/se dados legislativos aparecerem no RREO.
+
+    const executivoAgg = await pgQuery<{
+      id_municipio: number;
+      no_municipio: string | null;
+      despesa_executivo: number;
+    }>(`
+      SELECT
+        id_municipio,
+        MAX(no_municipio)  AS no_municipio,
+        SUM(valor)         AS despesa_executivo
+      FROM dw.fato_siconfi_rreo
+      WHERE an_exercicio = $1
+        AND nr_periodo   = $2
+        AND no_anexo     = 'RREO-Anexo 01'
+        AND conta        ILIKE '%PESSOAL%ENCARGOS%'
+        AND coluna       ILIKE '%LIQUIDADAS%BIMESTRE%(h)%'
+        AND instituicao  ILIKE '%Prefeitura%'
+      GROUP BY id_municipio
+    `, [ANO_PESSOAL, PER_PESSOAL]);
+
+    const legislativoAgg = await pgQuery<{
+      id_municipio: number;
+      no_municipio: string | null;
+      despesa_legislativo: number;
+    }>(`
+      SELECT
+        id_municipio,
+        MAX(no_municipio)  AS no_municipio,
+        SUM(valor)         AS despesa_legislativo
+      FROM dw.fato_siconfi_rreo
+      WHERE an_exercicio = $1
+        AND nr_periodo   = $2
+        AND no_anexo     = 'RREO-Anexo 01'
+        AND conta        ILIKE '%PESSOAL%ENCARGOS%'
+        AND coluna       ILIKE '%LIQUIDADAS%BIMESTRE%(h)%'
+        AND (instituicao ILIKE '%Câmara%' OR instituicao ILIKE '%Legislativo%')
+      GROUP BY id_municipio
+    `, [ANO_PESSOAL, PER_PESSOAL]);
+
+    let executivoAnalisados = 0;
+    let executivoComAlerta  = 0;
+
+    for (const p of executivoAgg) {
+      const rcl = rclMap.get(p.id_municipio);
+      if (!rcl || rcl === 0 || p.despesa_executivo == null) continue;
+
+      executivoAnalisados++;
+      const despesa = Number(p.despesa_executivo);
+      const pct     = (despesa / rcl) * 100;
+      const refPer  = `${PER_PESSOAL}º bimestre de ${ANO_PESSOAL}`;
+
+      const detalhe = {
+        an_exercicio_referencia: ANO_PESSOAL,
+        nr_periodo_referencia:   PER_PESSOAL,
+        poder:                   "Executivo",
+        percentual_executivo:    +pct.toFixed(2),
+        despesa_pessoal:          despesa,
+        rcl_ajustada:             rcl,
+        referencia_executivo_pct: 54,
+        nota: "Triagem fiscal por Poder. Verificar composição e memória de cálculo antes de conclusão institucional.",
+      };
+
+      if (pct >= 54) {
+        executivoComAlerta++;
+        alertas.push({
+          an_exercicio:     ANO_PESSOAL,
+          nr_periodo:       PER_PESSOAL,
+          id_municipio:     p.id_municipio,
+          no_municipio:     p.no_municipio,
+          tipo_alerta:      "siconfi_pessoal_executivo_acima_referencia",
+          nivel:            "CRITICO",
+          descricao:        `Despesa com pessoal do Poder Executivo acima da referência de 54% da RCL ajustada. Verificar composição e memória de cálculo antes de conclusão institucional. (${pct.toFixed(1)}% no ${refPer})`,
+          valor_observado:  despesa,
+          valor_referencia: rcl,
+          detalhe_json:     detalhe,
+        });
+      } else if (pct >= 48.6) {
+        executivoComAlerta++;
+        alertas.push({
+          an_exercicio:     ANO_PESSOAL,
+          nr_periodo:       PER_PESSOAL,
+          id_municipio:     p.id_municipio,
+          no_municipio:     p.no_municipio,
+          tipo_alerta:      "siconfi_pessoal_executivo_proximo_referencia",
+          nivel:            "ALTO",
+          descricao:        `Despesa com pessoal do Poder Executivo próxima da referência de 54% da RCL ajustada. Recomenda-se acompanhamento técnico. (${pct.toFixed(1)}% no ${refPer})`,
+          valor_observado:  despesa,
+          valor_referencia: rcl,
+          detalhe_json:     detalhe,
+        });
+      }
+    }
+
+    console.log(
+      `[mart:siconfi-rreo] Alertas pessoal Executivo (${ANO_PESSOAL}/6): ` +
+      `${executivoComAlerta} alertas de ${executivoAnalisados} municípios analisados`
+    );
+
+    let legislativoAnalisados = 0;
+    let legislativoComAlerta  = 0;
+
+    for (const p of legislativoAgg) {
+      const rcl = rclMap.get(p.id_municipio);
+      if (!rcl || rcl === 0 || p.despesa_legislativo == null) continue;
+
+      legislativoAnalisados++;
+      const despesa = Number(p.despesa_legislativo);
+      const pct     = (despesa / rcl) * 100;
+      const refPer  = `${PER_PESSOAL}º bimestre de ${ANO_PESSOAL}`;
+
+      const detalhe = {
+        an_exercicio_referencia:  ANO_PESSOAL,
+        nr_periodo_referencia:    PER_PESSOAL,
+        poder:                    "Legislativo",
+        percentual_legislativo:   +pct.toFixed(2),
+        despesa_pessoal:           despesa,
+        rcl_ajustada:              rcl,
+        referencia_legislativo_pct: 6,
+        nota: "Triagem fiscal por Poder. Verificar composição e memória de cálculo antes de conclusão institucional.",
+      };
+
+      if (pct >= 6) {
+        legislativoComAlerta++;
+        alertas.push({
+          an_exercicio:     ANO_PESSOAL,
+          nr_periodo:       PER_PESSOAL,
+          id_municipio:     p.id_municipio,
+          no_municipio:     p.no_municipio,
+          tipo_alerta:      "siconfi_pessoal_legislativo_acima_referencia",
+          nivel:            "CRITICO",
+          descricao:        `Despesa com pessoal do Poder Legislativo acima da referência de 6% da RCL ajustada. Verificar composição e memória de cálculo antes de conclusão institucional. (${pct.toFixed(1)}% no ${refPer})`,
+          valor_observado:  despesa,
+          valor_referencia: rcl,
+          detalhe_json:     detalhe,
+        });
+      } else if (pct >= 5.4) {
+        legislativoComAlerta++;
+        alertas.push({
+          an_exercicio:     ANO_PESSOAL,
+          nr_periodo:       PER_PESSOAL,
+          id_municipio:     p.id_municipio,
+          no_municipio:     p.no_municipio,
+          tipo_alerta:      "siconfi_pessoal_legislativo_proximo_referencia",
+          nivel:            "ALTO",
+          descricao:        `Despesa com pessoal do Poder Legislativo próxima da referência de 6% da RCL ajustada. Recomenda-se acompanhamento técnico. (${pct.toFixed(1)}% no ${refPer})`,
+          valor_observado:  despesa,
+          valor_referencia: rcl,
+          detalhe_json:     detalhe,
+        });
+      }
+    }
+
+    console.log(
+      `[mart:siconfi-rreo] Alertas pessoal Legislativo (${ANO_PESSOAL}/6): ` +
+      `${legislativoComAlerta} alertas de ${legislativoAnalisados} municípios analisados` +
+      (legislativoAgg.length === 0 ? " (sem dados Legislativo no RREO — esperado)" : "")
+    );
+  }
+
   console.log(`[mart:siconfi-rreo] Alertas gerados: ${alertas.length}`);
 
   await withPgTransaction(async (client) => {
@@ -289,9 +573,11 @@ export async function executarMartSiconfiRreo(): Promise<void> {
     console.log(`[mart:siconfi-rreo] ✓ siconfi_rreo_alertas (${alertas.length} alertas)`);
 
     // ── 6. Rebuild mart.siconfi_rreo_alertas_home ──
+    // Alertas de pessoal (por Poder ou consolidado) são sempre incluídos independente do período,
+    // pois são calculados para o 6º bimestre que pode ser diferente do período mais recente geral.
     const alertasHome = alertas
       .filter(a => a.nivel === "CRITICO" || a.nivel === "ALTO")
-      .filter(a => a.an_exercicio === ANO_RECENTE && a.nr_periodo === PERIODO_RECENTE)
+      .filter(a => a.tipo_alerta.startsWith("siconfi_pessoal_") || (a.an_exercicio === ANO_RECENTE && a.nr_periodo === PERIODO_RECENTE))
       .sort((a, b) => {
         const pa = nivelPrioridade(a.nivel);
         const pb = nivelPrioridade(b.nivel);
@@ -316,8 +602,10 @@ export async function executarMartSiconfiRreo(): Promise<void> {
     console.log(`[mart:siconfi-rreo] ✓ siconfi_rreo_alertas_home (${alertasHome.length} alertas)`);
 
     // ── 7. Rebuild mart.siconfi_rreo_resumo_home ──
-    const criticos = alertas.filter(a => a.nivel === "CRITICO" && a.an_exercicio === ANO_RECENTE && a.nr_periodo === PERIODO_RECENTE).length;
-    const altos    = alertas.filter(a => a.nivel === "ALTO"    && a.an_exercicio === ANO_RECENTE && a.nr_periodo === PERIODO_RECENTE).length;
+    const isAlertaHome = (a: AlertaInsert) =>
+      a.tipo_alerta.startsWith("siconfi_pessoal_") || (a.an_exercicio === ANO_RECENTE && a.nr_periodo === PERIODO_RECENTE);
+    const criticos = alertas.filter(a => a.nivel === "CRITICO" && isAlertaHome(a)).length;
+    const altos    = alertas.filter(a => a.nivel === "ALTO"    && isAlertaHome(a)).length;
     const comDado  = municipiosComDado.size;
 
     await client.query(`DELETE FROM mart.siconfi_rreo_resumo_home`);
@@ -331,7 +619,7 @@ export async function executarMartSiconfiRreo(): Promise<void> {
       comDado,
       TOTAL_MUNICIPIOS - comDado,
       TOTAL_MUNICIPIOS,
-      alertas.filter(a => a.an_exercicio === ANO_RECENTE && a.nr_periodo === PERIODO_RECENTE).length,
+      alertas.filter(a => isAlertaHome(a)).length,
       criticos,
       altos,
     ]);
