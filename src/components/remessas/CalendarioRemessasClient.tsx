@@ -278,7 +278,7 @@ export default function CalendarioRemessasClient() {
 
       {/* Cabeçalho de impressão */}
       <div className="hidden print:block mb-4">
-        <h1 className="text-lg font-bold">Calendário de Remessas Contábeis — {ano}</h1>
+        <h1 className="text-lg font-bold">Calendário de Envios SIPAC/TCE — {ano}</h1>
         <p className="text-sm text-gray-500">Emitido em {new Date().toLocaleDateString("pt-BR")}</p>
       </div>
 

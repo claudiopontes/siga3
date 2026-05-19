@@ -90,7 +90,20 @@
     "carga-sim-api:postgres": "npm run sim:api:ingest && npm run mart:mortalidade && npm run mart:saude-consolidado",
     "carga-sim-csv:postgres": "npm run sim:csv:ingest && npm run mart:mortalidade && npm run mart:saude-consolidado",
     "carga-mortalidade-api:postgres": "npm run sim:api:ingest && npm run mart:mortalidade && npm run mart:saude-consolidado",
-    "carga-saude:postgres": "npm run carga-siops:postgres && npm run carga-cnes-ubs:postgres && npm run carga-sisagua:postgres && npm run carga-infodengue:postgres && npm run carga-pni:postgres && npm run carga-pni-cobertura:postgres && npm run carga-mortalidade:postgres"
+    "carga-saude:postgres": "npm run carga-siops:postgres && npm run carga-cnes-ubs:postgres && npm run carga-sisagua:postgres && npm run carga-infodengue:postgres && npm run carga-pni:postgres && npm run carga-pni-cobertura:postgres && npm run carga-mortalidade:postgres",
+    "inep-ideb:ingest": "ts-node jobs/ingest-inep-ideb-municipios.ts",
+    "inep-rendimento:ingest": "ts-node jobs/ingest-inep-rendimento-municipios.ts",
+    "mart:painel-educacao": "ts-node jobs/refresh-mart-painel-educacao.ts",
+    "carga-inep-ideb:postgres": "npm run inep-ideb:ingest && npm run mart:painel-educacao",
+    "carga-inep-rendimento:postgres": "npm run inep-rendimento:ingest && npm run mart:painel-educacao",
+    "carga-educacao:postgres": "npm run inep-ideb:ingest && npm run inep-rendimento:ingest && npm run mart:painel-educacao",
+    "inep-ideb-escolas:ingest": "ts-node jobs/ingest-inep-ideb-escolas.ts",
+    "inep-censo-geo:ingest": "ts-node jobs/ingest-censo-escolar-geo.ts",
+    "carga-inep-ideb-escolas:postgres": "npm run inep-ideb-escolas:ingest",
+    "carga-inep-censo-geo:postgres": "npm run inep-censo-geo:ingest",
+    "carga-educacao-escolas:postgres": "npm run inep-censo-geo:ingest && npm run inep-ideb-escolas:ingest",
+    "inep-base-dos-dados-geo:ingest": "ts-node jobs/ingest-base-dos-dados-escolas-geo.ts",
+    "carga-inep-base-dos-dados-geo:postgres": "npm run inep-base-dos-dados-geo:ingest"
   },
   "dependencies": {
     "dotenv": "^16.5.0",

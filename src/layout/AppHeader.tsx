@@ -32,7 +32,8 @@ const AppHeader: React.FC = () => {
   const isFlorestalPage        = pathname === "/painel-cobertura-florestal";
   const isCaucPage             = pathname === "/painel-cauc";
   const isSocialPage           = pathname === "/painel-social";
-  const isMapaPage             = pathname === "/gabinete-digital/mapa";
+  const isMapaPage             = pathname === "/gabinete-digital/mapa" || pathname === "/painel-educacao";
+  const isEscolasPage          = pathname === "/painel-educacao/escolas";
   const isCalendarPage         = pathname === "/calendar";
   const isProfilePage          = pathname === "/profile";
   const isUsuariosPage         = pathname === "/seguranca/usuarios";
@@ -66,8 +67,10 @@ const AppHeader: React.FC = () => {
     "/painel-saude/orcamento": { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "Saúde Pública", href: "/painel-saude" }, { label: "Orçamento e Aplicação" }] },
     "/painel-saude/vacinacao":   { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "Saúde Pública", href: "/painel-saude" }, { label: "Vacinação" }] },
     "/painel-saude/mortalidade": { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "Saúde Pública", href: "/painel-saude" }, { label: "Mortalidade e Nascidos Vivos" }] },
-    "/gabinete-digital/mapa": { crumbs: [{ label: "Home", href: "/" }, { label: "Mapa IDEB" }] },
-    "/remessas/calendario": { crumbs: [{ label: "Home", href: "/" }, { label: "Remessas" }, { label: "Envio Contabilidade" }] },
+    "/gabinete-digital/mapa": { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "Indicadores Educacionais" }] },
+    "/painel-educacao":       { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "Indicadores Educacionais" }] },
+    "/painel-educacao/escolas": { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "Indicadores Educacionais", href: "/painel-educacao" }, { label: "Escolas" }] },
+    "/remessas/calendario": { crumbs: [{ label: "Home", href: "/" }, { label: "Controle Externo" }, { label: "Envio SIPAC/TCE" }] },
     "/calendar": { crumbs: [{ label: "Home", href: "/" }, { label: "Agenda" }] },
     "/profile": { crumbs: [{ label: "Home", href: "/" }, { label: "Perfil" }] },
     "/seguranca/usuarios": { crumbs: [{ label: "Home", href: "/" }, { label: "Segurança" }, { label: "Usuários e perfis" }] },
@@ -225,11 +228,22 @@ const AppHeader: React.FC = () => {
             {isMapaPage && (
               <div className="flex flex-col">
                 <span className="truncate text-sm text-gray-600 dark:text-gray-300">
-                  Índice de desenvolvimento da educação básica por município do Acre.
+                  IDEB (qualidade) e Taxas de Rendimento Escolar (fluxo) por município do Acre.
                 </span>
                 <span className="text-xs text-gray-400 dark:text-gray-500">
                   <span className="font-medium text-sky-600 dark:text-sky-400">IDEB</span>
-                  {" · "}INEP/MEC
+                  {" · Rendimento · "}INEP/MEC
+                </span>
+              </div>
+            )}
+            {isEscolasPage && (
+              <div className="flex flex-col">
+                <span className="truncate text-sm text-gray-600 dark:text-gray-300">
+                  Mapa e tabela das escolas do Acre com IDEB e metadados do Censo Escolar.
+                </span>
+                <span className="text-xs text-gray-400 dark:text-gray-500">
+                  <span className="font-medium text-sky-600 dark:text-sky-400">IDEB Escolas</span>
+                  {" · Censo Escolar · "}INEP/MEC
                 </span>
               </div>
             )}

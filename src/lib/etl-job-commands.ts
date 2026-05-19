@@ -61,6 +61,30 @@ export const ETL_JOB_COMMANDS: Record<string, { command: string; args: string[] 
     command: NPM_COMMAND,
     args: ["--prefix", "etl", "run", "mis-bolsa-familia-bpc"],
   },
+  inep_ideb_municipios: {
+    command: NPM_COMMAND,
+    args: ["--prefix", "etl", "run", "carga-inep-ideb:postgres"],
+  },
+  inep_rendimento_municipios: {
+    command: NPM_COMMAND,
+    args: ["--prefix", "etl", "run", "carga-inep-rendimento:postgres"],
+  },
+  mart_painel_educacao: {
+    command: NPM_COMMAND,
+    args: ["--prefix", "etl", "run", "mart:painel-educacao"],
+  },
+  inep_ideb_escolas: {
+    command: NPM_COMMAND,
+    args: ["--prefix", "etl", "run", "carga-inep-ideb-escolas:postgres"],
+  },
+  inep_censo_geo: {
+    command: NPM_COMMAND,
+    args: ["--prefix", "etl", "run", "carga-inep-censo-geo:postgres"],
+  },
+  inep_base_dos_dados_geo: {
+    command: NPM_COMMAND,
+    args: ["--prefix", "etl", "run", "carga-inep-base-dos-dados-geo:postgres"],
+  },
 };
 
 export function hasEtlJobCommand(modulo: string): boolean {

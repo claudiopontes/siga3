@@ -47,7 +47,16 @@ type ProcessoAlertaRow = {
   atualizado_em: string | null;
 };
 
-type TipoModalProcessual = "processo_sensivel" | "mais_15_dias" | "prazo_regulamentar_vencido";
+type TipoModalProcessual = "hub_processos" | "processo_sensivel" | "mais_15_dias" | "prazo_regulamentar_vencido";
+
+// Subcategorias do hub de processos (servem de filtro dentro do modal único).
+type SubtipoHubProcessos = "todos" | "prazo_regulamentar_vencido" | "processo_sensivel" | "mais_15_dias";
+
+const ROTULO_TIPO_PROCESSUAL: Record<string, { rotulo: string; cor: string }> = {
+  prazo_regulamentar_vencido: { rotulo: "Prazo vencido", cor: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" },
+  processo_sensivel:          { rotulo: "Sensível",      cor: "bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400" },
+  mais_15_dias:               { rotulo: "+15 dias",      cor: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400" },
+};
 
 type RemessaResumoRow = {
   ano: number;
@@ -114,6 +123,10 @@ const GABINETE_ATUAL_ID = 20;
 const LIMITE_REGISTROS_MODAL = 20;
 
 const MODAIS_PROCESSUAIS: Record<TipoModalProcessual, { titulo: string; subtitulo: string }> = {
+  hub_processos: {
+    titulo: "Processos do Gabinete",
+    subtitulo: "Prazo regulamentar vencido, processos sensíveis e processos parados há mais de 15 dias no Gabinete do Cons. Ronald Polanco Ribeiro.",
+  },
   processo_sensivel: {
     titulo: "Processos sensíveis",
     subtitulo: "Cautelares, denúncias, representações, petições e pedidos de vista no Gabinete do Cons. Ronald Polanco Ribeiro.",
@@ -226,6 +239,7 @@ function formatarNumero(value: number | null | undefined) {
 function AcessoRapido({
   titulo, descricao, fonte, icone, href, onClick, criticos = 0, altos = 0,
   corIcone = "text-gray-400 dark:text-gray-500",
+  chipsExtras = [],
 }: {
   titulo: string;
   descricao: string;
@@ -236,18 +250,26 @@ function AcessoRapido({
   criticos?: number;
   altos?: number;
   corIcone?: string;
+  chipsExtras?: Array<{ label: string; valor: number; cor: "rose" | "amber" | "blue" }>;
 }) {
-  const temAlerta = criticos > 0 || altos > 0;
+  const totalChipsExtras = chipsExtras.reduce((acc, c) => acc + c.valor, 0);
+  const temAlerta = criticos > 0 || altos > 0 || totalChipsExtras > 0;
+
+  const corChipExtra: Record<"rose" | "amber" | "blue", string> = {
+    rose:  "bg-rose-50 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400",
+    amber: "bg-amber-50 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400",
+    blue:  "bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400",
+  };
 
   const inner = (
-    <div className={`group flex items-center gap-3 rounded-xl border bg-white p-3.5 transition-all dark:bg-gray-800 ${
+    <div className={`group flex items-center gap-2.5 rounded-xl border bg-white p-3 transition-all dark:bg-gray-800 ${
       criticos > 0
         ? "border-red-200 hover:shadow-sm dark:border-red-800/40"
         : altos > 0
           ? "border-amber-200 hover:shadow-sm dark:border-amber-800/40"
           : "border-gray-200 hover:shadow-sm dark:border-gray-700"
     }`}>
-      <div className={`shrink-0 rounded-lg bg-gray-50 p-2 dark:bg-gray-700/50 ${corIcone}`}>
+      <div className={`shrink-0 rounded-lg bg-gray-50 p-1.5 dark:bg-gray-700/50 ${corIcone}`}>
         {icone}
       </div>
       <div className="min-w-0 flex-1">
@@ -264,6 +286,16 @@ function AcessoRapido({
           <span className="rounded-full bg-orange-50 px-2 py-0.5 text-xs font-bold text-orange-600 dark:bg-orange-900/30 dark:text-orange-400">
             {altos} alto{altos !== 1 ? "s" : ""}
           </span>
+        )}
+        {chipsExtras.map((chip) =>
+          chip.valor > 0 ? (
+            <span
+              key={chip.label}
+              className={`rounded-full px-2 py-0.5 text-xs font-semibold ${corChipExtra[chip.cor]}`}
+            >
+              {chip.valor} {chip.label}
+            </span>
+          ) : null,
         )}
         {!temAlerta && (
           <CheckCircle2 className="h-4 w-4 text-emerald-500 dark:text-emerald-400" />
@@ -334,9 +366,40 @@ function ModalProcessual({
   onClose: () => void;
 }) {
   const config = MODAIS_PROCESSUAIS[tipo];
-  const registrosOrdenados = ordenarAlertasProcessuais(registros);
+  const ehHub = tipo === "hub_processos";
+
+  const [filtroSubtipo, setFiltroSubtipo] = useState<SubtipoHubProcessos>("todos");
+
+  // Contagens por subtipo (só usadas no modo hub para alimentar os chips)
+  const contagens = useMemo(() => {
+    const c: Record<SubtipoHubProcessos, number> = {
+      todos: registros.length,
+      prazo_regulamentar_vencido: 0,
+      processo_sensivel: 0,
+      mais_15_dias: 0,
+    };
+    for (const r of registros) {
+      const t = r.tipo_alerta;
+      if (t === "prazo_regulamentar_vencido" || t === "processo_sensivel" || t === "mais_15_dias") c[t]++;
+    }
+    return c;
+  }, [registros]);
+
+  const registrosFiltrados = useMemo(() => {
+    if (!ehHub || filtroSubtipo === "todos") return registros;
+    return registros.filter((r) => r.tipo_alerta === filtroSubtipo);
+  }, [registros, ehHub, filtroSubtipo]);
+
+  const registrosOrdenados = ordenarAlertasProcessuais(registrosFiltrados);
   const registrosVisiveis = registrosOrdenados.slice(0, LIMITE_REGISTROS_MODAL);
   const temMaisRegistros = registrosOrdenados.length > LIMITE_REGISTROS_MODAL;
+
+  const CHIPS_HUB: Array<{ id: SubtipoHubProcessos; label: string; corAtiva: string; corInativa: string }> = [
+    { id: "todos",                      label: "Todos",         corAtiva: "bg-gray-800 text-white dark:bg-white dark:text-gray-900",      corInativa: "bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700" },
+    { id: "prazo_regulamentar_vencido", label: "Prazo vencido", corAtiva: "bg-red-600 text-white",                                         corInativa: "bg-red-50 text-red-700 hover:bg-red-100 dark:bg-red-900/30 dark:text-red-400" },
+    { id: "processo_sensivel",          label: "Sensíveis",     corAtiva: "bg-rose-600 text-white",                                        corInativa: "bg-rose-50 text-rose-700 hover:bg-rose-100 dark:bg-rose-900/30 dark:text-rose-400" },
+    { id: "mais_15_dias",               label: "+15 dias",      corAtiva: "bg-amber-500 text-white",                                       corInativa: "bg-amber-50 text-amber-700 hover:bg-amber-100 dark:bg-amber-900/30 dark:text-amber-400" },
+  ];
 
   return (
     <div className="fixed inset-0 z-120000 flex items-center justify-center p-3 sm:p-5">
@@ -348,9 +411,26 @@ function ModalProcessual({
       />
       <div className="relative z-10 flex max-h-[90vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900">
         <div className="flex items-start justify-between gap-3 border-b border-gray-100 px-4 py-3 dark:border-gray-700">
-          <div>
+          <div className="min-w-0 flex-1">
             <h2 className="text-base font-bold text-gray-900 dark:text-white">{config.titulo}</h2>
             <p className="mt-0.5 max-w-3xl text-xs text-gray-500 dark:text-gray-400">{config.subtitulo}</p>
+            {ehHub && (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {CHIPS_HUB.map((chip) => {
+                  const ativo = filtroSubtipo === chip.id;
+                  return (
+                    <button
+                      key={chip.id}
+                      type="button"
+                      onClick={() => setFiltroSubtipo(chip.id)}
+                      className={`rounded-full px-2.5 py-1 text-xs font-semibold transition-colors ${ativo ? chip.corAtiva : chip.corInativa}`}
+                    >
+                      {chip.label} <span className="opacity-75">({contagens[chip.id]})</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
           <button
             type="button"
@@ -371,6 +451,9 @@ function ModalProcessual({
               <thead>
                 <tr className="border-b border-gray-100 bg-gray-50 dark:border-gray-700 dark:bg-gray-900/40">
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Nível</th>
+                  {ehHub && (
+                    <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Tipo</th>
+                  )}
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Processo</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Classe</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Órgão</th>
@@ -380,17 +463,31 @@ function ModalProcessual({
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50 dark:divide-gray-700/50">
-                {registrosVisiveis.map((alerta) => (
-                  <tr key={`${alerta.tipo_alerta}-${alerta.processo}-${alerta.duracao_setor_dias}`} className="hover:bg-gray-50 dark:hover:bg-gray-800/60">
-                    <td className="px-4 py-3"><NivelBadge nivel={alerta.nivel_alerta} /></td>
-                    <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">{alerta.processo ?? "—"}</td>
-                    <td className="max-w-xs px-4 py-3 text-xs text-gray-700 dark:text-gray-300">{alerta.classe ?? "—"}</td>
-                    <td className="max-w-sm px-4 py-3 text-xs text-gray-500 dark:text-gray-400">{alerta.orgao ?? "Órgão não informado"}</td>
-                    <td className="max-w-xs px-4 py-3 text-xs text-gray-500 dark:text-gray-400">{alerta.atividade_atual ?? "—"}</td>
-                    <td className="px-4 py-3 text-center text-xs font-bold text-gray-700 dark:text-gray-300">{formatarNumero(alerta.duracao_setor_dias)}</td>
-                    <td className="px-4 py-3 text-center text-xs font-bold text-red-600 dark:text-red-400">{formatarNumero(alerta.dias_em_atraso)}</td>
-                  </tr>
-                ))}
+                {registrosVisiveis.map((alerta) => {
+                  const rotuloTipo = alerta.tipo_alerta ? ROTULO_TIPO_PROCESSUAL[alerta.tipo_alerta] : null;
+                  return (
+                    <tr key={`${alerta.tipo_alerta}-${alerta.processo}-${alerta.duracao_setor_dias}`} className="hover:bg-gray-50 dark:hover:bg-gray-800/60">
+                      <td className="px-4 py-3"><NivelBadge nivel={alerta.nivel_alerta} /></td>
+                      {ehHub && (
+                        <td className="px-4 py-3">
+                          {rotuloTipo ? (
+                            <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${rotuloTipo.cor}`}>
+                              {rotuloTipo.rotulo}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-gray-400">—</span>
+                          )}
+                        </td>
+                      )}
+                      <td className="px-4 py-3 font-medium text-gray-900 dark:text-white">{alerta.processo ?? "—"}</td>
+                      <td className="max-w-xs px-4 py-3 text-xs text-gray-700 dark:text-gray-300">{alerta.classe ?? "—"}</td>
+                      <td className="max-w-sm px-4 py-3 text-xs text-gray-500 dark:text-gray-400">{alerta.orgao ?? "Órgão não informado"}</td>
+                      <td className="max-w-xs px-4 py-3 text-xs text-gray-500 dark:text-gray-400">{alerta.atividade_atual ?? "—"}</td>
+                      <td className="px-4 py-3 text-center text-xs font-bold text-gray-700 dark:text-gray-300">{formatarNumero(alerta.duracao_setor_dias)}</td>
+                      <td className="px-4 py-3 text-center text-xs font-bold text-red-600 dark:text-red-400">{formatarNumero(alerta.dias_em_atraso)}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -425,6 +522,7 @@ export default function AlertasGabineteClient() {
   const [carregandoSocial, setCarregandoSocial] = useState(true);
   const [resumoSiconfi, setResumoSiconfi] = useState<SiconfiRreoResumoRow | null>(null);
   const [carregandoSiconfi, setCarregandoSiconfi] = useState(true);
+  const [mostrarEmBreve, setMostrarEmBreve] = useState(false);
 
   useEffect(() => {
     let cancelado = false;
@@ -548,10 +646,11 @@ export default function AlertasGabineteClient() {
   const procMais15    = resumoProcessos?.processos_mais_15_dias                  ?? 0;
   const procVencido   = resumoProcessos?.processos_prazo_regulamentar_vencido    ?? 0;
 
-  const registrosModalProcessual = useMemo(
-    () => (modalProcessual ? alertasProcessos.filter((a) => a.tipo_alerta === modalProcessual) : []),
-    [alertasProcessos, modalProcessual],
-  );
+  const registrosModalProcessual = useMemo(() => {
+    if (!modalProcessual) return [];
+    if (modalProcessual === "hub_processos") return alertasProcessos;
+    return alertasProcessos.filter((a) => a.tipo_alerta === modalProcessual);
+  }, [alertasProcessos, modalProcessual]);
 
   // Derivados remessas
   const remessaResumo  = resumoRemessas[0];
@@ -621,7 +720,7 @@ export default function AlertasGabineteClient() {
       {/* ── Grade unificada de painéis ── */}
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           {alertasCarregando
-            ? Array.from({ length: 9 }).map((_, i) => (
+            ? Array.from({ length: 6 }).map((_, i) => (
                 <div key={i} className="h-16 animate-pulse rounded-xl bg-gray-100 dark:bg-gray-700/50" />
               ))
             : (() => {
@@ -643,45 +742,30 @@ export default function AlertasGabineteClient() {
                     corIcone: "text-violet-500 dark:text-violet-400",
                   },
                   {
-                    key: "proc-vencido",
-                    titulo: "Prazo Regulamentar Vencido",
-                    descricao: "Processos com prazo regulamentar ultrapassado",
+                    key: "proc-hub",
+                    titulo: "Processos do Gabinete",
+                    descricao: procVencido > 0
+                      ? `Crítico: ${procVencido} processo${procVencido !== 1 ? "s" : ""} com prazo regulamentar vencido`
+                      : "Prazo vencido, sensíveis e parados há +15 dias",
                     fonte: "eProcessos · TCE-AC",
                     icone: <PrazoVencidoIcon />,
                     href: undefined,
-                    onClick: !semDadosProcessuais ? () => setModalProcessual("prazo_regulamentar_vencido") : undefined,
+                    onClick: !semDadosProcessuais ? () => setModalProcessual("hub_processos") : undefined,
+                    // Crítico = prazo regulamentar vencido (mais urgente).
                     criticos: semDadosProcessuais ? 0 : procVencido,
                     altos: 0,
+                    chipsExtras: semDadosProcessuais
+                      ? []
+                      : [
+                          { label: "sensíveis", valor: procSensiveis, cor: "rose"  as const },
+                          { label: "+15d",      valor: procMais15,    cor: "amber" as const },
+                        ],
                     corIcone: "text-red-500 dark:text-red-400",
                   },
                   {
-                    key: "proc-sensiveis",
-                    titulo: "Processos Sensíveis",
-                    descricao: "Cautelares, denúncias, representações e petições",
-                    fonte: "eProcessos · TCE-AC",
-                    icone: <DocumentoAlertaIcon />,
-                    href: undefined,
-                    onClick: !semDadosProcessuais ? () => setModalProcessual("processo_sensivel") : undefined,
-                    criticos: 0,
-                    altos: semDadosProcessuais ? 0 : procSensiveis,
-                    corIcone: "text-rose-500 dark:text-rose-400",
-                  },
-                  {
-                    key: "proc-mais15",
-                    titulo: "Há Mais de 15 Dias",
-                    descricao: "Processos aguardando movimentação por mais de 15 dias",
-                    fonte: "eProcessos · TCE-AC",
-                    icone: <RelogioProcessualIcon />,
-                    href: undefined,
-                    onClick: !semDadosProcessuais ? () => setModalProcessual("mais_15_dias") : undefined,
-                    criticos: 0,
-                    altos: semDadosProcessuais ? 0 : procMais15,
-                    corIcone: "text-amber-500 dark:text-amber-400",
-                  },
-                  {
                     key: "remessas",
-                    titulo: "Remessas Contábeis",
-                    descricao: "Entregas fora do prazo, sem confirmação ou com críticas",
+                    titulo: "Envio SIPAC/TCE",
+                    descricao: "Remessas contábeis fora do prazo, sem confirmação ou com críticas",
                     fonte: "Prestação de Contas · TCE-AC",
                     icone: (
                       <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -767,28 +851,50 @@ export default function AlertasGabineteClient() {
                     criticos={p.criticos}
                     altos={p.altos}
                     corIcone={p.corIcone}
+                    chipsExtras={"chipsExtras" in p ? p.chipsExtras : undefined}
                   />
                 ));
               })()
           }
-          {!alertasCarregando && ALERTAS_SUGERIDOS.map((alerta) => (
-            <div
-              key={alerta.titulo}
-              className="flex items-center gap-3 rounded-xl border border-dashed border-gray-200 bg-white px-4 py-3 opacity-60 dark:border-gray-700 dark:bg-gray-800"
-            >
-              <span className="shrink-0 rounded-lg bg-gray-50 p-2 text-gray-400 dark:bg-gray-700/50">
-                {alerta.icone}
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold text-gray-700 dark:text-gray-300">{alerta.titulo}</p>
-                <p className="text-[11px] text-gray-400 dark:text-gray-500">{alerta.prioridade}</p>
-              </div>
-              <span className="shrink-0 inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500 dark:bg-gray-700 dark:text-gray-400">
-                Em breve
-              </span>
-            </div>
-          ))}
         </div>
+
+      {/* ── Funcionalidades em desenvolvimento (colapsadas por padrão) ── */}
+      {!alertasCarregando && (
+        <div>
+          <button
+            type="button"
+            onClick={() => setMostrarEmBreve((v) => !v)}
+            aria-expanded={mostrarEmBreve}
+            className="flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+          >
+            <ChevronRight
+              className={`h-3.5 w-3.5 transition-transform ${mostrarEmBreve ? "rotate-90" : ""}`}
+            />
+            Funcionalidades em desenvolvimento ({ALERTAS_SUGERIDOS.length})
+          </button>
+          {mostrarEmBreve && (
+            <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {ALERTAS_SUGERIDOS.map((alerta) => (
+                <div
+                  key={alerta.titulo}
+                  className="flex items-center gap-2.5 rounded-xl border border-dashed border-gray-200 bg-white p-3 opacity-60 dark:border-gray-700 dark:bg-gray-800"
+                >
+                  <span className="shrink-0 rounded-lg bg-gray-50 p-1.5 text-gray-400 dark:bg-gray-700/50">
+                    {alerta.icone}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-gray-700 dark:text-gray-300">{alerta.titulo}</p>
+                    <p className="text-[11px] text-gray-400 dark:text-gray-500">{alerta.prioridade}</p>
+                  </div>
+                  <span className="shrink-0 inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500 dark:bg-gray-700 dark:text-gray-400">
+                    Em breve
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Modal processual */}
       {modalProcessual && (

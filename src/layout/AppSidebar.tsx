@@ -7,11 +7,12 @@ import { useSidebar } from "../context/SidebarContext";
 import {
   CalenderIcon,
   ChevronDownIcon,
-  GridIcon,
   HorizontaLDots,
-  UserCircleIcon,
 } from "../icons/index";
-import { ShieldCheck, FileStack, ClipboardList } from "lucide-react";
+import {
+  ShieldCheck,
+  Landmark, BadgeCheck, GraduationCap, HeartPulse, Users, Trees,
+} from "lucide-react";
 
 
 type NavItem = {
@@ -23,45 +24,59 @@ type NavItem = {
 
 const baseNavItems: NavItem[] = [
   {
-    icon: <GridIcon />,
-    name: "Painéis",
+    icon: <Landmark className="h-5 w-5" />,
+    name: "Fiscal & Orçamento",
     subItems: [
-      { name: "Combustível", path: "/painel-combustivel" },
-      { name: "Receita Pública", path: "/painel-receita-publica", pro: false },
+      { name: "Receita Pública",       path: "/painel-receita-publica", pro: false },
       { name: "Execução Orçamentária", path: "/painel-siconfi" },
-      { name: "Despesa Pública", path: "/painel-despesa" },
-      { name: "Pesquisa de Credores", path: "/pesquisa-credores" },
-      { name: "Cobertura Florestal", path: "/painel-cobertura-florestal" },
-      { name: "CAUC Municípios", path: "/painel-cauc" },
-      { name: "IDEB Acre", path: "/gabinete-digital/mapa" },
+      { name: "Despesa Pública",       path: "/painel-despesa" },
+      { name: "Combustível",           path: "/painel-combustivel" },
+      { name: "Pesquisa de Credores",  path: "/pesquisa-credores" },
+    ],
+  },
+  {
+    icon: <BadgeCheck className="h-5 w-5" />,
+    name: "Controle Externo",
+    subItems: [
+      { name: "CAUC Municípios",       path: "/painel-cauc" },
+      { name: "Envio SIPAC/TCE",       path: "/remessas/calendario" },
+      { name: "Pautas para Julgamento", path: "/pautas-julgamento" },
+      { name: "Processos",              path: "/eprocessos-ce/processos" },
+    ],
+  },
+  {
+    icon: <GraduationCap className="h-5 w-5" />,
+    name: "Educação",
+    subItems: [
+      { name: "Indicadores Educacionais", path: "/painel-educacao" },
+      { name: "Escolas",                  path: "/painel-educacao/escolas" },
+    ],
+  },
+  {
+    icon: <HeartPulse className="h-5 w-5" />,
+    name: "Saúde",
+    subItems: [
       { name: "Saúde Pública", path: "/painel-saude" },
+    ],
+  },
+  {
+    icon: <Users className="h-5 w-5" />,
+    name: "Social",
+    subItems: [
       { name: "Vulnerabilidade Social", path: "/painel-social" },
     ],
   },
   {
-    icon: <ClipboardList className="h-5 w-5" />,
-    name: "eProcessos CE",
+    icon: <Trees className="h-5 w-5" />,
+    name: "Meio Ambiente",
     subItems: [
-      { name: "Pautas para Julgamento", path: "/pautas-julgamento" },
-      { name: "Processos", path: "/eprocessos-ce/processos" },
-    ],
-  },
-  {
-    icon: <FileStack className="h-5 w-5" />,
-    name: "Remessas",
-    subItems: [
-      { name: "Envio Contabilidade", path: "/remessas/calendario" },
+      { name: "Cobertura Florestal", path: "/painel-cobertura-florestal" },
     ],
   },
   {
     icon: <CalenderIcon />,
     name: "Agenda",
     path: "/calendar",
-  },
-  {
-    icon: <UserCircleIcon />,
-    name: "Perfil",
-    path: "/profile",
   },
 ];
 
@@ -96,9 +111,10 @@ const AppSidebar: React.FC = () => {
         icon: <ShieldCheck className="h-5 w-5" />,
         name: "Segurança",
         subItems: [
-          { name: "Usuários e Perfis", path: "/seguranca/usuarios" },
+          { name: "Usuários e Perfis",    path: "/seguranca/usuarios" },
           { name: "Status das Bases ETL", path: "/seguranca/etl" },
           { name: "Configuração de ETLs", path: "/seguranca/etl/configuracao" },
+          { name: "Perfil",               path: "/profile" },
         ],
       },
     ];

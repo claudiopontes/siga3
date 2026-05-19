@@ -143,7 +143,7 @@ export const ETL_CONFIG: Record<string, EtlConfigEntry> = {
     ativoPainel: true,
   },
   mart_remessas: {
-    nomeExibicao: "Remessas Contábeis",
+    nomeExibicao: "Envio SIPAC/TCE",
     periodicidade: "mensal",
     toleranciaDias: 30,
     ativoPainel: true,
@@ -213,6 +213,156 @@ export const ETL_CONFIG: Record<string, EtlConfigEntry> = {
     periodicidade: "anual",
     toleranciaDias: 365,
     ativoPainel: true,
+  },
+  inep_ideb_municipios: {
+    nomeExibicao: "IDEB Municipal (INEP)",
+    periodicidade: "variavel",
+    toleranciaDias: 36500,           // efetivamente sem prazo — carga só ocorre quando novos arquivos são depositados
+    ativoPainel: true,
+    descricaoPeriodicidade:
+      "Sob demanda. INEP publica em bienais (IDEB) e o download.inep.gov.br é bloqueado pela rede do TCE. Os arquivos são baixados manualmente e colocados em etl/data/inep/ideb/ — a carga só recarrega quando há ZIPs novos no diretório.",
+    execucao: {
+      tipoCargaPadrao: "full",
+      modoCargaPadrao: "full_upsert_hash",
+      escopoCarga: "tudo",
+      preservaHistoricoAnterior: true,
+      requerConfirmacaoManual: false,
+      observacaoRegraNegocio:
+        "Lê todos os ZIPs em etl/data/inep/ideb/ (uma execução processa todas as edições presentes). Filtro padrão UF=AC. Hash SHA-256 garante idempotência: arquivos já processados sem alteração apenas tocam atualizado_em.",
+    },
+    execucaoManual: {
+      permiteExecucaoManual: true,
+      permiteFullManual: true,
+      permiteIncrementalManual: false,
+      labelBotao: "Reprocessar IDEB",
+      mensagemConfirmacao:
+        "Reprocessa todos os ZIPs IDEB em etl/data/inep/ideb/. Operação idempotente — recarregar arquivos já processados não duplica dados. Deseja continuar?",
+    },
+  },
+  inep_rendimento_municipios: {
+    nomeExibicao: "Taxas de Rendimento Escolar (INEP)",
+    periodicidade: "variavel",
+    toleranciaDias: 36500,
+    ativoPainel: true,
+    descricaoPeriodicidade:
+      "Sob demanda. Anual no INEP, mas a rede do TCE bloqueia o download.inep.gov.br — os ZIPs vêm de download manual em etl/data/inep/rendimento/. Carga só recarrega quando há arquivos novos.",
+    execucao: {
+      tipoCargaPadrao: "full",
+      modoCargaPadrao: "full_upsert_hash",
+      escopoCarga: "tudo",
+      preservaHistoricoAnterior: true,
+      requerConfirmacaoManual: false,
+      observacaoRegraNegocio:
+        "Lê todos os ZIPs em etl/data/inep/rendimento/. Filtro padrão UF=AC. Cada linha = município × localização × dependência; aprovação/reprovação/abandono por etapa.",
+    },
+    execucaoManual: {
+      permiteExecucaoManual: true,
+      permiteFullManual: true,
+      permiteIncrementalManual: false,
+      labelBotao: "Reprocessar Rendimento",
+      mensagemConfirmacao:
+        "Reprocessa todos os ZIPs de Taxas de Rendimento em etl/data/inep/rendimento/. Deseja continuar?",
+    },
+  },
+  inep_ideb_escolas: {
+    nomeExibicao: "IDEB por Escola (INEP)",
+    periodicidade: "variavel",
+    toleranciaDias: 36500,
+    ativoPainel: true,
+    descricaoPeriodicidade:
+      "Sob demanda. Mesma cadência bienal do IDEB municipal, mas granularidade de escola individual. Arquivos baixados manualmente em etl/data/inep/ideb-escolas/.",
+    execucao: {
+      tipoCargaPadrao: "full",
+      modoCargaPadrao: "full_upsert_hash",
+      escopoCarga: "tudo",
+      preservaHistoricoAnterior: true,
+      requerConfirmacaoManual: false,
+      observacaoRegraNegocio:
+        "Lê todos os ZIPs em etl/data/inep/ideb-escolas/. Filtro padrão UF=AC (~500–800 escolas). Hash SHA-256 garante idempotência.",
+    },
+    execucaoManual: {
+      permiteExecucaoManual: true,
+      permiteFullManual: true,
+      permiteIncrementalManual: false,
+      labelBotao: "Reprocessar IDEB Escolas",
+      mensagemConfirmacao:
+        "Reprocessa todos os ZIPs IDEB-escolas em etl/data/inep/ideb-escolas/. Operação idempotente. Deseja continuar?",
+    },
+  },
+  inep_base_dos_dados_geo: {
+    nomeExibicao: "Geo das Escolas — Base dos Dados",
+    periodicidade: "variavel",
+    toleranciaDias: 36500,
+    ativoPainel: true,
+    descricaoPeriodicidade:
+      "Sob demanda. Arquivo curado pela Base dos Dados (basedosdados.org) com coordenadas das escolas — necessário porque o INEP removeu lat/lng do microdado a partir de 2023.",
+    execucao: {
+      tipoCargaPadrao: "full",
+      modoCargaPadrao: "full_upsert",
+      escopoCarga: "tudo",
+      preservaHistoricoAnterior: true,
+      requerConfirmacaoManual: false,
+      observacaoRegraNegocio:
+        "Lê etl/data/inep/censo/br_bd_diretorios_brasil_escola.csv.gz, filtra UF=AC e atualiza apenas latitude/longitude em public.dim_escola_inep. Demais campos vêm do microdado INEP.",
+    },
+    execucaoManual: {
+      permiteExecucaoManual: true,
+      permiteFullManual: true,
+      permiteIncrementalManual: false,
+      labelBotao: "Atualizar Geo (BD)",
+      mensagemConfirmacao:
+        "Reprocessa o arquivo da Base dos Dados para atualizar coordenadas das escolas. Deseja continuar?",
+    },
+  },
+  inep_censo_geo: {
+    nomeExibicao: "Censo Escolar — Geo das Escolas (INEP)",
+    periodicidade: "variavel",
+    toleranciaDias: 36500,
+    ativoPainel: true,
+    descricaoPeriodicidade:
+      "Sob demanda. Censo é anual, mas só consumimos coordenadas (lat/lng) e metadados das escolas, não o microdado completo. Arquivo único em etl/data/inep/censo/ (~600MB).",
+    execucao: {
+      tipoCargaPadrao: "full",
+      modoCargaPadrao: "full_upsert",
+      escopoCarga: "tudo",
+      preservaHistoricoAnterior: true,
+      requerConfirmacaoManual: false,
+      observacaoRegraNegocio:
+        "Extrai apenas o CSV de escolas do microdado, filtra UF=AC e popula public.dim_escola_inep. Microdado bruto NÃO é persistido — só os campos essenciais para localizar e filtrar escolas no painel.",
+    },
+    execucaoManual: {
+      permiteExecucaoManual: true,
+      permiteFullManual: true,
+      permiteIncrementalManual: false,
+      labelBotao: "Atualizar Geo Escolas",
+      mensagemConfirmacao:
+        "Reprocessa o microdado do Censo Escolar mais recente em etl/data/inep/censo/. Extração ~30s; ingestão ~10s. Deseja continuar?",
+    },
+  },
+  mart_painel_educacao: {
+    nomeExibicao: "Painel Educação — Consolidado",
+    periodicidade: "variavel",
+    toleranciaDias: 36500,
+    ativoPainel: true,
+    descricaoPeriodicidade:
+      "Mart derivado. Reconstruído automaticamente após cargas de IDEB ou Rendimento; também pode ser disparado manualmente sem reprocessar as fontes.",
+    execucao: {
+      tipoCargaPadrao: "full",
+      modoCargaPadrao: "full_truncate_insert",
+      escopoCarga: "tudo",
+      preservaHistoricoAnterior: false,
+      requerConfirmacaoManual: false,
+      observacaoRegraNegocio:
+        "Cruza última edição IDEB (rede Pública) com último ano de Rendimento (Total/Total) para alimentar /painel-educacao. Idempotente — TRUNCATE + INSERT a cada execução.",
+    },
+    execucaoManual: {
+      permiteExecucaoManual: true,
+      permiteFullManual: true,
+      permiteIncrementalManual: false,
+      labelBotao: "Atualizar Painel Educação",
+      mensagemConfirmacao:
+        "Reconstrói o mart de Educação a partir do que já está em dw.fato_inep_ideb_municipal e dw.fato_inep_rendimento_municipal. Deseja continuar?",
+    },
   },
 };
 
