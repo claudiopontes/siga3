@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect, useMemo } from "react";
 import { usePathname } from "next/navigation";
 import AssistenteAquiryButton from "./AssistenteAquiryButton";
 import AssistenteAquiryPanel, { type MensagemChat } from "./AssistenteAquiryPanel";
+import AssistenteAquiryDialogoInicial from "./AssistenteAquiryDialogoInicial";
 import { useAssistenteAquiryContext } from "./AssistenteAquiryProvider";
 import {
   identificarContextoPaginaAquiry,
@@ -14,6 +15,7 @@ import type { ContextoTelaAquiry, OrigemRespostaAquiry } from "@/lib/aquiry/tipo
 
 // Janela de histórico enviada à API (exclui a mensagem de boas-vindas)
 const HISTORICO_MAX_LOCAL = 10;
+const CHAVE_DIALOGO_INICIAL = "aquiry:dialogo-inicial-visto";
 
 export default function AssistenteAquiry() {
   const pathname = usePathname();
@@ -25,11 +27,43 @@ export default function AssistenteAquiry() {
   );
 
   const [aberto, setAberto] = useState(false);
+  const [dialogoInicialAberto, setDialogoInicialAberto] = useState(false);
   const [mensagens, setMensagens] = useState<MensagemChat[]>(() => [
     { role: "assistant", content: montarMensagemBoasVindas(contexto) },
   ]);
   const [carregando, setCarregando] = useState(false);
   const [valorInput, setValorInput] = useState("");
+
+  const abrirPainel = useCallback(() => {
+    setAberto((atual) => {
+      const proximo = !atual;
+      if (proximo && typeof window !== "undefined") {
+        try {
+          if (sessionStorage.getItem(CHAVE_DIALOGO_INICIAL) !== "1") {
+            setDialogoInicialAberto(true);
+          }
+        } catch {
+          // sessionStorage indisponível — segue sem bloquear
+        }
+      }
+      return proximo;
+    });
+  }, []);
+
+  const fecharDialogoInicial = useCallback(() => {
+    setDialogoInicialAberto(false);
+  }, []);
+
+  const concluirDialogoInicial = useCallback((naoMostrarNovamente: boolean) => {
+    setDialogoInicialAberto(false);
+    if (naoMostrarNovamente && typeof window !== "undefined") {
+      try {
+        sessionStorage.setItem(CHAVE_DIALOGO_INICIAL, "1");
+      } catch {
+        // ignora — preferência apenas na sessão
+      }
+    }
+  }, []);
 
   // Atualiza a mensagem de boas-vindas ao navegar, mas não interrompe conversa em andamento
   useEffect(() => {
@@ -137,7 +171,13 @@ export default function AssistenteAquiry() {
         onNovaConversa={novaConversa}
         sugestoes={contexto.sugestoes}
       />
-      <AssistenteAquiryButton aberto={aberto} onClick={() => setAberto((v) => !v)} />
+      <AssistenteAquiryButton aberto={aberto} onClick={abrirPainel} />
+      <AssistenteAquiryDialogoInicial
+        aberto={dialogoInicialAberto}
+        onFechar={fecharDialogoInicial}
+        onComecar={concluirDialogoInicial}
+        onSelecionarSugestao={(texto) => enviar(texto)}
+      />
     </>
   );
 }

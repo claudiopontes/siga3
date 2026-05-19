@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { OrigemRespostaAquiry } from "@/lib/aquiry/tiposContextoAquiry";
+import { copiarTextoAquiry } from "./copiarTextoAquiry";
 
 export type MensagemChat = {
   role: "user" | "assistant";
@@ -65,6 +66,18 @@ export default function AssistenteAquiryPanel({
   const inputRef = useRef<HTMLTextAreaElement>(null);
   // Quais respostas têm o detalhe da base expandido — controla mensagem a mensagem.
   const [expandidos, setExpandidos] = useState<Set<number>>(new Set());
+  const [copiadoIdx, setCopiadoIdx] = useState<number | null>(null);
+  const [sugestoesAbertas, setSugestoesAbertas] = useState(false);
+
+  async function handleCopiar(idx: number, texto: string) {
+    const ok = await copiarTextoAquiry(texto);
+    if (ok) {
+      setCopiadoIdx(idx);
+      setTimeout(() => {
+        setCopiadoIdx((atual) => (atual === idx ? null : atual));
+      }, 2000);
+    }
+  }
 
   function alternarExpandido(idx: number) {
     setExpandidos((prev) => {
@@ -104,7 +117,8 @@ export default function AssistenteAquiryPanel({
     // Shift+Enter: quebra de linha — comportamento padrão do textarea
   }
 
-  const mostrarSugestoes = mensagens.length <= 1 && !carregando;
+  const inicioConversa = mensagens.length <= 1 && !carregando;
+  const mostrarSugestoes = (inicioConversa || sugestoesAbertas) && sugestoes.length > 0;
 
   if (!aberto) return null;
 
@@ -177,6 +191,29 @@ export default function AssistenteAquiryPanel({
         </div>
       </div>
 
+      {/* Chip institucional */}
+      <div className="shrink-0 border-b border-amber-100 bg-amber-50 px-4 py-1.5 dark:border-amber-900/40 dark:bg-amber-900/15">
+        <p className="flex items-center gap-1.5 text-[10.5px] font-medium leading-tight text-amber-800 dark:text-amber-200">
+          <svg
+            width="12"
+            height="12"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+            className="shrink-0"
+          >
+            <path d="M12 9v4" />
+            <path d="M12 17h.01" />
+            <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z" />
+          </svg>
+          <span>Insumo de apoio · Revisão humana obrigatória</span>
+        </p>
+      </div>
+
       {/* Histórico de mensagens */}
       <div
         ref={containerMensagensRef}
@@ -197,6 +234,56 @@ export default function AssistenteAquiryPanel({
             >
               <p className="whitespace-pre-wrap leading-relaxed">{msg.content}</p>
             </div>
+
+            {/* Ações por mensagem da IA */}
+            {msg.role === "assistant" && (
+              <div className="mt-1 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleCopiar(i, msg.content)}
+                  title="Copiar resposta"
+                  aria-label="Copiar resposta"
+                  className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10.5px] text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 focus:outline-none focus:ring-1 focus:ring-blue-400 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-300"
+                >
+                  {copiadoIdx === i ? (
+                    <>
+                      <svg
+                        width="11"
+                        height="11"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        aria-hidden="true"
+                      >
+                        <polyline points="20 6 9 17 4 12" />
+                      </svg>
+                      <span>Copiado</span>
+                    </>
+                  ) : (
+                    <>
+                      <svg
+                        width="11"
+                        height="11"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        aria-hidden="true"
+                      >
+                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                      </svg>
+                      <span>Copiar</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
 
             {/* Linha de origem colapsada + expansor de detalhes */}
             {msg.role === "assistant" && msg.origem && (() => {
@@ -332,19 +419,32 @@ export default function AssistenteAquiryPanel({
         )}
       </div>
 
-      {/* Sugestões de perguntas — visíveis apenas no início da conversa */}
+      {/* Sugestões de perguntas */}
       {mostrarSugestoes && (
         <div className="shrink-0 border-t border-gray-100 px-4 pb-3 pt-2 dark:border-gray-700">
-          <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
-            Sugestões
-          </p>
+          <div className="mb-2 flex items-center justify-between">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+              Sugestões
+            </p>
+            {!inicioConversa && (
+              <button
+                type="button"
+                onClick={() => setSugestoesAbertas(false)}
+                aria-label="Ocultar sugestões"
+                className="text-[10px] text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
+              >
+                ocultar
+              </button>
+            )}
+          </div>
           <div className="flex flex-wrap gap-1.5">
             {sugestoes.slice(0, SUGESTOES_VISIVEIS).map((s) => (
               <button
                 key={s}
                 type="button"
                 onClick={() => onEnviar(s)}
-                className="rounded-full border border-blue-100 bg-blue-50 px-2.5 py-1 text-[11px] text-blue-700 transition-colors hover:bg-blue-100 dark:border-blue-800 dark:bg-blue-900/20 dark:text-blue-300 dark:hover:bg-blue-900/40"
+                disabled={carregando}
+                className="rounded-full border border-blue-100 bg-blue-50 px-2.5 py-1 text-[11px] text-blue-700 transition-colors hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-blue-800 dark:bg-blue-900/20 dark:text-blue-300 dark:hover:bg-blue-900/40"
               >
                 {s}
               </button>
@@ -355,6 +455,33 @@ export default function AssistenteAquiryPanel({
 
       {/* Campo de entrada */}
       <div className="shrink-0 border-t border-gray-100 p-3 dark:border-gray-700">
+        {!mostrarSugestoes && sugestoes.length > 0 && (
+          <div className="mb-2 flex justify-end">
+            <button
+              type="button"
+              onClick={() => setSugestoesAbertas(true)}
+              className="inline-flex items-center gap-1 text-[10.5px] text-gray-400 transition-colors hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
+              aria-label="Mostrar sugestões de perguntas"
+            >
+              <svg
+                width="11"
+                height="11"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <circle cx="12" cy="12" r="10" />
+                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+                <path d="M12 17h.01" />
+              </svg>
+              Sugestões
+            </button>
+          </div>
+        )}
         <div className="flex items-end gap-2 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 focus-within:border-blue-400 dark:border-gray-700 dark:bg-gray-800 dark:focus-within:border-blue-600">
           <textarea
             ref={inputRef}
@@ -392,8 +519,8 @@ export default function AssistenteAquiryPanel({
             </svg>
           </button>
         </div>
-        <p className="mt-1.5 text-center text-[9px] text-gray-400 dark:text-gray-600">
-          Respostas são orientações gerais · Shift+Enter para quebrar linha
+        <p className="mt-1.5 text-center text-[9px] leading-tight text-gray-400 dark:text-gray-600">
+          Respostas são orientações gerais e devem ser revistas pelo gabinete · Shift+Enter para nova linha
         </p>
       </div>
     </div>
