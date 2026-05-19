@@ -11,7 +11,7 @@ import { executarCargaApcCombustivelPolanco } from "./jobs/apc-combustivel-polan
 import { executarSyncApcPolancoSupabase } from "./jobs/apc-polanco-sync-supabase";
 import { executarETLReceitaPublica } from "./jobs/receita-publica";
 import { executarCargaDimensoesReceitaSqlServer } from "./jobs/dimensoes-receita-sqlserver";
-import { executarCargaDimensoesEnteEntidadeSqlServer } from "./jobs/dimensoes-ente-entidade-sqlserver";
+import { executarCargaDimensoesEnteEntidadePostgres } from "./jobs/dimensoes-ente-entidade-postgres";
 import { executarCargaDimensoesEmpenhoSqlServer } from "./jobs/dimensoes-empenho-sqlserver";
 import { executarETLFatoEmpenho } from "./jobs/fato-empenho";
 import { executarCargaCauc } from "./jobs/cauc";
@@ -74,7 +74,7 @@ console.log(`Nightly APC Polanco: ${RUN_APC_POLANCO_NIGHTLY ? "enabled" : "disab
 console.log(`Nightly APC->Supabase sync: ${RUN_APC_POLANCO_SUPABASE_SYNC_NIGHTLY ? "enabled" : "disabled"}\n`);
 console.log(`Nightly Receita Publica: ${RUN_RECEITA_PUBLICA_NIGHTLY ? "enabled" : "disabled"}\n`);
 console.log(`Nightly Dimensoes Receita SQL: ${RUN_DIM_RECEITA_SQLSERVER_NIGHTLY ? "enabled" : "disabled"}\n`);
-console.log(`Nightly Dimensoes Ente/Entidade SQL: ${RUN_DIM_ENTE_ENTIDADE_SQLSERVER_NIGHTLY ? "enabled" : "disabled"}\n`);
+console.log(`Nightly Dimensoes Ente/Entidade/Credor (Postgres): ${RUN_DIM_ENTE_ENTIDADE_SQLSERVER_NIGHTLY ? "enabled" : "disabled"}\n`);
 console.log(`Nightly Fato Empenho: ${RUN_FATO_EMPENHO_NIGHTLY ? "enabled" : "disabled"}\n`);
 console.log(`Nightly CAUC: ${RUN_CAUC_NIGHTLY ? "enabled" : "disabled"}\n`);
 console.log(`Nightly Processos Gabinete: ${RUN_PROCESSOS_GABINETE_NIGHTLY ? "enabled" : "disabled"}\n`);
@@ -179,12 +179,12 @@ cron.schedule(
     }
 
     if (RUN_DIM_ENTE_ENTIDADE_SQLSERVER_NIGHTLY) {
-      console.log("[CRON] Step 8/11: dimensoes ente/entidade (SQL Server)");
-      await executarCargaDimensoesEnteEntidadeSqlServer().catch((error) => {
-        console.error("[CRON] dimensoes ente/entidade sqlserver failed:", error);
+      console.log("[CRON] Step 8/11: dimensoes ente/entidade/credor (SQL Server -> PostgreSQL)");
+      await executarCargaDimensoesEnteEntidadePostgres().catch((error) => {
+        console.error("[CRON] dimensoes ente/entidade/credor postgres failed:", error);
       });
     } else {
-      console.log("[CRON] Step 8/11: dimensoes ente/entidade skipped by RUN_DIM_ENTE_ENTIDADE_SQLSERVER_NIGHTLY=false");
+      console.log("[CRON] Step 8/11: dimensoes ente/entidade/credor skipped by RUN_DIM_ENTE_ENTIDADE_SQLSERVER_NIGHTLY=false");
     }
 
     if (RUN_DIM_EMPENHO_SQLSERVER_NIGHTLY) {

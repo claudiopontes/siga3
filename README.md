@@ -1,200 +1,118 @@
-# TailAdmin Next.js - Free Next.js Tailwind Admin Dashboard Template
+# Varadouro Digital Aquiry
 
-TailAdmin is a free and open-source admin dashboard template built on **Next.js and Tailwind CSS** providing developers with everything they need to create a feature-rich and data-driven: back-end, dashboard, or admin panel solution for any sort of web project.
+Sistema web interno do **Tribunal de Contas do Estado do Acre (TCE-AC)** para apoio à decisão dos gabinetes dos conselheiros. Reúne painéis de transparência, análise de processos e pautas de julgamento com IA, central de alertas e o assistente institucional **Aquiry**.
 
-![TailAdmin - Next.js Dashboard Preview](./banner.png)
+> Base UI: template TailAdmin (Next.js + Tailwind) — fortemente customizado para o domínio de controle externo.
 
-With TailAdmin Next.js, you get access to all the necessary dashboard UI components, elements, and pages required to build a high-quality and complete dashboard or admin panel. Whether you're building a dashboard or admin panel for a complex web application or a simple website.
+---
 
-TailAdmin utilizes the powerful features of **Next.js 16** and common features of Next.js such as server-side rendering (SSR), static site generation (SSG), and seamless API route integration. Combined with the advancements of **React 19** and the robustness of **TypeScript**, TailAdmin is the perfect solution to help get your project up and running quickly.
+## Stack
 
-## Overview
+- **Frontend:** Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS 4
+- **Mapas/Charts:** React-Leaflet, ApexCharts, FullCalendar
+- **Banco:** PostgreSQL 17 (acesso direto via `pg`, sem ORM)
+- **Autenticação:** Active Directory (LDAP) via `ldapts` + sessão JWT em cookie httpOnly
+- **IA:** Azure OpenAI (Assistente Aquiry e análise IA de processos/pautas)
+- **ETL:** Node/TypeScript em `etl/` (conectores Postgres, SQL Server e Supabase residual)
 
-TailAdmin provides essential UI components and layouts for building feature-rich, data-driven admin dashboards and control panels. It's built on:
+---
 
-* Next.js 16.x
-* React 19
-* TypeScript
-* Tailwind CSS V4
+## Módulos
 
-### Quick Links
+| Módulo | Rota |
+|---|---|
+| Home / Alertas Gabinete | `/` |
+| Combustível (NFe Polanco) | `/painel-combustivel`, `/painel-combustivel-empenhos` |
+| Receita Pública | `/painel-receita-publica` |
+| Despesa + Credores | `/painel-despesa`, `/pesquisa-credores` |
+| CAUC Municípios | `/painel-cauc` |
+| Cobertura Florestal | `/painel-cobertura-florestal` |
+| SICONFI (RREO / RGF / Extrato) | `/painel-siconfi/*` |
+| Saúde Pública (SIOPS, SISAGUA, InfoDengue, PNI, SIM) | `/painel-saude/*` |
+| Vulnerabilidade Social (CadÚnico, MIS) | `/painel-social` |
+| Mapa IDEB (Gabinete Digital) | `/gabinete-digital/mapa` |
+| Pautas de Julgamento + IA | `/pautas-julgamento` |
+| Processos eProcess CE + IA | `/eprocessos-ce/processos` |
+| Remessas Contábeis | `/remessas/calendario` |
+| Segurança (admin) | `/seguranca/{usuarios,etl,etl/configuracao}` |
 
-* [✨ Visit Website](https://tailadmin.com)
-* [📄 Documentation](https://tailadmin.com/docs)
-* [⬇️ Download](https://tailadmin.com/download)
-* [🖌️ Figma Design File (Community Edition)](https://www.figma.com/community/file/1463141366275764364)
-* [⚡ Get PRO Version](https://tailadmin.com/pricing)
+O **Assistente Aquiry** é um overlay global montado no layout `(admin)`. Recebe contexto da tela atual via React Context e consulta Azure OpenAI com base documental institucional versionada em `src/data/aquiry/base-conhecimento/`.
 
-### Demos
+---
 
-* [Free Version](https://nextjs-free-demo.tailadmin.com)
-* [Pro Version](https://nextjs-demo.tailadmin.com)
+## Pré-requisitos
 
-### Other Versions
+- Node.js 20.x ou superior
+- Docker (para subir o Postgres local) — ver [docs/postgres-local.md](docs/postgres-local.md)
+- Acesso à rede interna do TCE-AC para autenticação AD em ambiente real
+- Variáveis de ambiente configuradas (ver [.env.example](.env.example))
 
-- [Next.js Version](https://github.com/TailAdmin/free-nextjs-admin-dashboard)
-- [React.js Version](https://github.com/TailAdmin/free-react-tailwind-admin-dashboard)
-- [Vue.js Version](https://github.com/TailAdmin/vue-tailwind-admin-dashboard)
-- [Angular Version](https://github.com/TailAdmin/free-angular-tailwind-dashboard)
-- [Laravel Version](https://github.com/TailAdmin/tailadmin-laravel)
+---
 
-## Installation
-
-### Prerequisites
-
-To get started with TailAdmin, ensure you have the following prerequisites installed and set up:
-
-* Node.js 18.x or later (recommended to use Node.js 20.x or later)
-
-### Cloning the Repository
-
-Clone the repository using the following command:
+## Instalação e execução
 
 ```bash
-git clone https://github.com/TailAdmin/free-nextjs-admin-dashboard.git
+# 1) Subir Postgres local
+docker compose -f infra/postgres/docker-compose.postgres.yml up -d
+
+# 2) Aplicar migrations (62 arquivos versionados em etl/schema/postgres/)
+cd etl
+npm install
+npm run postgres:migrate
+
+# 3) Voltar à raiz e rodar o frontend
+cd ..
+npm install
+npm run dev
 ```
 
-> Windows Users: place the repository near the root of your drive if you face issues while cloning.
+O servidor Next.js sobe em `http://localhost:3000`. O acesso exige autenticação AD; em ambiente isolado, popular `usuarios_autorizados` manualmente.
 
-1. Install dependencies:
+### Scripts do frontend
 
-   ```bash
-   npm install
-   # or
-   yarn install
-   ```
+| Script | Descrição |
+|---|---|
+| `npm run dev` | Servidor de desenvolvimento Next.js |
+| `npm run build` | Build de produção |
+| `npm run start` | Servir build de produção |
+| `npm run lint` | ESLint |
 
-   > Use `--legacy-peer-deps` flag if you face peer-dependency error during installation.
+### Scripts do ETL (pasta `etl/`)
 
-2. Start the development server:
+Mais de 90 scripts. Destaques:
 
-   ```bash
-   npm run dev
-   # or
-   yarn dev
-   ```
+- `npm run agendar` — orquestrador noturno (cron `0 1 * * *`, TZ `America/Rio_Branco`)
+- `npm run postgres:migrate` — aplicar migrations
+- `npm run combustivel` / `receita-publica` / `cauc` / `processos-eprocess` / `pauta-julgamento` — jobs individuais
+- `npm run mart:*` — refresh dos marts (despesa, saúde, SICONFI, social etc.)
+- `npm run *-inspecionar` — inspetores de fontes externas (DataSUS, SIOPS, InfoDengue, etc.)
 
-## Components
+---
 
-TailAdmin is a pre-designed starting point for building a web-based dashboard using Next.js and Tailwind CSS. The template includes:
+## Documentação
 
-* Sophisticated and accessible sidebar
-* Data visualization components
-* Profile management and custom 404 page
-* Tables and Charts(Line and Bar)
-* Authentication forms and input elements
-* Alerts, Dropdowns, Modals, Buttons and more
-* Can't forget Dark Mode 🕶️
+- [CLAUDE.md](CLAUDE.md) — contexto técnico completo para agentes e devs novos
+- [HANDOFF.md](HANDOFF.md) — estado atual e próxima sessão
+- [TODO.md](TODO.md) — backlog priorizado
+- [docs/](docs/) — diagnósticos, inventários (DataSUS, mortalidade, PNI) e fases ETL
+- [docs/aquiry/](docs/aquiry/) — auditoria, checklist MVP e roteiro de testes do assistente
+- [docs/postgres-local.md](docs/postgres-local.md) — subir Postgres em Docker
 
-All components are built with React and styled using Tailwind CSS for easy customization.
+---
 
-## Feature Comparison
+## Variáveis de ambiente
 
-### Free Version
+Ver [.env.example](.env.example) na raiz. Blocos principais:
 
-* 1 Unique Dashboard
-* 30+ dashboard components
-* 50+ UI elements
-* Basic Figma design files
-* Community support
+- **Postgres** — `DATABASE_URL` ou `PG*`
+- **Azure OpenAI** — `AZURE_OPENAI_ENDPOINT`, `_KEY`, `_DEPLOYMENT`, `_API_VERSION`
+- **Active Directory** — `AD_LDAP_URL`, `AD_DOMAIN_PREFIX`, `AUTH_SESSION_SECRET`
+- **Repositório PDF do eProcess** — `REPOSITORIO_BASE_URL`
+- **Aquiry busca externa (opcional)** — Tavily/Brave/SerpAPI/Gemini
+- **ETL** — Supabase, SQL Server, CSVs de dimensões, agendamento
 
-### Pro Version
+---
 
-* 7 Unique Dashboards: Analytics, Ecommerce, Marketing, CRM, SaaS, Stocks, Logistics (more coming soon)
-* 500+ dashboard components and UI elements
-* Complete Figma design file
-* Email support
+## Licença
 
-To learn more about pro version features and pricing, visit our [pricing page](https://tailadmin.com/pricing).
-
-## Changelog
-
-### Version 2.2.3 - [March 15, 2026]
-
-* update ESLint configuration and dependencies; upgrade Next.js to version 16.1.6
-
-### Version 2.2.2 - [December 30, 2025]
-
-* Fixed date picker positioning and functionality in Statistics Chart.
-
-
-### Version 2.1.0 - [November 15, 2025]
-
-* Updated to Next.js 16.x
-* Fixed all reported minor bugs
-
-### Version 2.0.2 - [March 25, 2025]
-
-* Upgraded to Next.js 16.x for [CVE-2025-29927](https://nextjs.org/blog/cve-2025-29927) concerns
-* Included overrides vectormap for packages to prevent peer dependency errors during installation.
-* Migrated from react-flatpickr to flatpickr package for React 19 support
-
-### Version 2.0.1 - [February 27, 2025]
-
-#### Update Overview
-
-* Upgraded to Tailwind CSS v4 for better performance and efficiency.
-* Updated class usage to match the latest syntax and features.
-* Replaced deprecated class and optimized styles.
-
-#### Next Steps
-
-* Run npm install or yarn install to update dependencies.
-* Check for any style changes or compatibility issues.
-* Refer to the Tailwind CSS v4 [Migration Guide](https://tailwindcss.com/docs/upgrade-guide) on this release. if needed.
-* This update keeps the project up to date with the latest Tailwind improvements. 🚀
-
-### v2.0.0 (February 2025)
-
-A major update focused on Next.js 16 implementation and comprehensive redesign.
-
-#### Major Improvements
-
-* Complete redesign using Next.js 16 App Router and React Server Components
-* Enhanced user interface with Next.js-optimized components
-* Improved responsiveness and accessibility
-* New features including collapsible sidebar, chat screens, and calendar
-* Redesigned authentication using Next.js App Router and server actions
-* Updated data visualization using ApexCharts for React
-
-#### Breaking Changes
-
-* Migrated from Next.js 14 to Next.js 16
-* Chart components now use ApexCharts for React
-* Authentication flow updated to use Server Actions and middleware
-
-[Read more](https://tailadmin.com/docs/update-logs/nextjs) on this release.
-
-### v1.3.4 (July 01, 2024)
-
-* Fixed JSvectormap rendering issues
-
-### v1.3.3 (June 20, 2024)
-
-* Fixed build error related to Loader component
-
-### v1.3.2 (June 19, 2024)
-
-* Added ClickOutside component for dropdown menus
-* Refactored sidebar components
-* Updated Jsvectormap package
-
-### v1.3.1 (Feb 12, 2024)
-
-* Fixed layout naming consistency
-* Updated styles
-
-### v1.3.0 (Feb 05, 2024)
-
-* Upgraded to Next.js 14
-* Added Flatpickr integration
-* Improved form elements
-* Enhanced multiselect functionality
-* Added default layout component
-
-## License
-
-TailAdmin Next.js Free Version is released under the MIT License.
-
-## Support
-If you find this project helpful, please consider giving it a star on GitHub. Your support helps us continue developing and maintaining this template.
+Uso interno do TCE-AC. O template TailAdmin base permanece sob licença MIT (ver crédito original em commits iniciais).

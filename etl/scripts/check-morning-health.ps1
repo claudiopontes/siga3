@@ -26,42 +26,64 @@ if (-not (Test-Path $logDir)) {
 }
 Write-Host ""
 
-Write-Host "== Check 3/4: Contagens no Supabase ==" -ForegroundColor Cyan
+Write-Host "== Check 3/4: Contagens no PostgreSQL ==" -ForegroundColor Cyan
 $nodeCheckCount = @'
 require("dotenv").config();
-const { createClient } = require("@supabase/supabase-js");
-const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+const { Client } = require("pg");
+const client = new Client({
+  connectionString: process.env.DATABASE_URL,
+  host: process.env.PGHOST,
+  port: process.env.PGPORT ? Number(process.env.PGPORT) : undefined,
+  database: process.env.PGDATABASE,
+  user: process.env.PGUSER,
+  password: process.env.PGPASSWORD,
+});
 (async () => {
-  for (const table of ["tb_despesa_combustivel_polanco", "receita_publica_categoria_mensal", "cauc_situacao_raw"]) {
-    const { count, error } = await sb.from(table).select("*", { count: "exact", head: true });
-    if (error) {
-      console.log(`${table} = ERRO: ${error.message}`);
-      continue;
+  await client.connect();
+  try {
+    for (const table of ["public.tb_despesa_combustivel_polanco", "public.receita_publica_categoria_mensal", "public.cauc_situacao_raw"]) {
+      try {
+        const r = await client.query(`SELECT count(*)::bigint AS total FROM ${table}`);
+        console.log(`${table} = ${r.rows[0].total}`);
+      } catch (err) {
+        console.log(`${table} = ERRO: ${err.message}`);
+      }
     }
-    console.log(`${table} = ${count ?? 0}`);
+  } finally {
+    await client.end();
   }
 })();
 '@
 $nodeCheckCount | node -
 Write-Host ""
 
-Write-Host "== Check 4/4: Modulos recentes no etl_log ==" -ForegroundColor Cyan
+Write-Host "== Check 4/4: Modulos recentes no audit.etl_log ==" -ForegroundColor Cyan
 $nodeCheckEtlLog = @'
 require("dotenv").config();
-const { createClient } = require("@supabase/supabase-js");
-const sb = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+const { Client } = require("pg");
+const client = new Client({
+  connectionString: process.env.DATABASE_URL,
+  host: process.env.PGHOST,
+  port: process.env.PGPORT ? Number(process.env.PGPORT) : undefined,
+  database: process.env.PGDATABASE,
+  user: process.env.PGUSER,
+  password: process.env.PGPASSWORD,
+});
 (async () => {
-  const { data, error } = await sb
-    .from("etl_log")
-    .select("modulo,status,registros,executado_em")
-    .in("modulo", ["cauc","apc_polanco_sync_supabase","dimensoes_csv","receita_publica","combustivel"])
-    .order("executado_em", { ascending: false })
-    .limit(15);
-  if (error) {
-    console.log("ERRO:", error.message);
-    process.exit(1);
+  await client.connect();
+  try {
+    const sql = `
+      SELECT modulo, status, registros, executado_em
+      FROM audit.etl_log
+      WHERE modulo IN ('cauc','combustivel_empenho_apc','dimensoes_csv','receita_publica','combustivel','dimensoes_ente_entidade_postgres')
+      ORDER BY executado_em DESC
+      LIMIT 15
+    `;
+    const r = await client.query(sql);
+    console.table(r.rows);
+  } finally {
+    await client.end();
   }
-  console.table(data);
 })();
 '@
 $nodeCheckEtlLog | node -

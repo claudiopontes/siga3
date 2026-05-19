@@ -2,100 +2,120 @@
 
 ## 1) Resumo do Projeto
 - Nome: Varadouro Digital Aquiry
-- Objetivo principal:
-  - Entregar paineis de transparencia e analise para apoio a decisao, com foco inicial em combustivel (NFe) e visualizacao territorial do Acre.
-- Publico-alvo:
-  - Equipe de gabinete/analistas e gestao publica que consultam indicadores e recortes por municipio, entidade e periodo.
+- Objetivo: portal interno do TCE-AC com paineis de transparencia, analise de processos e pautas de julgamento com IA, central de alertas do gabinete e copilot institucional Aquiry.
+- Publico-alvo: conselheiros, gabinetes e analistas do TCE-AC.
 
 ## 2) Stack e Ambiente
 - Frontend:
-  - Next.js 16 (App Router) + React 19 + TypeScript + Tailwind.
-- UI base:
-  - Template TailAdmin, com rotas customizadas no grupo `(admin)`.
-- Backend/Servicos:
-  - PostgreSQL local acessado pelo servidor Next.js via `src/lib/db.ts`.
-  - ETL Node/TypeScript em `etl/` para carga de fatos e dimensoes.
-  - Fonte de dados operacional: SQL Server (no ETL).
-- Variaveis de ambiente essenciais:
-  - Frontend/Next server: `DATABASE_URL`.
-  - ETL: `SUPABASE_SERVICE_ROLE_KEY`, `SQLSERVER_*`, `DIM_*_CSV`, `ETL_TIMEZONE`, `FACT_ETL_CRON`.
+  - Next.js 16 (App Router) + React 19 + TypeScript + Tailwind 4.
+  - Template TailAdmin como base, fortemente customizado.
+- Banco:
+  - PostgreSQL 17 local (Docker em `infra/postgres/`). Schemas `raw / stage / dw / mart / audit / public`.
+  - Acesso server-only via `pg` em `src/lib/db.ts`. Sem ORM.
+- Autenticacao:
+  - LDAP/AD (`ldapts`) contra `172.20.12.86:389`, dominio `tceac`. Autorizacao em `usuarios_autorizados`. Sessao JWT em cookie httpOnly.
+- IA:
+  - Azure OpenAI (Assistente Aquiry e analise IA de processos/pautas).
+  - Aquiry: pipeline deterministico + base documental versionada em `src/data/aquiry/base-conhecimento/` + busca externa multi-provider (Tavily/Brave/SerpAPI/Gemini) + auditoria por metadados (sem conteudo) em `public.aquiry_evento_uso`.
+- ETL standalone (`etl/`):
+  - Conectores Postgres, SQL Server (`mssql` + `msnodesqlv8`) e Supabase residual.
+  - 62 migrations versionadas em `etl/schema/postgres/`.
+  - Orquestrador noturno `etl/schedule.ts` (21 steps).
+- Variaveis de ambiente:
+  - Frontend: `DATABASE_URL`/`PG*`, `AZURE_OPENAI_*`, `AD_*`, `AUTH_SESSION_SECRET`, `REPOSITORIO_BASE_URL`, `AQUIRY_*` (opcional).
+  - ETL: `SUPABASE_*`, `SQLSERVER_*`, `DIM_*_CSV`, `ETL_TIMEZONE`, `FACT_ETL_CRON`, `RUN_*_NIGHTLY`.
+  - Ver `.env.example` para o conjunto completo.
 - Como rodar:
-  - Frontend: `npm install` e `npm run dev`.
-  - ETL: na pasta `etl`, `npm install`, depois `npm run combustivel`, `npm run dimensoes` ou `npm run agendar`.
+  - `docker compose -f infra/postgres/docker-compose.postgres.yml up -d`
+  - `cd etl && npm install && npm run postgres:migrate`
+  - `cd .. && npm install && npm run dev`
 
 ## 3) Decisoes Tecnicas (Fonte de Verdade)
-- Componentes client-side consomem dados por rotas API Next.js; acesso ao banco fica restrito ao servidor via `dbQuery`.
-- ETL de combustivel faz substituicao total das tabelas agregadas em cada execucao (estrategia simples e previsivel).
-- Frontend de combustivel possui fallback para schema legado sem coluna `emitente`.
-- Componentes de mapa (Leaflet) e mapas dinâmicos rodam client-side (`ssr: false`) para evitar conflitos de SSR.
+- Toda leitura do banco passa por rotas API Next.js (`/api/*`); cliente nunca toca banco.
+- SQL puro com `pg` (sem ORM). Migrations versionadas em arquivos `.sql` numerados.
+- ETLs por substituicao total ou incremental, dependendo do dominio; auditoria em `audit.etl_log` / `audit.etl_carga`.
+- Mapas Leaflet sempre `dynamic import` com `ssr: false`. Tiles CartoDB Light. Limites IBGE em tempo real.
+- Aquiry tem chamada real a Azure OpenAI; nao inventa dados; nao gera voto/parecer; auditoria sem conteudo textual.
+- Analise IA de processo usa cache por SHA-256 e suporta descarte/regeneracao (`public.ia_analise_processo_pauta`).
+- Disparo de ETL pela UI admin usa `spawn` + advisory lock Postgres para evitar concorrencia.
+- Pagina `/signup` foi removida (incompativel com fluxo AD); somente `/signin` permanece publico.
 
 ## 4) Estrutura Importante
 - Rotas principais:
-  - `src/app/(admin)/painel-combustivel/page.tsx`
+  - `src/app/(admin)/page.tsx` (Home / Alertas Gabinete)
+  - `src/app/(admin)/painel-{combustivel,combustivel-empenhos,receita-publica,despesa,cauc,cobertura-florestal,saude,social,siconfi}/...`
+  - `src/app/(admin)/pautas-julgamento/[sessaoId]/page.tsx`
+  - `src/app/(admin)/eprocessos-ce/processos/[processoId]/analise-ia/page.tsx`
+  - `src/app/(admin)/seguranca/{usuarios,etl,etl/configuracao}/page.tsx`
   - `src/app/(admin)/gabinete-digital/mapa/page.tsx`
 - Componentes criticos:
-  - `src/components/combustivel/PainelCombustivelClient.tsx`
-  - `src/components/combustivel/CombustivelHeaderFilters.tsx`
-  - `src/layout/AppHeader.tsx` e `src/layout/AppSidebar.tsx`
+  - `src/components/aquiry/*` (assistente + provider)
+  - `src/components/alertas-gabinete/AlertasGabineteClient.tsx`
+  - `src/components/pautas-julgamento/*` e `src/components/processos/*`
+  - `src/components/siconfi/*` e `src/components/saude/*`
+  - `src/layout/AppSidebar.tsx` e `src/layout/AppHeader.tsx`
+- APIs principais:
+  - `src/app/api/assistente-aquiry/route.ts`
+  - `src/app/api/ia/*` (analise de processo, resumo de pauta, jobs)
+  - `src/app/api/processos/*`, `src/app/api/pauta-julgamento/*`
+  - `src/app/api/despesa/*`, `src/app/api/siconfi/*`, `src/app/api/saude/*`, `src/app/api/alertas/*`
+  - `src/app/api/admin/etl/{status,configuracao,executar}/route.ts`
 - Infra/dados:
-  - `src/lib/db.ts`
-  - `etl/jobs/combustivel.ts`
-  - `etl/jobs/dimensoes-csv.ts`
-  - `etl/schedule.ts`
-  - `etl/schema/*.sql`
+  - `src/lib/db.ts`, `src/lib/auth/*`, `src/lib/ia/*`, `src/lib/aquiry/*`, `src/lib/fontes/siconfi/*`
+  - `etl/jobs/*`, `etl/schedule.ts`, `etl/schema/postgres/*` (000–260)
+  - `infra/postgres/docker-compose.postgres.yml`
 
 ## 5) Estado Atual
-- Ultima atualizacao: 2026-04-16
-- O que ja foi concluido:
-  - Rotas de menu para Combustivel e IDEB Acre (mapa) estao ativas.
-  - Painel de combustivel com filtros via query string (municipio, entidade, tipo, emitente).
-  - Carregamento de dados no painel com protecao para Supabase nao configurado.
-  - ETL com job de combustivel, job de dimensoes por CSV e scheduler diario.
-  - Validacao P0 executada em ambiente real (ETL -> Supabase -> leitura frontend):
-    - `npm run combustivel` (etl): sucesso em 2026-04-16T13:02:17Z, 3749 registros (log id 17).
-    - `npm run dimensoes` (etl): primeira tentativa falhou por CSV ausente (log id 18), depois sucesso em 2026-04-16T13:04:34Z, 5858 registros (log id 19).
-    - Conferencia Supabase apos carga:
-      - `combustivel_mensal=3507`, `combustivel_entidade=81`, `combustivel_tipo=8`, `combustivel_emitente=153`, `combustivel_kpis=1`.
-      - `aux_dim_uf=27`, `aux_dim_municipio=5571`, `aux_dim_ente=24`, `aux_dim_entidade=236`.
-      - `max(atualizado_em)` de `combustivel_*`: `2026-04-16T13:02:27.115+00:00`.
-      - `max(atualizado_em)` de `aux_dim_*`: `2026-04-16T13:04:34.031+00:00`.
-    - Leitura com chave anonima (simulando frontend): consultas em `combustivel_mensal` e `aux_dim_municipio` retornando dados sem erro de RLS/config.
-  - Automacao de dimensoes e scheduler noturno (P0 atual) concluida:
-    - `etl/jobs/dimensoes-csv.ts` agora faz auto-bootstrap dos CSVs quando arquivos estiverem ausentes, usando `aux_dim_*` do Supabase.
-    - Nova variavel de controle: `DIM_AUTO_BOOTSTRAP_FROM_SUPABASE` (default `true`).
-    - `etl/schedule.ts` evoluido para pipeline noturno unico: dimensoes -> combustivel (1x/dia), com `RUN_DIMENSOES_NIGHTLY` (default `true`).
-    - Validacao de resiliencia concluida em 2026-04-16:
-      - Simulado CSV ausente (`dim_uf.csv`) e o job `npm run dimensoes` regenerou automaticamente os arquivos e concluiu com sucesso (5858 registros).
-      - `npm run combustivel` executou em seguida com sucesso (3749 registros).
-      - `npm run agendar` iniciou scheduler com cron noturno unico sem erro.
-- O que esta em andamento:
-  - Refinar governanca da fonte oficial dos CSVs (quem atualiza, quando e checklist operacional).
-- O que esta bloqueado:
-  - Sem bloqueio para ETL de combustivel.
-  - Sem bloqueio tecnico para ETL de dimensoes apos auto-bootstrap.
+- Ultima atualizacao: 2026-05-19
+- Concluido recentemente:
+  - Sistema completo com 20+ paineis em producao interna.
+  - Assistente Aquiry com IA real (Azure OpenAI), base documental versionada, busca externa multi-provider e auditoria por metadados.
+  - Analise IA de processo e resumo de pauta com cache em Postgres, suporte a descarte e jobs assincronos.
+  - Autenticacao LDAP/AD real, autorizacao em Postgres, sessao JWT.
+  - ETL noturno consolidado em pipeline unico (21 steps) com flags por etapa.
+  - SICONFI (RREO/RGF/Extrato) e CAUC totalmente integrados.
+  - Saude: SIOPS, SISAGUA, InfoDengue, alertas de estrutura (CNES/UBS).
+  - Social: CadUnico e MIS (Bolsa Familia/BPC).
+  - Pagina `/signup` removida (era heranca do template, incompativel com AD).
+  - Documentacao raiz (`CLAUDE.md`, `README.md`, `.env.example`) atualizada para refletir o estado real do sistema.
+- Em andamento / pendente:
+  - Encerrar divida Supabase: dois jobs ainda sincronizam (APC Polanco e receita-publica).
+  - PNI e SIM dependem de ingestao manual via CSV/XLSX (APIs DataSUS instaveis).
+  - Mapa IDEB ainda usa dados simulados.
+  - Cobertura florestal ainda usa dados estaticos hardcoded.
+- Bloqueios:
+  - APIs DataSUS CKAN com 404 generalizado (ver `docs/datasus-inventario.md`).
+  - Sem testes automatizados e sem CI/CD.
 
 ## 6) Proxima Tarefa Prioritaria
-- Tarefa:
-  - Definir backlog funcional do modulo `gabinete-digital/mapa` (escopo V1) e implementar primeiro incremento.
+- Tarefa principal sugerida:
+  - Encerrar a divida Supabase (P0): migrar APC Polanco e receita-publica para destino unico Postgres e remover `@supabase/supabase-js` do ETL.
+- Alternativa P0:
+  - Integrar IDEB real (INEP) no mapa `/gabinete-digital/mapa`.
 - Criterio de pronto:
-  - Objetivo do mapa, filtros e interacoes V1 documentados.
-  - Primeira entrega funcional implementada no modulo de mapa.
+  - Pipeline noturno roda sem variaveis `SUPABASE_*` e marts equivalentes em Postgres validados, ou mapa IDEB carrega dados oficiais.
 - Riscos/atencao:
-  - CSVs de dimensoes continuam com baixa frequencia de atualizacao; manter processo de revisao periodica para evitar drift.
-  - Divergencia de schema (ex.: coluna `emitente` ausente em algum ambiente).
-  - Qualidade dos CSVs de dimensoes (header e encoding) impactando relacionamento por codigo.
+  - Frontend ja le apenas Postgres; risco esta no schema de destino e na compatibilidade dos consumidores ETL.
+  - IDEB real exige fonte autoritativa (INEP) e periodicidade definida.
 
 ## 7) Pendencias de Produto e Tecnica
 - Produto:
-  - Definir backlog funcional do modulo `gabinete-digital/mapa` (atualmente pagina base com `MapaAcre`).
-  - Definir KPIs oficiais e filtros obrigatorios para versao 1.
+  - Dados reais de IDEB e desmatamento.
+  - Refinar central de alertas do gabinete por conselheiro (personalizacao).
+  - Definir KPIs oficiais por painel.
 - Tecnica:
-  - Padronizar encoding de textos com acento para evitar exibicao inconsistente em alguns terminais.
-  - Criar checklist de publicacao (env, ETL, smoke test).
+  - Testes automatizados (Vitest + Playwright).
+  - CI/CD GitHub Actions.
+  - Persistir logs do ETL Admin em `audit.etl_log` em vez do console do Next.
+  - Substituir lookup por regex do Aquiry por RAG vetorial.
+  - Documentar e automatizar ingestao PNI/SIM quando DataSUS estabilizar.
+  - Padronizar encoding PT-BR em terminais Windows.
 - Divida tecnica:
-  - Alguns componentes possuem alta complexidade e merecem modularizacao incremental (especialmente filtros/dialogos do combustivel).
+  - Supabase residual em 2 tabelas (APC Polanco, receita-publica).
+  - `placeholder=` e textos UI revisar consistentemente.
+  - Servidor PDF eProcess fixo em IP `172.20.12.105:8090` (sem fallback/proxy).
 
 ## 8) Instrucao para Retomar no Proximo Chat
 Use esta frase no inicio da proxima conversa:
 
-`Continue o projeto Varadouro Digital Aquiry lendo HANDOFF.md e TODO.md. Foque no P0, execute e atualize os dois arquivos ao final da sessao.`
+`Continue o projeto Varadouro Digital Aquiry lendo HANDOFF.md e TODO.md. Foque no P0 (Supabase ou IDEB), execute e atualize os dois arquivos ao final da sessao.`

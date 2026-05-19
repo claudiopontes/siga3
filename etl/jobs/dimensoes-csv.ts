@@ -8,9 +8,8 @@
  */
 
 import "dotenv/config";
-import { readFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import path from "node:path";
-import { getSupabase } from "../connectors/supabase"; // usado apenas como fallback de leitura no bootstrap
 import { pgQuery, closePgPool } from "../connectors/postgres";
 
 type CsvRow = Record<string, string>;
@@ -67,7 +66,6 @@ const FILES = {
     path.join(DEFAULT_DIR, "dim_entidade.csv"),
 };
 const DRY_RUN = process.argv.includes("--dry-run");
-const AUTO_BOOTSTRAP_FROM_SUPABASE = (process.env.DIM_AUTO_BOOTSTRAP_FROM_SUPABASE ?? "true").toLowerCase() !== "false";
 
 function normalizarHeader(value: string): string {
   return value
@@ -174,80 +172,12 @@ function loadCsv(filePath: string): { rows: CsvRow[]; delimiter: string; encodin
   return { rows, delimiter, encoding };
 }
 
-async function selectAll<T extends Record<string, unknown>>(table: string, columns: string): Promise<T[]> {
-  const supabase = getSupabase();
-  const out: T[] = [];
-  const pageSize = 1000;
-  let offset = 0;
-
-  while (true) {
-    const { data, error } = await supabase
-      .from(table)
-      .select(columns)
-      .order("codigo", { ascending: true })
-      .range(offset, offset + pageSize - 1);
-
-    if (error) {
-      throw new Error(`Erro ao consultar ${table} no Supabase: ${error.message}`);
-    }
-
-    const batch = (data ?? []) as unknown as T[];
-    out.push(...batch);
-    if (batch.length < pageSize) break;
-    offset += pageSize;
-  }
-
-  return out;
-}
-
-function escapeCsvValue(value: unknown): string {
-  if (value === null || value === undefined) return "";
-  const str = String(value);
-  if (/[",;\n\r]/.test(str)) return `"${str.replace(/"/g, '""')}"`;
-  return str;
-}
-
-function writeCsvFile(filePath: string, headers: string[], rows: Record<string, unknown>[]): void {
-  const content = [headers.join(";")]
-    .concat(rows.map((row) => headers.map((h) => escapeCsvValue(row[h])).join(";")))
-    .join("\n")
-    .concat("\n");
-  writeFileSync(filePath, content, "utf8");
-}
-
 function requiredFilePaths(): string[] {
   return [FILES.uf, FILES.municipio, FILES.ente, FILES.entidade];
 }
 
 function missingCsvPaths(): string[] {
   return requiredFilePaths().filter((p) => !existsSync(p));
-}
-
-async function bootstrapCsvFromSupabase(): Promise<void> {
-  mkdirSync(DEFAULT_DIR, { recursive: true });
-
-  const [ufRows, municipioRows, enteRows, entidadeRows] = await Promise.all([
-    selectAll<Record<string, unknown>>("aux_dim_uf", "codigo,sigla,nome"),
-    selectAll<Record<string, unknown>>("aux_dim_municipio", "codigo,nome,uf_codigo"),
-    selectAll<Record<string, unknown>>("aux_dim_ente", "codigo,nome"),
-    selectAll<Record<string, unknown>>("aux_dim_entidade", "codigo,nome,ente_codigo,municipio_codigo,uf_codigo"),
-  ]);
-
-  const total = ufRows.length + municipioRows.length + enteRows.length + entidadeRows.length;
-  if (total === 0) {
-    throw new Error(
-      "Bootstrap automatico de CSV falhou: tabelas aux_dim_* estao vazias no Supabase e nao ha CSV local.",
-    );
-  }
-
-  writeCsvFile(FILES.uf, ["codigo", "sigla", "nome"], ufRows);
-  writeCsvFile(FILES.municipio, ["codigo", "nome", "uf_codigo"], municipioRows);
-  writeCsvFile(FILES.ente, ["codigo", "nome"], enteRows);
-  writeCsvFile(FILES.entidade, ["codigo", "nome", "ente_codigo", "municipio_codigo", "uf_codigo"], entidadeRows);
-
-  console.log(
-    `  -> CSVs bootstrapados do Supabase em ${DEFAULT_DIR} (uf=${ufRows.length} municipio=${municipioRows.length} ente=${enteRows.length} entidade=${entidadeRows.length})`,
-  );
 }
 
 function pick(row: CsvRow, aliases: string[]): string {
@@ -503,11 +433,12 @@ export async function executarCargaDimensoesCsv(): Promise<void> {
   try {
     const missing = missingCsvPaths();
     if (missing.length > 0) {
-      if (!AUTO_BOOTSTRAP_FROM_SUPABASE) {
-        throw new Error(`CSV(s) de dimensao ausente(s): ${missing.join(", ")}`);
-      }
-      console.log(`  -> CSV(s) ausente(s): ${missing.length}. Tentando bootstrap do Supabase...`);
-      await bootstrapCsvFromSupabase();
+      throw new Error(
+        `CSV(s) de dimensao ausente(s): ${missing.join(", ")}. ` +
+          "Restaure os arquivos em etl/data/dimensoes/ (versionados no repositorio ou " +
+          "obtidos via export de public.aux_dim_*), ou utilize a carga oficial das " +
+          "dimensoes pelo SQL Server com 'npm run dimensoes:postgres'.",
+      );
     }
 
     console.log("  -> Lendo arquivos CSV...");

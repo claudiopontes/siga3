@@ -8,7 +8,6 @@
     "apc-polanco-sync-supabase": "ts-node jobs/apc-polanco-sync-supabase.ts",
     "combustivel": "ts-node jobs/combustivel.ts",
     "dimensoes": "ts-node jobs/dimensoes-csv.ts",
-    "dimensoes-ente-entidade-sqlserver": "ts-node jobs/dimensoes-ente-entidade-sqlserver.ts",
     "dimensoes-receita-sqlserver": "ts-node jobs/dimensoes-receita-sqlserver.ts",
     "receita-publica": "ts-node jobs/receita-publica.ts",
     "populacao-ibge": "ts-node jobs/populacao-ibge.ts",
@@ -21,7 +20,6 @@
     "agendar": "ts-node schedule.ts",
     "postgres:check": "ts-node jobs/postgres-check.ts",
     "postgres:migrate": "ts-node jobs/postgres-migrate.ts",
-    "migrar:supabase-postgres": "ts-node jobs/migrar-supabase-para-postgres.ts",
     "mart:despesa": "ts-node jobs/refresh-mart-despesa.ts",
     "dimensoes:postgres": "ts-node jobs/dimensoes-ente-entidade-postgres.ts",
     "despesa:full:postgres": "ts-node jobs/despesa-full-postgres.ts",
@@ -95,7 +93,6 @@
     "carga-saude:postgres": "npm run carga-siops:postgres && npm run carga-cnes-ubs:postgres && npm run carga-sisagua:postgres && npm run carga-infodengue:postgres && npm run carga-pni:postgres && npm run carga-pni-cobertura:postgres && npm run carga-mortalidade:postgres"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.49.8",
     "dotenv": "^16.5.0",
     "msnodesqlv8": "^4.5.0",
     "mssql": "^11.0.1",

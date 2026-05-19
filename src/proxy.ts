@@ -1,7 +1,7 @@
 import { AUTH_COOKIE_NAME, verifySessionToken } from "@/lib/auth/session";
 import { NextRequest, NextResponse } from "next/server";
 
-const publicRoutes = ["/signin", "/signup"];
+const publicRoutes = ["/signin"];
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
