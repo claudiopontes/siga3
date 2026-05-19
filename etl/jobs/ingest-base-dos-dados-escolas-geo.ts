@@ -78,6 +78,20 @@ function txt(v: string | undefined): string | null {
   return t.length === 0 ? null : t;
 }
 
+/**
+ * Normaliza o campo `restricao_atendimento` da Base dos Dados para os mesmos
+ * rótulos usados pelo INEP (microdado), garantindo que o filtro "Situação"
+ * do painel não duplique categorias.
+ */
+function normalizarSituacao(v: string | null): string | null {
+  if (!v) return null;
+  const t = v.toUpperCase();
+  if (t.includes("PARALISADA"))   return "Paralisada";
+  if (t.includes("EXTINTA"))       return "Extinta";
+  if (t.includes("FUNCIONAMENTO")) return "Em atividade";
+  return v.trim();
+}
+
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
@@ -184,11 +198,15 @@ async function processar(arquivoPath: string): Promise<Resultado> {
         localizacao:      txt(cols[idxCol.get("localizacao") ?? -1]),
         porte:            txt(cols[idxCol.get("porte") ?? -1]),
         etapas_atendidas: txt(cols[idxCol.get("etapas_modalidades_oferecidas") ?? -1]),
-        situacao:         txt(cols[idxCol.get("restricao_atendimento") ?? -1]),
+        situacao:         normalizarSituacao(txt(cols[idxCol.get("restricao_atendimento") ?? -1])),
         latitude,
         longitude,
         endereco:         txt(cols[idxCol.get("endereco") ?? -1]),
-        ano_censo:        2024, // arquivo BD é cumulativo; ano de referência da carga
+        // ano_censo NÃO é setado pela BD — esse campo deve refletir o ano do
+        // microdado INEP (fonte autoritativa de matrículas/docentes/infra).
+        // Escolas que só vêm da BD ficam com ano_censo NULL, o que é coerente:
+        // não há dado de Censo para elas.
+        ano_censo:        null,
         payload:          JSON.stringify(payload),
       });
 

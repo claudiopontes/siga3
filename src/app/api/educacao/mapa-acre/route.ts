@@ -209,7 +209,68 @@ export async function GET(req: Request) {
       if (r.etapa === "EM") entry.em = v;
     }
 
-    // ── 9. Resposta ──
+    // ── 9. Agregados Censo (total estadual de matrículas, docentes e escolas com infra crítica) ──
+    let censo: {
+      total_escolas: number;
+      total_matriculas_bas: number | null;
+      total_matriculas_inf: number | null;
+      total_matriculas_fund: number | null;
+      total_matriculas_med: number | null;
+      total_docentes_bas: number | null;
+      ano_censo: number | null;
+      escolas_sem_agua: number;
+      escolas_sem_energia: number;
+      escolas_sem_internet: number;
+    } | null = null;
+
+    try {
+      const [c] = await dbQuery<{
+        total_escolas: string;
+        total_matriculas_bas: string | null;
+        total_matriculas_inf: string | null;
+        total_matriculas_fund: string | null;
+        total_matriculas_med: string | null;
+        total_docentes_bas: string | null;
+        ano_censo: number | null;
+        escolas_sem_agua: string;
+        escolas_sem_energia: string;
+        escolas_sem_internet: string;
+      }>(`
+        SELECT
+          COUNT(*)::text                                              AS total_escolas,
+          SUM(qt_mat_bas)::text                                       AS total_matriculas_bas,
+          SUM(qt_mat_inf)::text                                       AS total_matriculas_inf,
+          SUM(qt_mat_fund)::text                                      AS total_matriculas_fund,
+          SUM(qt_mat_med)::text                                       AS total_matriculas_med,
+          SUM(qt_doc_bas)::text                                       AS total_docentes_bas,
+          MAX(ano_censo)                                              AS ano_censo,
+          COUNT(*) FILTER (WHERE infra_agua_potavel = false)::text    AS escolas_sem_agua,
+          COUNT(*) FILTER (WHERE infra_energia_eletrica = false)::text AS escolas_sem_energia,
+          COUNT(*) FILTER (WHERE infra_internet = false)::text         AS escolas_sem_internet
+        FROM public.dim_escola_inep
+        WHERE sg_uf = 'AC'
+      `);
+
+      if (c) {
+        censo = {
+          total_escolas:           parseInt(c.total_escolas, 10),
+          total_matriculas_bas:    c.total_matriculas_bas  ? parseInt(c.total_matriculas_bas,  10) : null,
+          total_matriculas_inf:    c.total_matriculas_inf  ? parseInt(c.total_matriculas_inf,  10) : null,
+          total_matriculas_fund:   c.total_matriculas_fund ? parseInt(c.total_matriculas_fund, 10) : null,
+          total_matriculas_med:    c.total_matriculas_med  ? parseInt(c.total_matriculas_med,  10) : null,
+          total_docentes_bas:      c.total_docentes_bas    ? parseInt(c.total_docentes_bas,    10) : null,
+          ano_censo:               c.ano_censo,
+          escolas_sem_agua:        parseInt(c.escolas_sem_agua, 10),
+          escolas_sem_energia:     parseInt(c.escolas_sem_energia, 10),
+          escolas_sem_internet:    parseInt(c.escolas_sem_internet, 10),
+        };
+      }
+    } catch {
+      // tabela ou colunas ainda não migradas — segue sem censo
+      censo = null;
+    }
+
+    // ── 10. Resposta ──
     const [atual] = await dbQuery<{ atualizado_em: string }>(`
       SELECT MAX(atualizado_em)::text AS atualizado_em FROM mart.painel_educacao_municipio
     `);
@@ -220,8 +281,9 @@ export async function GET(req: Request) {
       municipios,
       kpis,
       evolucao,
+      censo,
       atualizado_em: atual?.atualizado_em ?? null,
-      fonte: "INEP — IDEB municipal (rede Pública) + Taxas de Rendimento Escolar",
+      fonte: "INEP — IDEB municipal (rede Pública) + Taxas de Rendimento Escolar + Censo Escolar",
       // Mantém alias 'total' para compatibilidade com chamadas antigas
       total: municipios.length,
     });

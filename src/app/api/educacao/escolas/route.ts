@@ -70,12 +70,31 @@ export async function GET(req: Request) {
       longitude: string | null;
       endereco: string | null;
       ano_censo: number | null;
-      ideb_ai: string | null;
-      meta_ai: string | null;
-      ideb_af: string | null;
-      meta_af: string | null;
-      ideb_em: string | null;
-      meta_em: string | null;
+      ideb_ai: string | null; meta_ai: string | null;
+      ideb_af: string | null; meta_af: string | null;
+      ideb_em: string | null; meta_em: string | null;
+      // Censo — matrículas e docentes
+      qt_mat_bas: number | null;
+      qt_mat_inf: number | null;
+      qt_mat_fund: number | null;
+      qt_mat_med: number | null;
+      qt_mat_prof: number | null;
+      qt_mat_eja: number | null;
+      qt_mat_esp: number | null;
+      qt_doc_bas: number | null;
+      // Censo — infraestrutura
+      infra_agua_potavel: boolean | null;
+      infra_energia_eletrica: boolean | null;
+      infra_esgoto: boolean | null;
+      infra_lixo_coletado: boolean | null;
+      infra_internet: boolean | null;
+      infra_internet_alunos: boolean | null;
+      infra_biblioteca: boolean | null;
+      infra_lab_informatica: boolean | null;
+      infra_lab_ciencias: boolean | null;
+      infra_quadra_esportes: boolean | null;
+      infra_alimentacao: boolean | null;
+      infra_acessibilidade: boolean | null;
     }
 
     const params: unknown[] = ["AC", edicaoSel];
@@ -114,7 +133,14 @@ export async function GET(req: Request) {
         dim.endereco, dim.ano_censo,
         ai.ideb_observado::text AS ideb_ai, ai.ideb_projetado::text AS meta_ai,
         af.ideb_observado::text AS ideb_af, af.ideb_projetado::text AS meta_af,
-        em.ideb_observado::text AS ideb_em, em.ideb_projetado::text AS meta_em
+        em.ideb_observado::text AS ideb_em, em.ideb_projetado::text AS meta_em,
+        dim.qt_mat_bas, dim.qt_mat_inf, dim.qt_mat_fund, dim.qt_mat_med,
+        dim.qt_mat_prof, dim.qt_mat_eja, dim.qt_mat_esp,
+        dim.qt_doc_bas,
+        dim.infra_agua_potavel, dim.infra_energia_eletrica, dim.infra_esgoto,
+        dim.infra_lixo_coletado, dim.infra_internet, dim.infra_internet_alunos,
+        dim.infra_biblioteca, dim.infra_lab_informatica, dim.infra_lab_ciencias,
+        dim.infra_quadra_esportes, dim.infra_alimentacao, dim.infra_acessibilidade
       FROM public.dim_escola_inep dim
       LEFT JOIN dw.fato_inep_ideb_escola ai
         ON ai.cod_escola = dim.cod_escola AND ai.etapa = 'AI' AND ai.ano = $2
@@ -160,6 +186,26 @@ export async function GET(req: Request) {
         if (!vals.length) return null;
         return vals.reduce((a, b) => a + b, 0) / vals.length;
       })(),
+      // Censo — matrículas, docentes e infraestrutura
+      qt_mat_bas:  r.qt_mat_bas,  qt_mat_inf:  r.qt_mat_inf,
+      qt_mat_fund: r.qt_mat_fund, qt_mat_med:  r.qt_mat_med,
+      qt_mat_prof: r.qt_mat_prof, qt_mat_eja:  r.qt_mat_eja,
+      qt_mat_esp:  r.qt_mat_esp,
+      qt_doc_bas:  r.qt_doc_bas,
+      infra: {
+        agua_potavel:     r.infra_agua_potavel,
+        energia_eletrica: r.infra_energia_eletrica,
+        esgoto:           r.infra_esgoto,
+        lixo_coletado:    r.infra_lixo_coletado,
+        internet:         r.infra_internet,
+        internet_alunos:  r.infra_internet_alunos,
+        biblioteca:       r.infra_biblioteca,
+        lab_informatica:  r.infra_lab_informatica,
+        lab_ciencias:     r.infra_lab_ciencias,
+        quadra_esportes:  r.infra_quadra_esportes,
+        alimentacao:      r.infra_alimentacao,
+        acessibilidade:   r.infra_acessibilidade,
+      },
     }));
 
     // ── 3. Filtros disponíveis (valores distintos) ──

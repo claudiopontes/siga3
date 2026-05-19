@@ -34,6 +34,7 @@ const AppHeader: React.FC = () => {
   const isSocialPage           = pathname === "/painel-social";
   const isMapaPage             = pathname === "/gabinete-digital/mapa" || pathname === "/painel-educacao";
   const isEscolasPage          = pathname === "/painel-educacao/escolas";
+  const isCensoPage            = pathname === "/painel-educacao/censo";
   const isCalendarPage         = pathname === "/calendar";
   const isProfilePage          = pathname === "/profile";
   const isUsuariosPage         = pathname === "/seguranca/usuarios";
@@ -47,42 +48,53 @@ const AppHeader: React.FC = () => {
 
   const breadcrumbs: Record<string, { crumbs: { label: string; href?: string }[] }> = {
     "/": { crumbs: [{ label: "Home" }] },
-    "/painel-combustivel": { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "Combustível NFe" }] },
-    "/painel-combustivel-empenhos": { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "Combustível Empenhos" }] },
-    "/painel-receita-publica": { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "Receita Pública" }] },
-    "/painel-despesa": { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "Despesa Pública" }] },
-    "/pesquisa-credores": { crumbs: [{ label: "Home", href: "/" }, { label: "Pesquisa de Credores" }] },
-    "/painel-social": { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "Vulnerabilidade Social" }] },
-    "/painel-cobertura-florestal": { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "Cobertura Florestal" }] },
-    "/painel-cauc": { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "CAUC Municípios" }] },
-    "/painel-siconfi": { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "Execução Orçamentária" }] },
-    "/painel-siconfi/rreo": { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "Execução Orçamentária", href: "/painel-siconfi" }, { label: "RREO" }] },
-    "/painel-siconfi/entregas": { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "Execução Orçamentária", href: "/painel-siconfi" }, { label: "Entregas e Pendências" }] },
+
+    // ── Fiscal & Orçamento ──
+    "/painel-combustivel":          { crumbs: [{ label: "Home", href: "/" }, { label: "Fiscal & Orçamento" }, { label: "Combustível NFe" }] },
+    "/painel-combustivel-empenhos": { crumbs: [{ label: "Home", href: "/" }, { label: "Fiscal & Orçamento" }, { label: "Combustível Empenhos" }] },
+    "/painel-receita-publica":      { crumbs: [{ label: "Home", href: "/" }, { label: "Fiscal & Orçamento" }, { label: "Receita Pública" }] },
+    "/painel-despesa":              { crumbs: [{ label: "Home", href: "/" }, { label: "Fiscal & Orçamento" }, { label: "Despesa Pública" }] },
+    "/pesquisa-credores":           { crumbs: [{ label: "Home", href: "/" }, { label: "Fiscal & Orçamento" }, { label: "Pesquisa de Credores" }] },
+    "/painel-siconfi":              { crumbs: [{ label: "Home", href: "/" }, { label: "Fiscal & Orçamento" }, { label: "Execução Orçamentária" }] },
+    "/painel-siconfi/rreo":         { crumbs: [{ label: "Home", href: "/" }, { label: "Fiscal & Orçamento" }, { label: "Execução Orçamentária", href: "/painel-siconfi" }, { label: "RREO" }] },
+    "/painel-siconfi/entregas":     { crumbs: [{ label: "Home", href: "/" }, { label: "Fiscal & Orçamento" }, { label: "Execução Orçamentária", href: "/painel-siconfi" }, { label: "Entregas e Pendências" }] },
     ...(pathname.startsWith("/painel-siconfi/rreo/") ? {
-      [pathname]: { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "Execução Orçamentária", href: "/painel-siconfi" }, { label: "RREO", href: "/painel-siconfi/rreo" }, { label: "Detalhe do Município" }] }
+      [pathname]: { crumbs: [{ label: "Home", href: "/" }, { label: "Fiscal & Orçamento" }, { label: "Execução Orçamentária", href: "/painel-siconfi" }, { label: "RREO", href: "/painel-siconfi/rreo" }, { label: "Detalhe do Município" }] }
     } : {}),
-    "/painel-saude": { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "Saúde Pública" }] },
-    "/painel-saude/qualidade-agua": { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "Saúde Pública", href: "/painel-saude" }, { label: "Qualidade da Água" }] },
-    "/painel-saude/vigilancia": { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "Saúde Pública", href: "/painel-saude" }, { label: "Vigilância Epidemiológica" }] },
-    "/painel-saude/orcamento": { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "Saúde Pública", href: "/painel-saude" }, { label: "Orçamento e Aplicação" }] },
-    "/painel-saude/vacinacao":   { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "Saúde Pública", href: "/painel-saude" }, { label: "Vacinação" }] },
-    "/painel-saude/mortalidade": { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "Saúde Pública", href: "/painel-saude" }, { label: "Mortalidade e Nascidos Vivos" }] },
-    "/gabinete-digital/mapa": { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "Indicadores Educacionais" }] },
-    "/painel-educacao":       { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "Indicadores Educacionais" }] },
-    "/painel-educacao/escolas": { crumbs: [{ label: "Home", href: "/" }, { label: "Painéis" }, { label: "Indicadores Educacionais", href: "/painel-educacao" }, { label: "Escolas" }] },
+
+    // ── Controle Externo ──
+    "/painel-cauc":           { crumbs: [{ label: "Home", href: "/" }, { label: "Controle Externo" }, { label: "CAUC Municípios" }] },
+
+    // ── Saúde ──
+    "/painel-saude":             { crumbs: [{ label: "Home", href: "/" }, { label: "Saúde" }, { label: "Saúde Pública" }] },
+    "/painel-saude/qualidade-agua": { crumbs: [{ label: "Home", href: "/" }, { label: "Saúde" }, { label: "Saúde Pública", href: "/painel-saude" }, { label: "Qualidade da Água" }] },
+    "/painel-saude/vigilancia":  { crumbs: [{ label: "Home", href: "/" }, { label: "Saúde" }, { label: "Saúde Pública", href: "/painel-saude" }, { label: "Vigilância Epidemiológica" }] },
+    "/painel-saude/orcamento":   { crumbs: [{ label: "Home", href: "/" }, { label: "Saúde" }, { label: "Saúde Pública", href: "/painel-saude" }, { label: "Orçamento e Aplicação" }] },
+    "/painel-saude/vacinacao":   { crumbs: [{ label: "Home", href: "/" }, { label: "Saúde" }, { label: "Saúde Pública", href: "/painel-saude" }, { label: "Vacinação" }] },
+    "/painel-saude/mortalidade": { crumbs: [{ label: "Home", href: "/" }, { label: "Saúde" }, { label: "Saúde Pública", href: "/painel-saude" }, { label: "Mortalidade e Nascidos Vivos" }] },
+
+    // ── Social ──
+    "/painel-social":             { crumbs: [{ label: "Home", href: "/" }, { label: "Social" }, { label: "Vulnerabilidade Social" }] },
+
+    // ── Meio Ambiente ──
+    "/painel-cobertura-florestal": { crumbs: [{ label: "Home", href: "/" }, { label: "Meio Ambiente" }, { label: "Cobertura Florestal" }] },
+    "/gabinete-digital/mapa":   { crumbs: [{ label: "Home", href: "/" }, { label: "Educação" }, { label: "Indicadores Educacionais" }] },
+    "/painel-educacao":         { crumbs: [{ label: "Home", href: "/" }, { label: "Educação" }, { label: "Indicadores Educacionais" }] },
+    "/painel-educacao/escolas": { crumbs: [{ label: "Home", href: "/" }, { label: "Educação" }, { label: "Escolas" }] },
+    "/painel-educacao/censo":   { crumbs: [{ label: "Home", href: "/" }, { label: "Educação" }, { label: "Censo Escolar" }] },
     "/remessas/calendario": { crumbs: [{ label: "Home", href: "/" }, { label: "Controle Externo" }, { label: "Envio SIPAC/TCE" }] },
     "/calendar": { crumbs: [{ label: "Home", href: "/" }, { label: "Agenda" }] },
     "/profile": { crumbs: [{ label: "Home", href: "/" }, { label: "Perfil" }] },
     "/seguranca/usuarios": { crumbs: [{ label: "Home", href: "/" }, { label: "Segurança" }, { label: "Usuários e perfis" }] },
     "/seguranca/etl": { crumbs: [{ label: "Home", href: "/" }, { label: "Segurança" }, { label: "Status das Bases ETL" }] },
     "/seguranca/etl/configuracao": { crumbs: [{ label: "Home", href: "/" }, { label: "Segurança" }, { label: "Configuração de ETLs" }] },
-    "/pautas-julgamento": { crumbs: [{ label: "Home", href: "/" }, { label: "eProcessos CE" }, { label: "Pautas para Julgamento" }] },
+    "/pautas-julgamento": { crumbs: [{ label: "Home", href: "/" }, { label: "Controle Externo" }, { label: "Pautas para Julgamento" }] },
     ...(pathname.startsWith("/pautas-julgamento/") ? {
-      [pathname]: { crumbs: [{ label: "Home", href: "/" }, { label: "eProcessos CE" }, { label: "Pautas para Julgamento", href: "/pautas-julgamento" }, { label: "Processos da Sessão" }] }
+      [pathname]: { crumbs: [{ label: "Home", href: "/" }, { label: "Controle Externo" }, { label: "Pautas para Julgamento", href: "/pautas-julgamento" }, { label: "Processos da Sessão" }] }
     } : {}),
-    "/eprocessos-ce/processos": { crumbs: [{ label: "Home", href: "/" }, { label: "eProcessos CE" }, { label: "Processos" }] },
+    "/eprocessos-ce/processos": { crumbs: [{ label: "Home", href: "/" }, { label: "Controle Externo" }, { label: "Processos" }] },
     ...(pathname.startsWith("/eprocessos-ce/processos/") ? {
-      [pathname]: { crumbs: [{ label: "Home", href: "/" }, { label: "eProcessos CE" }, { label: "Processos", href: "/eprocessos-ce/processos" }, { label: "Detalhe" }] }
+      [pathname]: { crumbs: [{ label: "Home", href: "/" }, { label: "Controle Externo" }, { label: "Processos", href: "/eprocessos-ce/processos" }, { label: "Detalhe" }] }
     } : {}),
   };
 
@@ -98,7 +110,7 @@ const AppHeader: React.FC = () => {
           : raw;
       return [
         { label: "Home", href: "/" },
-        { label: "Painéis" },
+        { label: "Fiscal & Orçamento" },
         { label: "Despesa Pública", href: "/painel-despesa" },
         { label: raw ? `Credor ${docFormatado}` : "Detalhe do Credor" },
       ];
@@ -244,6 +256,17 @@ const AppHeader: React.FC = () => {
                 <span className="text-xs text-gray-400 dark:text-gray-500">
                   <span className="font-medium text-sky-600 dark:text-sky-400">IDEB Escolas</span>
                   {" · Censo Escolar · "}INEP/MEC
+                </span>
+              </div>
+            )}
+            {isCensoPage && (
+              <div className="flex flex-col">
+                <span className="truncate text-sm text-gray-600 dark:text-gray-300">
+                  Análise do Censo Escolar do Acre — matrículas, docentes e infraestrutura das escolas em atividade.
+                </span>
+                <span className="text-xs text-gray-400 dark:text-gray-500">
+                  <span className="font-medium text-indigo-600 dark:text-indigo-400">Censo Escolar</span>
+                  {" · "}INEP/MEC
                 </span>
               </div>
             )}

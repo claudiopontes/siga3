@@ -29,6 +29,18 @@ interface ApiResp {
     pior: { nome: string | null; valor: number } | null;
   } | null;
   evolucao: Array<{ ano: number; ai: number | null; af: number | null; em: number | null }>;
+  censo: {
+    total_escolas: number;
+    total_matriculas_bas: number | null;
+    total_matriculas_inf: number | null;
+    total_matriculas_fund: number | null;
+    total_matriculas_med: number | null;
+    total_docentes_bas: number | null;
+    ano_censo: number | null;
+    escolas_sem_agua: number;
+    escolas_sem_energia: number;
+    escolas_sem_internet: number;
+  } | null;
   atualizado_em: string | null;
   fonte: string;
 }
@@ -143,9 +155,9 @@ export default function PainelEducacaoClient() {
   return (
     <div className="space-y-4">
       {/* ─── KPIs ─── */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
         {carregando ? (
-          Array.from({ length: 5 }).map((_, i) => <SkeletonCard key={i} />)
+          Array.from({ length: 7 }).map((_, i) => <SkeletonCard key={i} />)
         ) : (
           <>
             <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
@@ -156,7 +168,7 @@ export default function PainelEducacaoClient() {
             <div className="rounded-xl border border-emerald-200 bg-white p-4 dark:border-emerald-800/40 dark:bg-gray-800">
               <p className="text-xs font-medium uppercase tracking-wide text-emerald-500">IDEB — Anos Iniciais</p>
               <p className="mt-1 text-3xl font-bold" style={{ color: getColorIdeb(kpis?.ideb_medio_ai ?? null) }}>{fmt(kpis?.ideb_medio_ai)}</p>
-              <p className="mt-1 text-[10px] text-gray-400">Meta média {fmt(kpis?.ideb_medio_ai ?? null)}</p>
+              <p className="mt-1 text-[10px] text-gray-400">Rede pública</p>
             </div>
             <div className="rounded-xl border border-blue-200 bg-white p-4 dark:border-blue-800/40 dark:bg-gray-800">
               <p className="text-xs font-medium uppercase tracking-wide text-blue-500">IDEB — Anos Finais</p>
@@ -172,6 +184,26 @@ export default function PainelEducacaoClient() {
               <p className="text-xs font-medium uppercase tracking-wide text-red-500">Abandono Fund.</p>
               <p className="mt-1 text-3xl font-bold text-red-600 dark:text-red-400">{fmt(abandonoMedio)}%</p>
               <p className="mt-1 text-[10px] text-gray-400">Quanto menor, melhor</p>
+            </div>
+            <div className="rounded-xl border border-indigo-200 bg-white p-4 dark:border-indigo-800/40 dark:bg-gray-800">
+              <p className="text-xs font-medium uppercase tracking-wide text-indigo-600">Matrículas</p>
+              <p className="mt-1 text-3xl font-bold text-indigo-700 dark:text-indigo-400">
+                {resp?.censo?.total_matriculas_bas !== null && resp?.censo?.total_matriculas_bas !== undefined
+                  ? resp.censo.total_matriculas_bas.toLocaleString("pt-BR")
+                  : "—"}
+              </p>
+              <p className="mt-1 text-[10px] text-gray-400">
+                Censo {resp?.censo?.ano_censo ?? "—"} · {resp?.censo?.total_escolas ?? 0} escolas
+              </p>
+            </div>
+            <div className="rounded-xl border border-purple-200 bg-white p-4 dark:border-purple-800/40 dark:bg-gray-800">
+              <p className="text-xs font-medium uppercase tracking-wide text-purple-600">Docentes</p>
+              <p className="mt-1 text-3xl font-bold text-purple-700 dark:text-purple-400">
+                {resp?.censo?.total_docentes_bas !== null && resp?.censo?.total_docentes_bas !== undefined
+                  ? resp.censo.total_docentes_bas.toLocaleString("pt-BR")
+                  : "—"}
+              </p>
+              <p className="mt-1 text-[10px] text-gray-400">Educação Básica</p>
             </div>
           </>
         )}

@@ -112,15 +112,41 @@ function detectarSeparador(linha: string): string {
 function num(v: string | undefined): number | null {
   if (!v) return null;
   const t = v.trim().replace(",", ".");
-  if (!t || t === "0" && false) return null; // 0 é válido para flags
+  if (!t) return null;
   const n = parseFloat(t);
   return Number.isFinite(n) ? n : null;
+}
+
+function int(v: string | undefined): number | null {
+  if (!v) return null;
+  const t = v.trim();
+  if (!t) return null;
+  const n = parseInt(t, 10);
+  return Number.isFinite(n) ? n : null;
+}
+
+/** Microdado INEP usa "0"/"1" para flags binárias. Vazio = desconhecido. */
+function bool(v: string | undefined): boolean | null {
+  if (!v) return null;
+  const t = v.trim();
+  if (t === "1") return true;
+  if (t === "0") return false;
+  return null;
 }
 
 function txt(v: string | undefined): string | null {
   if (v === undefined || v === null) return null;
   const t = v.trim();
   return t.length === 0 ? null : t;
+}
+
+/** Lê coluna do CSV pela primeira variante de nome que existir. */
+function pick(cols: string[], idxCol: Map<string, number>, ...nomes: string[]): string | undefined {
+  for (const n of nomes) {
+    const i = idxCol.get(n);
+    if (i !== undefined && i >= 0) return cols[i];
+  }
+  return undefined;
 }
 
 function dependenciaPorCodigo(co: string | undefined): string | null {
@@ -207,8 +233,19 @@ async function processarZip(zipPath: string): Promise<Resultado> {
             INSERT INTO public.dim_escola_inep
               (cod_escola, no_escola, cod_municipio, no_municipio, sg_uf,
                dependencia, localizacao, porte, etapas_atendidas, situacao,
-               latitude, longitude, endereco, ano_censo, payload, atualizado_em)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15, now())
+               latitude, longitude, endereco, ano_censo, payload,
+               qt_mat_bas, qt_mat_inf, qt_mat_fund, qt_mat_med, qt_mat_prof, qt_mat_eja, qt_mat_esp,
+               qt_doc_bas, qt_doc_inf, qt_doc_fund, qt_doc_med, qt_doc_prof,
+               infra_agua_potavel, infra_energia_eletrica, infra_esgoto, infra_lixo_coletado,
+               infra_internet, infra_internet_alunos, infra_biblioteca,
+               infra_lab_informatica, infra_lab_ciencias, infra_quadra_esportes,
+               infra_alimentacao, infra_acessibilidade,
+               atualizado_em)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,
+                    $16,$17,$18,$19,$20,$21,$22,
+                    $23,$24,$25,$26,$27,
+                    $28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,
+                    now())
             ON CONFLICT (cod_escola) DO UPDATE SET
               no_escola         = COALESCE(EXCLUDED.no_escola, public.dim_escola_inep.no_escola),
               cod_municipio     = COALESCE(EXCLUDED.cod_municipio, public.dim_escola_inep.cod_municipio),
@@ -224,11 +261,41 @@ async function processarZip(zipPath: string): Promise<Resultado> {
               endereco          = COALESCE(EXCLUDED.endereco, public.dim_escola_inep.endereco),
               ano_censo         = EXCLUDED.ano_censo,
               payload           = EXCLUDED.payload,
+              qt_mat_bas        = COALESCE(EXCLUDED.qt_mat_bas, public.dim_escola_inep.qt_mat_bas),
+              qt_mat_inf        = COALESCE(EXCLUDED.qt_mat_inf, public.dim_escola_inep.qt_mat_inf),
+              qt_mat_fund       = COALESCE(EXCLUDED.qt_mat_fund, public.dim_escola_inep.qt_mat_fund),
+              qt_mat_med        = COALESCE(EXCLUDED.qt_mat_med, public.dim_escola_inep.qt_mat_med),
+              qt_mat_prof       = COALESCE(EXCLUDED.qt_mat_prof, public.dim_escola_inep.qt_mat_prof),
+              qt_mat_eja        = COALESCE(EXCLUDED.qt_mat_eja, public.dim_escola_inep.qt_mat_eja),
+              qt_mat_esp        = COALESCE(EXCLUDED.qt_mat_esp, public.dim_escola_inep.qt_mat_esp),
+              qt_doc_bas        = COALESCE(EXCLUDED.qt_doc_bas, public.dim_escola_inep.qt_doc_bas),
+              qt_doc_inf        = COALESCE(EXCLUDED.qt_doc_inf, public.dim_escola_inep.qt_doc_inf),
+              qt_doc_fund       = COALESCE(EXCLUDED.qt_doc_fund, public.dim_escola_inep.qt_doc_fund),
+              qt_doc_med        = COALESCE(EXCLUDED.qt_doc_med, public.dim_escola_inep.qt_doc_med),
+              qt_doc_prof       = COALESCE(EXCLUDED.qt_doc_prof, public.dim_escola_inep.qt_doc_prof),
+              infra_agua_potavel     = COALESCE(EXCLUDED.infra_agua_potavel, public.dim_escola_inep.infra_agua_potavel),
+              infra_energia_eletrica = COALESCE(EXCLUDED.infra_energia_eletrica, public.dim_escola_inep.infra_energia_eletrica),
+              infra_esgoto           = COALESCE(EXCLUDED.infra_esgoto, public.dim_escola_inep.infra_esgoto),
+              infra_lixo_coletado    = COALESCE(EXCLUDED.infra_lixo_coletado, public.dim_escola_inep.infra_lixo_coletado),
+              infra_internet         = COALESCE(EXCLUDED.infra_internet, public.dim_escola_inep.infra_internet),
+              infra_internet_alunos  = COALESCE(EXCLUDED.infra_internet_alunos, public.dim_escola_inep.infra_internet_alunos),
+              infra_biblioteca       = COALESCE(EXCLUDED.infra_biblioteca, public.dim_escola_inep.infra_biblioteca),
+              infra_lab_informatica  = COALESCE(EXCLUDED.infra_lab_informatica, public.dim_escola_inep.infra_lab_informatica),
+              infra_lab_ciencias     = COALESCE(EXCLUDED.infra_lab_ciencias, public.dim_escola_inep.infra_lab_ciencias),
+              infra_quadra_esportes  = COALESCE(EXCLUDED.infra_quadra_esportes, public.dim_escola_inep.infra_quadra_esportes),
+              infra_alimentacao      = COALESCE(EXCLUDED.infra_alimentacao, public.dim_escola_inep.infra_alimentacao),
+              infra_acessibilidade   = COALESCE(EXCLUDED.infra_acessibilidade, public.dim_escola_inep.infra_acessibilidade),
               atualizado_em     = now()
           `, [
             row.cod_escola, row.no_escola, row.cod_municipio, row.no_municipio, row.sg_uf,
             row.dependencia, row.localizacao, row.porte, row.etapas_atendidas, row.situacao,
             row.latitude, row.longitude, row.endereco, row.ano_censo, row.payload,
+            row.qt_mat_bas, row.qt_mat_inf, row.qt_mat_fund, row.qt_mat_med, row.qt_mat_prof, row.qt_mat_eja, row.qt_mat_esp,
+            row.qt_doc_bas, row.qt_doc_inf, row.qt_doc_fund, row.qt_doc_med, row.qt_doc_prof,
+            row.infra_agua_potavel, row.infra_energia_eletrica, row.infra_esgoto, row.infra_lixo_coletado,
+            row.infra_internet, row.infra_internet_alunos, row.infra_biblioteca,
+            row.infra_lab_informatica, row.infra_lab_ciencias, row.infra_quadra_esportes,
+            row.infra_alimentacao, row.infra_acessibilidade,
           ]);
         }
       });
@@ -283,6 +350,44 @@ async function processarZip(zipPath: string): Promise<Resultado> {
         DS_ENDERECO:    txt(cols[idxCol.get("DS_ENDERECO") ?? -1]),
       };
 
+      // Matrículas (variações de nome ao longo dos anos)
+      const qt_mat_bas  = int(pick(cols, idxCol, "QT_MAT_BAS", "QT_MATRICULAS"));
+      const qt_mat_inf  = int(pick(cols, idxCol, "QT_MAT_INF",  "QT_MAT_EI"));
+      const qt_mat_fund = int(pick(cols, idxCol, "QT_MAT_FUND"));
+      const qt_mat_med  = int(pick(cols, idxCol, "QT_MAT_MED"));
+      const qt_mat_prof = int(pick(cols, idxCol, "QT_MAT_PROF", "QT_MAT_EP"));
+      const qt_mat_eja  = int(pick(cols, idxCol, "QT_MAT_EJA"));
+      const qt_mat_esp  = int(pick(cols, idxCol, "QT_MAT_ESP"));
+
+      // Docentes
+      const qt_doc_bas  = int(pick(cols, idxCol, "QT_DOC_BAS",  "QT_DOCENTES"));
+      const qt_doc_inf  = int(pick(cols, idxCol, "QT_DOC_INF",  "QT_DOC_EI"));
+      const qt_doc_fund = int(pick(cols, idxCol, "QT_DOC_FUND"));
+      const qt_doc_med  = int(pick(cols, idxCol, "QT_DOC_MED"));
+      const qt_doc_prof = int(pick(cols, idxCol, "QT_DOC_PROF", "QT_DOC_EP"));
+
+      // Infraestrutura (flags 0/1) — pares com fallback comum.
+      // Para água/energia/esgoto/lixo, o INEP usa colunas "INEXISTENTE" (true = NÃO TEM!).
+      // Invertemos para semantica positiva ("tem água" = !INEXISTENTE).
+      const aguaIxn   = bool(pick(cols, idxCol, "IN_AGUA_INEXISTENTE"));
+      const energiaIx = bool(pick(cols, idxCol, "IN_ENERGIA_INEXISTENTE"));
+      const esgotoIx  = bool(pick(cols, idxCol, "IN_ESGOTO_INEXISTENTE"));
+      const lixoIx    = bool(pick(cols, idxCol, "IN_LIXO_SERVICO_COLETA")); // 1 = tem coleta
+
+      const infra_agua_potavel     = aguaIxn === null ? bool(pick(cols, idxCol, "IN_AGUA_POTAVEL", "IN_AGUA_FILTRADA")) : !aguaIxn;
+      const infra_energia_eletrica = energiaIx === null ? bool(pick(cols, idxCol, "IN_ENERGIA_REDE_PUBLICA")) : !energiaIx;
+      const infra_esgoto           = esgotoIx === null ? bool(pick(cols, idxCol, "IN_ESGOTO_REDE_PUBLICA", "IN_ESGOTO_FOSSA")) : !esgotoIx;
+      const infra_lixo_coletado    = lixoIx;
+
+      const infra_internet         = bool(pick(cols, idxCol, "IN_INTERNET"));
+      const infra_internet_alunos  = bool(pick(cols, idxCol, "IN_INTERNET_ALUNOS"));
+      const infra_biblioteca       = bool(pick(cols, idxCol, "IN_BIBLIOTECA", "IN_BIBLIOTECA_SALA_LEITURA"));
+      const infra_lab_informatica  = bool(pick(cols, idxCol, "IN_LABORATORIO_INFORMATICA"));
+      const infra_lab_ciencias     = bool(pick(cols, idxCol, "IN_LABORATORIO_CIENCIAS"));
+      const infra_quadra_esportes  = bool(pick(cols, idxCol, "IN_QUADRA_ESPORTES"));
+      const infra_alimentacao      = bool(pick(cols, idxCol, "IN_ALIMENTACAO"));
+      const infra_acessibilidade   = bool(pick(cols, idxCol, "IN_ACESSIBILIDADE_RAMPAS", "IN_ACESSIBILIDADE_CORRIMAO"));
+
       bufferInsert.push({
         cod_escola,
         no_escola:    txt(cols[idxCol.get("NO_ENTIDADE") ?? idxCol.get("NO_ESCOLA") ?? -1]),
@@ -304,6 +409,12 @@ async function processarZip(zipPath: string): Promise<Resultado> {
         endereco:     txt(cols[idxCol.get("DS_ENDERECO") ?? -1]),
         ano_censo:    ano,
         payload:      JSON.stringify(payload),
+        qt_mat_bas, qt_mat_inf, qt_mat_fund, qt_mat_med, qt_mat_prof, qt_mat_eja, qt_mat_esp,
+        qt_doc_bas, qt_doc_inf, qt_doc_fund, qt_doc_med, qt_doc_prof,
+        infra_agua_potavel, infra_energia_eletrica, infra_esgoto, infra_lixo_coletado,
+        infra_internet, infra_internet_alunos, infra_biblioteca,
+        infra_lab_informatica, infra_lab_ciencias, infra_quadra_esportes,
+        infra_alimentacao, infra_acessibilidade,
       });
 
       if (bufferInsert.length >= BATCH) {

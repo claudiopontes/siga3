@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import MapaEscolas from "./MapaEscolas";
+import BlocoCenso from "./BlocoCenso";
 import type { EscolaPonto } from "./MapaEscolasContent";
 
 // ---------------------------------------------------------------------------
@@ -392,6 +393,8 @@ export default function EscolasClient() {
                   </tbody>
                 </table>
               </section>
+
+              <BlocoCenso detalhe={detalhe} />
             </div>
           </div>
         </div>

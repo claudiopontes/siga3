@@ -27,6 +27,30 @@ export interface EscolaPonto {
   ideb_af: number | null; meta_af: number | null;
   ideb_em: number | null; meta_em: number | null;
   ideb_composite: number | null;
+  // Censo
+  ano_censo?:   number | null;
+  qt_mat_bas?:  number | null;
+  qt_mat_inf?:  number | null;
+  qt_mat_fund?: number | null;
+  qt_mat_med?:  number | null;
+  qt_mat_prof?: number | null;
+  qt_mat_eja?:  number | null;
+  qt_mat_esp?:  number | null;
+  qt_doc_bas?:  number | null;
+  infra?: {
+    agua_potavel: boolean | null;
+    energia_eletrica: boolean | null;
+    esgoto: boolean | null;
+    lixo_coletado: boolean | null;
+    internet: boolean | null;
+    internet_alunos: boolean | null;
+    biblioteca: boolean | null;
+    lab_informatica: boolean | null;
+    lab_ciencias: boolean | null;
+    quadra_esportes: boolean | null;
+    alimentacao: boolean | null;
+    acessibilidade: boolean | null;
+  };
 }
 
 interface Props {
