@@ -1,25 +1,25 @@
 "use client";
 
-import { useState, useCallback, useEffect, useMemo } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { usePathname } from "next/navigation";
 import AssistenteAquiryButton from "./AssistenteAquiryButton";
 import AssistenteAquiryPanel, { type MensagemChat } from "./AssistenteAquiryPanel";
 import AssistenteAquiryDialogoInicial from "./AssistenteAquiryDialogoInicial";
 import { useAssistenteAquiryContext } from "./AssistenteAquiryProvider";
+import { usePosicaoBotaoAquiry } from "./usePosicaoBotaoAquiry";
 import {
   identificarContextoPaginaAquiry,
-  montarMensagemBoasVindas,
   type ContextoPaginaPayload,
 } from "@/lib/aquiry/identificarContextoPaginaAquiry";
 import type { ContextoTelaAquiry, OrigemRespostaAquiry } from "@/lib/aquiry/tiposContextoAquiry";
 
-// Janela de histórico enviada à API (exclui a mensagem de boas-vindas)
 const HISTORICO_MAX_LOCAL = 10;
 const CHAVE_DIALOGO_INICIAL = "aquiry:dialogo-inicial-visto";
 
 export default function AssistenteAquiry() {
   const pathname = usePathname();
   const { contextoTela } = useAssistenteAquiryContext();
+  const posicaoBotao = usePosicaoBotaoAquiry();
 
   const contexto = useMemo(
     () => identificarContextoPaginaAquiry(pathname ?? "/"),
@@ -28,34 +28,38 @@ export default function AssistenteAquiry() {
 
   const [aberto, setAberto] = useState(false);
   const [dialogoInicialAberto, setDialogoInicialAberto] = useState(false);
-  const [mensagens, setMensagens] = useState<MensagemChat[]>(() => [
-    { role: "assistant", content: montarMensagemBoasVindas(contexto) },
-  ]);
+  const [mensagens, setMensagens] = useState<MensagemChat[]>([]);
   const [carregando, setCarregando] = useState(false);
   const [valorInput, setValorInput] = useState("");
 
   const abrirPainel = useCallback(() => {
-    setAberto((atual) => {
-      const proximo = !atual;
-      if (proximo && typeof window !== "undefined") {
-        try {
-          if (sessionStorage.getItem(CHAVE_DIALOGO_INICIAL) !== "1") {
-            setDialogoInicialAberto(true);
-          }
-        } catch {
-          // sessionStorage indisponível — segue sem bloquear
-        }
+    if (aberto) {
+      setAberto(false);
+      return;
+    }
+    let dialogoPendente = false;
+    if (typeof window !== "undefined") {
+      try {
+        dialogoPendente = sessionStorage.getItem(CHAVE_DIALOGO_INICIAL) !== "1";
+      } catch {
+        dialogoPendente = false;
       }
-      return proximo;
-    });
-  }, []);
+    }
+    if (dialogoPendente) {
+      setDialogoInicialAberto(true);
+    } else {
+      setAberto(true);
+    }
+  }, [aberto]);
 
   const fecharDialogoInicial = useCallback(() => {
     setDialogoInicialAberto(false);
+    setAberto(true);
   }, []);
 
   const concluirDialogoInicial = useCallback((naoMostrarNovamente: boolean) => {
     setDialogoInicialAberto(false);
+    setAberto(true);
     if (naoMostrarNovamente && typeof window !== "undefined") {
       try {
         sessionStorage.setItem(CHAVE_DIALOGO_INICIAL, "1");
@@ -65,15 +69,16 @@ export default function AssistenteAquiry() {
     }
   }, []);
 
-  // Atualiza a mensagem de boas-vindas ao navegar, mas não interrompe conversa em andamento
-  useEffect(() => {
-    setMensagens((prev) => {
-      if (prev.length === 1 && prev[0].role === "assistant") {
-        return [{ role: "assistant", content: montarMensagemBoasVindas(contexto) }];
+  const reabrirDialogoInicial = useCallback(() => {
+    if (typeof window !== "undefined") {
+      try {
+        sessionStorage.removeItem(CHAVE_DIALOGO_INICIAL);
+      } catch {
+        // ignora
       }
-      return prev;
-    });
-  }, [contexto]);
+    }
+    setDialogoInicialAberto(true);
+  }, []);
 
   const enviar = useCallback(
     async (perguntaOverride?: string) => {
@@ -88,7 +93,6 @@ export default function AssistenteAquiry() {
       setCarregando(true);
 
       const historico = mensagens
-        .slice(1)
         .slice(-HISTORICO_MAX_LOCAL)
         .map((m) => ({ role: m.role, content: m.content }));
 
@@ -149,14 +153,11 @@ export default function AssistenteAquiry() {
     [valorInput, carregando, mensagens, pathname, contexto, contextoTela]
   );
 
-  // Reinicia a conversa restaurando a mensagem inicial contextual da tela atual.
-  // Não recarrega a página nem altera o contexto.
+  // Reinicia a conversa esvaziando o histórico. Sugestões da tela atual permanecem acessíveis.
   const novaConversa = useCallback(() => {
-    setMensagens([
-      { role: "assistant", content: montarMensagemBoasVindas(contexto) },
-    ]);
+    setMensagens([]);
     setValorInput("");
-  }, [contexto]);
+  }, []);
 
   return (
     <>
@@ -170,8 +171,10 @@ export default function AssistenteAquiry() {
         onEnviar={enviar}
         onNovaConversa={novaConversa}
         sugestoes={contexto.sugestoes}
+        onResetarPosicaoBotao={posicaoBotao.mobile ? undefined : posicaoBotao.resetarPosicao}
+        onAbrirDialogoInicial={reabrirDialogoInicial}
       />
-      <AssistenteAquiryButton aberto={aberto} onClick={abrirPainel} />
+      <AssistenteAquiryButton aberto={aberto} onClick={abrirPainel} posicao={posicaoBotao} />
       <AssistenteAquiryDialogoInicial
         aberto={dialogoInicialAberto}
         onFechar={fecharDialogoInicial}

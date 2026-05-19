@@ -3,9 +3,9 @@ import { Suspense } from "react";
 import AlertasGabineteClient from "@/components/alertas-gabinete/AlertasGabineteClient";
 
 export const metadata: Metadata = {
-  title: "Alertas do Gabinete | Varadouro Digital",
+  title: "Varadouro Digital Aquiry — TCE-AC",
   description:
-    "Central de alertas e prioridades para os gabinetes dos conselheiros do TCE/AC.",
+    "Central de alertas e prioridades para os gabinetes dos conselheiros do TCE-AC.",
 };
 
 export default function Home() {

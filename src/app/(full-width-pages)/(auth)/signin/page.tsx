@@ -2,8 +2,8 @@ import SignInForm from "@/components/auth/SignInForm";
 import { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Next.js SignIn Page | TailAdmin - Next.js Dashboard Template",
-  description: "This is Next.js Signin Page TailAdmin Dashboard Template",
+  title: "Entrar | Varadouro Digital Aquiry — TCE-AC",
+  description: "Acesso ao Varadouro Digital Aquiry — Tribunal de Contas do Estado do Acre.",
 };
 
 export default function SignIn() {

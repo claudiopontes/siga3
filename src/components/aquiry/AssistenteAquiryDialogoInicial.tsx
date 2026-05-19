@@ -21,7 +21,8 @@ export default function AssistenteAquiryDialogoInicial({
   onFechar,
   onSelecionarSugestao,
 }: AssistenteAquiryDialogoInicialProps) {
-  const [naoMostrarNovamente, setNaoMostrarNovamente] = useState(true);
+  const [naoMostrarNovamente, setNaoMostrarNovamente] = useState(false);
+  const [sugestoesAbertas, setSugestoesAbertas] = useState(true);
   const botaoComecarRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
@@ -132,21 +133,46 @@ export default function AssistenteAquiryDialogoInicial({
           </div>
 
           <div className="mt-4">
-            <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
-              Exemplos de perguntas
-            </p>
-            <div className="flex flex-col gap-1.5 sm:flex-row sm:flex-wrap">
-              {SUGESTOES_INICIAIS.map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  onClick={() => handleSugestao(s)}
-                  className="rounded-full border border-blue-100 bg-blue-50 px-3 py-1.5 text-left text-[12px] text-blue-700 transition-colors hover:bg-blue-100 dark:border-blue-800 dark:bg-blue-900/20 dark:text-blue-300 dark:hover:bg-blue-900/40"
-                >
-                  {s}
-                </button>
-              ))}
-            </div>
+            <button
+              type="button"
+              onClick={() => setSugestoesAbertas((v) => !v)}
+              aria-expanded={sugestoesAbertas}
+              aria-controls="aquiry-dialogo-inicial-sugestoes"
+              className="inline-flex items-center gap-1 text-[10.5px] font-semibold uppercase tracking-wider text-gray-500 transition-colors hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+            >
+              <span>Exemplos de perguntas</span>
+              <svg
+                width="11"
+                height="11"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+                className={`transition-transform ${sugestoesAbertas ? "rotate-180" : ""}`}
+              >
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </button>
+            {sugestoesAbertas && (
+              <div
+                id="aquiry-dialogo-inicial-sugestoes"
+                className="mt-2 flex flex-col gap-1.5 sm:flex-row sm:flex-wrap"
+              >
+                {SUGESTOES_INICIAIS.map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => handleSugestao(s)}
+                    className="rounded-full border border-blue-100 bg-blue-50 px-3 py-1.5 text-left text-[12px] text-blue-700 transition-colors hover:bg-blue-100 dark:border-blue-800 dark:bg-blue-900/20 dark:text-blue-300 dark:hover:bg-blue-900/40"
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 

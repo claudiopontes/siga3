@@ -21,6 +21,8 @@ interface AssistenteAquiryPanelProps {
   onEnviar: (pergunta?: string) => void;
   onNovaConversa: () => void;
   sugestoes: string[];
+  onResetarPosicaoBotao?: () => void;
+  onAbrirDialogoInicial?: () => void;
 }
 
 // Limite de sugestões visíveis no estado inicial — reduz poluição visual.
@@ -61,6 +63,8 @@ export default function AssistenteAquiryPanel({
   onEnviar,
   onNovaConversa,
   sugestoes,
+  onResetarPosicaoBotao,
+  onAbrirDialogoInicial,
 }: AssistenteAquiryPanelProps) {
   const containerMensagensRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -117,8 +121,7 @@ export default function AssistenteAquiryPanel({
     // Shift+Enter: quebra de linha — comportamento padrão do textarea
   }
 
-  const inicioConversa = mensagens.length <= 1 && !carregando;
-  const mostrarSugestoes = (inicioConversa || sugestoesAbertas) && sugestoes.length > 0;
+  const mostrarSugestoes = sugestoesAbertas && sugestoes.length > 0;
 
   if (!aberto) return null;
 
@@ -127,8 +130,8 @@ export default function AssistenteAquiryPanel({
       role="dialog"
       aria-label="Assistente Aquiry"
       aria-modal="false"
-      className="fixed bottom-5 right-5 z-99989 flex w-[calc(100vw-40px)] max-w-[420px] flex-col overflow-hidden rounded-2xl border border-emerald-100 bg-white shadow-2xl dark:border-emerald-900/40 dark:bg-gray-900 sm:w-[420px]"
-      style={{ maxHeight: "calc(100vh - 100px)" }}
+      className="fixed bottom-5 right-5 flex w-[calc(100vw-40px)] max-w-[420px] flex-col overflow-hidden rounded-2xl border border-emerald-100 bg-white shadow-2xl dark:border-emerald-900/40 dark:bg-gray-900 sm:w-[420px]"
+      style={{ zIndex: 100000, height: "min(640px, calc(100vh - 140px))", maxHeight: "calc(100vh - 140px)" }}
     >
       {/* Cabeçalho */}
       <div className="flex shrink-0 items-center justify-between gap-3 border-b border-emerald-200 bg-white px-4 py-4 dark:border-emerald-800/40 dark:bg-gray-900">
@@ -150,6 +153,57 @@ export default function AssistenteAquiryPanel({
           </div>
         </div>
         <div className="flex items-center gap-1">
+          {onAbrirDialogoInicial && (
+            <button
+              type="button"
+              onClick={onAbrirDialogoInicial}
+              aria-label="Sobre o Assistente Aquiry"
+              title="Sobre o Assistente Aquiry"
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-300"
+            >
+              <svg
+                width="15"
+                height="15"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <circle cx="12" cy="12" r="10" />
+                <line x1="12" y1="16" x2="12" y2="12" />
+                <line x1="12" y1="8" x2="12.01" y2="8" />
+              </svg>
+            </button>
+          )}
+          {onResetarPosicaoBotao && (
+            <button
+              type="button"
+              onClick={onResetarPosicaoBotao}
+              aria-label="Voltar botão à posição padrão"
+              title="Voltar botão à posição padrão"
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-300"
+            >
+              <svg
+                width="15"
+                height="15"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <circle cx="12" cy="12" r="9" />
+                <circle cx="12" cy="12" r="4" />
+                <line x1="12" y1="2" x2="12" y2="5" />
+                <line x1="12" y1="19" x2="12" y2="22" />
+              </svg>
+            </button>
+          )}
           <button
             type="button"
             onClick={novaConversaHandler}
@@ -191,33 +245,10 @@ export default function AssistenteAquiryPanel({
         </div>
       </div>
 
-      {/* Chip institucional */}
-      <div className="shrink-0 border-b border-amber-100 bg-amber-50 px-4 py-1.5 dark:border-amber-900/40 dark:bg-amber-900/15">
-        <p className="flex items-center gap-1.5 text-[10.5px] font-medium leading-tight text-amber-800 dark:text-amber-200">
-          <svg
-            width="12"
-            height="12"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-            className="shrink-0"
-          >
-            <path d="M12 9v4" />
-            <path d="M12 17h.01" />
-            <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z" />
-          </svg>
-          <span>Insumo de apoio · Revisão humana obrigatória</span>
-        </p>
-      </div>
-
       {/* Histórico de mensagens */}
       <div
         ref={containerMensagensRef}
-        className="flex min-h-[120px] flex-1 flex-col gap-3 overflow-y-auto p-4"
+        className="flex min-h-[180px] flex-1 flex-col gap-3 overflow-y-auto p-4"
       >
         {mensagens.map((msg, i) => (
           <div
@@ -426,16 +457,14 @@ export default function AssistenteAquiryPanel({
             <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
               Sugestões
             </p>
-            {!inicioConversa && (
-              <button
-                type="button"
-                onClick={() => setSugestoesAbertas(false)}
-                aria-label="Ocultar sugestões"
-                className="text-[10px] text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
-              >
-                ocultar
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={() => setSugestoesAbertas(false)}
+              aria-label="Ocultar sugestões"
+              className="text-[10px] text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
+            >
+              ocultar
+            </button>
           </div>
           <div className="flex flex-wrap gap-1.5">
             {sugestoes.slice(0, SUGESTOES_VISIVEIS).map((s) => (
@@ -519,9 +548,6 @@ export default function AssistenteAquiryPanel({
             </svg>
           </button>
         </div>
-        <p className="mt-1.5 text-center text-[9px] leading-tight text-gray-400 dark:text-gray-600">
-          Respostas são orientações gerais e devem ser revistas pelo gabinete · Shift+Enter para nova linha
-        </p>
       </div>
     </div>
   );
