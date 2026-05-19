@@ -389,32 +389,32 @@ export default function RreoClient() {
                   )}
                   {oc.tipo_alerta === "siconfi_pessoal_consolidado_acima_referencia" && (
                     <p className="mt-2 text-[11px] text-red-600 dark:text-red-400">
-                      Triagem: relação consolidada (Exec.+Leg.) acima de 60% da RCL. Requer verificação por Poder.
+                      Triagem consolidada complementar, sem substituição da análise individual por Poder.
                     </p>
                   )}
                   {oc.tipo_alerta === "siconfi_pessoal_consolidado_proximo_referencia" && (
                     <p className="mt-2 text-[11px] text-orange-600 dark:text-orange-400">
-                      Triagem: relação consolidada (Exec.+Leg.) entre 54% e 60% da RCL. Acompanhar evolução.
+                      Triagem consolidada complementar, sem substituição da análise individual por Poder.
                     </p>
                   )}
                   {oc.tipo_alerta === "siconfi_pessoal_executivo_acima_referencia" && (
                     <p className="mt-2 text-[11px] text-red-600 dark:text-red-400">
-                      Análise por Poder com base no campo instituição do RREO. Verificar memória de cálculo antes de conclusão institucional.
+                      Triagem por Poder com base em instituição identificada como Prefeitura no RREO.
                     </p>
                   )}
                   {oc.tipo_alerta === "siconfi_pessoal_executivo_proximo_referencia" && (
                     <p className="mt-2 text-[11px] text-orange-600 dark:text-orange-400">
-                      Análise por Poder com base no campo instituição do RREO. Verificar memória de cálculo antes de conclusão institucional.
+                      Triagem por Poder com base em instituição identificada como Prefeitura no RREO.
                     </p>
                   )}
                   {oc.tipo_alerta === "siconfi_pessoal_legislativo_acima_referencia" && (
-                    <p className="mt-2 text-[11px] text-red-600 dark:text-red-400">
-                      Análise por Poder com base no campo instituição do RREO. Verificar memória de cálculo antes de conclusão institucional.
+                    <p className="mt-2 text-[11px] text-gray-600 dark:text-gray-400">
+                      Cálculo do Legislativo depende de fonte fiscal específica. Atualmente não há dados suficientes no DataLake/RGF para ativar esta verificação.
                     </p>
                   )}
                   {oc.tipo_alerta === "siconfi_pessoal_legislativo_proximo_referencia" && (
-                    <p className="mt-2 text-[11px] text-orange-600 dark:text-orange-400">
-                      Análise por Poder com base no campo instituição do RREO. Verificar memória de cálculo antes de conclusão institucional.
+                    <p className="mt-2 text-[11px] text-gray-600 dark:text-gray-400">
+                      Cálculo do Legislativo depende de fonte fiscal específica. Atualmente não há dados suficientes no DataLake/RGF para ativar esta verificação.
                     </p>
                   )}
                 </div>

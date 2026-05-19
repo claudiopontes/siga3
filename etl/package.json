@@ -66,6 +66,7 @@
     "refresh-mart-siconfi-rgf": "tsx jobs/refresh-mart-siconfi-rgf.ts",
     "carga-siconfi-rgf:postgres": "npm run siconfi-rgf:full:postgres && npm run refresh-mart-siconfi-rgf",
     "siconfi-rgf:inspecionar-contas": "tsx jobs/siconfi-rgf-inspecionar-contas.ts",
+    "siconfi-rgf:inspecionar-pessoal-legislativo": "tsx jobs/siconfi-rgf-inspecionar-pessoal-legislativo.ts",
     "carga-full:postgres": "npm run dimensoes:postgres && npm run despesa:full:postgres && npm run mart:despesa && npm run credor:enriquecimento",
     "datasus:inspecionar": "ts-node jobs/datasus-inspecionar.ts",
     "infodengue:inspecionar": "ts-node jobs/infodengue-inspecionar.ts",

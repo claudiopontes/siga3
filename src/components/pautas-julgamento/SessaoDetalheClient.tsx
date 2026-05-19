@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import TabelaProcessosPauta from "./TabelaProcessosPauta";
 import type { ProcessoPautaJulgamentoView, SessaoJulgamentoView } from "./tipos";
+import { useContextoAquiry } from "@/components/aquiry/useContextoAquiry";
 
 function formatarData(valor: string | null) {
   if (!valor) return "—";
@@ -52,6 +53,56 @@ export default function SessaoDetalheClient({ sessaoId }: { sessaoId: number }) 
 
     return () => { cancelado = true; };
   }, [sessaoId]);
+
+  // --- Contexto para o Assistente Aquiry ---
+  // Resumo agregado da sessão e dos processos em pauta — sem documentos.
+  const aquiryDados = useMemo(() => {
+    if (loadingSessao || loadingProcessos) return { carregando: true } as const;
+    if (!sessao) return { carregando: true } as const;
+
+    const REGEX_SENSIVEL = /denuncia|representa|cautelar|tomada\s+de\s+contas\s+especial|pedido\s+de\s+vista|recurso/i;
+    const sensiveis = processos.filter((p) =>
+      REGEX_SENSIVEL.test(`${p.nome_classe ?? ""} ${p.assunto ?? ""} ${p.objeto ?? ""}`),
+    ).length;
+    const comVista = processos.filter(
+      (p) => (p.situacao ?? "").toLowerCase().includes("vista"),
+    ).length;
+    const classes = Array.from(
+      new Set(processos.map((p) => p.nome_classe).filter((c): c is string => !!c)),
+    ).slice(0, 5);
+    const relatores = Array.from(
+      new Set(processos.map((p) => p.nome_relator).filter((r): r is string => !!r)),
+    ).slice(0, 5);
+
+    return {
+      sessaoId: sessao.id,
+      sessaoNumero: sessao.numero,
+      dataRealizacao: sessao.dt_realizacao,
+      orgaoJulgador: sessao.orgao_julgador,
+      tipo: sessao.tipo,
+      situacao: sessao.situacao,
+      qtdJulgamento: sessao.qtd_julgamento,
+      qtdJulgado: sessao.qtd_julgado,
+      qtdVistas: sessao.qtd_vistas,
+      processosCarregados: processos.length,
+      processosClassesSensiveis: sensiveis,
+      processosEmVista: comVista,
+      classesPresentes: classes.join("; ") || null,
+      relatoresPresentes: relatores.join("; ") || null,
+    };
+  }, [loadingSessao, loadingProcessos, sessao, processos]);
+
+  useContextoAquiry({
+    titulo: "Sessão de Julgamento — pauta",
+    descricao: "Detalhe de sessão de julgamento e lista de processos em pauta.",
+    dados: aquiryDados,
+    observacoes: [
+      "Contexto baseado apenas nos metadados da sessão e dos processos visíveis.",
+      "O assistente não acessou relatórios técnicos, MPC ou documentos processuais.",
+      "Não emite voto, conclusão decisória ou afirmação de irregularidade.",
+    ],
+    fontes: ["Contexto da tela de pauta (sessão)"],
+  });
 
   if (loadingSessao) {
     return (

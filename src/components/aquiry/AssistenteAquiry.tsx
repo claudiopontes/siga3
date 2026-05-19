@@ -115,6 +115,15 @@ export default function AssistenteAquiry() {
     [valorInput, carregando, mensagens, pathname, contexto, contextoTela]
   );
 
+  // Reinicia a conversa restaurando a mensagem inicial contextual da tela atual.
+  // Não recarrega a página nem altera o contexto.
+  const novaConversa = useCallback(() => {
+    setMensagens([
+      { role: "assistant", content: montarMensagemBoasVindas(contexto) },
+    ]);
+    setValorInput("");
+  }, [contexto]);
+
   return (
     <>
       <AssistenteAquiryPanel
@@ -125,6 +134,7 @@ export default function AssistenteAquiry() {
         valorInput={valorInput}
         onChangeInput={setValorInput}
         onEnviar={enviar}
+        onNovaConversa={novaConversa}
         sugestoes={contexto.sugestoes}
       />
       <AssistenteAquiryButton aberto={aberto} onClick={() => setAberto((v) => !v)} />

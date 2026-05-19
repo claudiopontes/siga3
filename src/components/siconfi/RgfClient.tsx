@@ -230,8 +230,10 @@ export default function RgfClient() {
       <div className="flex items-start gap-3 rounded-xl border border-blue-100 bg-blue-50/60 p-4 text-sm dark:border-blue-900/30 dark:bg-blue-900/10">
         <Info className="mt-0.5 h-4 w-4 shrink-0 text-blue-500 dark:text-blue-400" />
         <p className="text-xs leading-relaxed text-blue-700 dark:text-blue-300">
-            O painel exibe o <strong>status de entrega do RGF ao SICONFI</strong> — confirmado via Extrato de Entregas do Tesouro Nacional.
-          Indicadores fiscais (despesa com pessoal em relação à RCL) serão adicionados quando disponíveis na API do DataLake.
+          O RGF nesta versão apresenta <strong>presença de dados/extrato de entregas</strong> e
+          pontos estruturais. O DataLake/RGF não disponibilizou dados fiscais suficientes para
+          cálculo de despesa com pessoal por Poder; a verificação do <strong>Legislativo</strong>{" "}
+          depende de fonte oficial complementar.
         </p>
       </div>
 

@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, ArrowDownUp, Clock, ExternalLink, FileText, Gavel } from "lucide-react";
 import ModalAnaliseProcessoPautaIA from "@/components/pautas-julgamento/ModalAnaliseProcessoPautaIA";
+import { useContextoAquiry } from "@/components/aquiry/useContextoAquiry";
 
 function formatarData(valor: string | null) {
   if (!valor) return "—";
@@ -83,10 +84,19 @@ function useAsyncData<T>(url: string) {
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelado = false;
+  // Padrão React: ao trocar a `url` (prop), reseta o estado durante o render
+  // em vez de chamar setState no corpo do effect (regra react-hooks/set-state-in-effect).
+  // Veja https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes.
+  const [urlAtual, setUrlAtual] = useState(url);
+  if (url !== urlAtual) {
+    setUrlAtual(url);
+    setData(null);
     setLoading(true);
     setErro(null);
+  }
+
+  useEffect(() => {
+    let cancelado = false;
     fetch(url)
       .then((r) => r.json())
       .then((d) => {
@@ -123,34 +133,6 @@ function categorizarDocumento(tipo: string | null): CategoriaDocumento {
     t.startsWith("RELATÓRIO DE ANÁLISE TÉCNICA")
   ) return "relatorio";
   return null;
-}
-
-function BadgeTipoDocumento({ tipo }: { tipo: string | null }) {
-  const categoria = categorizarDocumento(tipo);
-  const label = tipo ?? "—";
-
-  if (categoria === "decisao") {
-    return (
-      <span className="inline-flex items-center rounded-md bg-green-50 px-2 py-0.5 text-[11px] font-semibold text-green-700 ring-1 ring-inset ring-green-600/20 dark:bg-green-900/30 dark:text-green-400 dark:ring-green-500/30">
-        {label}
-      </span>
-    );
-  }
-  if (categoria === "parecer-ministerial") {
-    return (
-      <span className="inline-flex items-center rounded-md bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700 ring-1 ring-inset ring-amber-600/20 dark:bg-amber-900/30 dark:text-amber-400 dark:ring-amber-500/30">
-        {label}
-      </span>
-    );
-  }
-  if (categoria === "relatorio") {
-    return (
-      <span className="inline-flex items-center rounded-md bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-700 ring-1 ring-inset ring-blue-600/20 dark:bg-blue-900/30 dark:text-blue-400 dark:ring-blue-500/30">
-        {label}
-      </span>
-    );
-  }
-  return <span className="text-xs text-gray-700 dark:text-gray-300">{label}</span>;
 }
 
 function TimelineMovimentacoes({ movimentacoes }: { movimentacoes: MovimentacaoRow[] }) {
@@ -439,6 +421,65 @@ export default function ProcessoDetalheClient({ processoId }: { processoId: numb
     useAsyncData<MovimentacaoRow[]>(`/api/processos/${processoId}/movimentacoes`);
   const { data: arquivos, loading: loadingArq, erro: erroArq } =
     useAsyncData<ArquivoRow[]>(`/api/processos/${processoId}/arquivos`);
+
+  // --- Contexto para o Assistente Aquiry ---
+  // Resumo do processo + contadores de aba; sem conteúdo de documento.
+  const aquiryDados = useMemo(() => {
+    if (loadingP) return { carregando: true } as const;
+    if (!processo) return { carregando: true } as const;
+
+    const arqs = arquivos ?? [];
+    const movs = movimentacoes ?? [];
+    const sess = sessoes ?? [];
+
+    const temRelatorioTecnico = arqs.some(
+      (a) => categorizarDocumento(a.nm_tipo_docm) === "relatorio",
+    );
+    const temParecerMpc = arqs.some(
+      (a) => categorizarDocumento(a.nm_tipo_docm) === "parecer-ministerial",
+    );
+    const temDecisao = arqs.some(
+      (a) => categorizarDocumento(a.nm_tipo_docm) === "decisao",
+    );
+    const REGEX_SENSIVEL = /denuncia|representa|cautelar|tomada\s+de\s+contas\s+especial|recurso/i;
+    const classeOuObjetoSensivel = REGEX_SENSIVEL.test(
+      `${processo.nome_classe ?? ""} ${processo.objeto ?? ""} ${processo.assunto ?? ""}`,
+    );
+
+    return {
+      processoId: processo.processo_id,
+      numero: processo.numero_fmt,
+      ano: processo.ano,
+      classe: processo.nome_classe,
+      assunto: processo.assunto,
+      objeto: (processo.objeto ?? "").slice(0, 300) || null,
+      orgao: processo.nome_orgao,
+      relator: processo.nome_relator,
+      parte: processo.nome_1_parte,
+      situacao: processo.situacao,
+      setorAtual: processo.setor_atual,
+      qtdArquivos: arqs.length,
+      qtdMovimentacoes: movs.length,
+      qtdSessoes: sess.length,
+      temRelatorioTecnico,
+      temParecerMpc,
+      temDecisao,
+      classeOuObjetoSensivel,
+      processosApensados: processo.processos_apensados ?? null,
+    };
+  }, [loadingP, processo, arquivos, movimentacoes, sessoes]);
+
+  useContextoAquiry({
+    titulo: "Processo — detalhe",
+    descricao: "Detalhe de processo com metadados, contadores de documentos, movimentações e sessões.",
+    dados: aquiryDados,
+    observacoes: [
+      "Contexto baseado apenas em metadados visíveis na tela.",
+      "O assistente não leu o conteúdo de documentos (PDFs, relatórios, pareceres).",
+      "Não emite voto, parecer conclusivo nem afirmação de irregularidade.",
+    ],
+    fontes: ["Contexto da tela de processo"],
+  });
 
   if (loadingP) {
     return (

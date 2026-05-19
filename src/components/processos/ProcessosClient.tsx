@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Search, ChevronLeft, ChevronRight, FileText, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
+import { useContextoAquiry } from "@/components/aquiry/useContextoAquiry";
 
 const POR_PAGINA = 25;
 
@@ -317,6 +318,48 @@ export default function ProcessosClient() {
   }, []);
 
   useEffect(() => { void buscarDados(searchParams); }, [searchParams, buscarDados]);
+
+  // --- Contexto para o Assistente Aquiry ---
+  // Resumo agregado da listagem visível: filtros, total e classes/relatores
+  // presentes nas linhas atuais. Sem dado processual individual.
+  const aquiryDados = useMemo(() => {
+    if (loading) return { carregando: true } as const;
+    const classes = Array.from(
+      new Set(dados.map((d) => d.nome_classe).filter((c): c is string => !!c)),
+    ).slice(0, 5);
+    const relatores = Array.from(
+      new Set(dados.map((d) => d.nome_relator).filter((r): r is string => !!r)),
+    ).slice(0, 5);
+    return {
+      totalGeral: total,
+      visiveisNaPagina: dados.length,
+      pagina,
+      totalPaginas,
+      filtroBusca: busca || null,
+      filtroAno: selectedAno || null,
+      filtroClasse: selectedClasse || null,
+      filtroSituacao: selectedSituacao || null,
+      filtroRelator: selectedRelator || null,
+      filtrosAtivos: activeFilterCount,
+      classesNaPagina: classes.join("; ") || null,
+      relatoresNaPagina: relatores.join("; ") || null,
+    };
+  }, [
+    loading, dados, total, pagina, totalPaginas, busca,
+    selectedAno, selectedClasse, selectedSituacao, selectedRelator,
+    activeFilterCount,
+  ]);
+
+  useContextoAquiry({
+    titulo: "Processos — listagem",
+    descricao: "Listagem paginada de processos do TCE-AC, com filtros aplicáveis.",
+    dados: aquiryDados,
+    observacoes: [
+      "Contexto reflete apenas a página/filtros atualmente visíveis.",
+      "O assistente não acessou conteúdo processual nesta fase.",
+    ],
+    fontes: ["Contexto da tela de processos"],
+  });
 
   function thClass(col: SortCol) {
     return `cursor-pointer select-none px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wide transition-colors hover:text-gray-800 dark:hover:text-gray-200 ${

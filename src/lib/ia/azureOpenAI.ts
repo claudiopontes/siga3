@@ -53,7 +53,13 @@ export async function chamarAzureOpenAI(params: ParamsChamada): Promise<string> 
   const conteudo: string | undefined = json?.choices?.[0]?.message?.content;
 
   if (!conteudo) {
-    throw new Error("Resposta vazia do Azure OpenAI.");
+    const finishReason = json?.choices?.[0]?.finish_reason;
+    const usage = json?.usage;
+    throw new Error(
+      `Resposta vazia do Azure OpenAI (finish_reason=${finishReason ?? "?"}, usage=${
+        usage ? JSON.stringify(usage) : "?"
+      }).`,
+    );
   }
 
   return conteudo;

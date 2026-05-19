@@ -90,7 +90,7 @@ function AcessoRapido({
       </div>
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-semibold text-gray-800 dark:text-white">{titulo}</p>
-        <p className="truncate text-xs text-gray-400 dark:text-gray-500">{fonte}</p>
+        <p className="truncate text-xs text-gray-400 dark:text-gray-500" title={fonte}>{fonte}</p>
       </div>
       <div className="flex shrink-0 items-center gap-2">
         {criticos > 0 && (
@@ -369,7 +369,7 @@ export default function PainelSiconfiClient() {
           />
           <AcessoRapido
             titulo="RGF"
-            fonte="Relatório de Gestão Fiscal · SICONFI"
+            fonte="Acompanhamento inicial do Relatório de Gestão Fiscal, com presença de dados e entregas. Indicadores fiscais por Poder dependem de validação/fonte complementar."
             icone={<FileSpreadsheet className="h-4 w-4" />}
             href="/painel-siconfi/rgf"
             status="disponivel"

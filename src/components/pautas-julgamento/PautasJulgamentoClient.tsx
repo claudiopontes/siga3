@@ -10,6 +10,7 @@ import type { SessaoJulgamentoView } from "./tipos";
 import ModalRelatorioResumoPauta from "./ModalRelatorioResumoPauta";
 import type { RelatorioResumoPautaResult } from "@/lib/ia/relatorios/montarRelatorioResumoPauta";
 import type { JobAnalisePauta, StatusJobAnalisePauta } from "@/lib/ia/jobs/tipos";
+import { useContextoAquiry } from "@/components/aquiry/useContextoAquiry";
 
 const POR_PAGINA = 20;
 const POLLING_INTERVALO_MS = 5000;
@@ -358,6 +359,63 @@ export default function PautasJulgamentoClient() {
   const sessoesPagina = sessoesFiltradas.slice((paginaAtual - 1) * POR_PAGINA, paginaAtual * POR_PAGINA);
 
   function mudarFiltro(fn: () => void) { fn(); setPagina(1); }
+
+  // --- Contexto para o Assistente Aquiry ---
+  // Resumo agregado da lista de sessões visíveis: totais, próxima sessão e
+  // sessões com job de análise em andamento. Nenhuma consulta adicional ao banco.
+  const jobsAtivosCount = useMemo(() => {
+    let n = 0;
+    for (const job of jobsPorSessao.values()) {
+      if (STATUS_JOB_ATIVO.includes(job.status)) n++;
+    }
+    return n;
+  }, [jobsPorSessao]);
+
+  const aquiryDados = useMemo(() => {
+    if (loading) return { carregando: true } as const;
+    const totalJulgamento = sessoesFiltradas.reduce(
+      (s, x) => s + (x.qtd_julgamento ?? 0), 0,
+    );
+    const totalVistas = sessoesFiltradas.reduce(
+      (s, x) => s + (x.qtd_vistas ?? 0), 0,
+    );
+    const totalJulgado = sessoesFiltradas.reduce(
+      (s, x) => s + (x.qtd_julgado ?? 0), 0,
+    );
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+    const proxima = sessoesFiltradas
+      .filter((s) => s.dt_realizacao && new Date(s.dt_realizacao) >= hoje)
+      .sort((a, b) =>
+        String(a.dt_realizacao).localeCompare(String(b.dt_realizacao)),
+      )[0];
+    return {
+      totalSessoesFiltradas: sessoesFiltradas.length,
+      totalSessoesGerais: sessoes.length,
+      anoSelecionado: filtroAno || "todos",
+      filtroBuscaAtivo: filtroBusca ? "sim" : "nao",
+      totalProcessosEmJulgamento: totalJulgamento,
+      totalProcessosJaJulgados: totalJulgado,
+      totalProcessosEmVistas: totalVistas,
+      proximaSessaoData: proxima?.dt_realizacao ?? null,
+      proximaSessaoNumero: proxima?.numero ?? null,
+      proximaSessaoOrgao: proxima?.orgao_julgador ?? null,
+      jobsAnaliseIaAtivos: jobsAtivosCount,
+    };
+  }, [
+    loading, sessoesFiltradas, sessoes, filtroAno, filtroBusca, jobsAtivosCount,
+  ]);
+
+  useContextoAquiry({
+    titulo: "Pautas de Julgamento",
+    descricao: "Lista de sessões de julgamento e processos em pauta no TCE-AC.",
+    dados: aquiryDados,
+    observacoes: [
+      "Os dados representam apenas o que está visível/filtrado nesta tela.",
+      "O assistente não consultou documentos processuais nesta fase.",
+    ],
+    fontes: ["Contexto da tela de pautas"],
+  });
 
   return (
     <div className="space-y-4 p-1">

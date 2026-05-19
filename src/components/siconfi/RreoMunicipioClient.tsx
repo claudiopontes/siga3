@@ -178,6 +178,9 @@ function MotivosAtencao({ alertas }: { alertas: AlertaRow[] }) {
       <ul className="divide-y divide-gray-50 dark:divide-gray-700/50">
         {tipos.map((t) => {
           const total = t.criticos + t.altos + t.medios + t.baixos;
+          const ehExecutivo    = t.tipo_alerta.startsWith("siconfi_pessoal_executivo_");
+          const ehConsolidado  = t.tipo_alerta.startsWith("siconfi_pessoal_consolidado_");
+          const ehLegislativo  = t.tipo_alerta.startsWith("siconfi_pessoal_legislativo_");
           return (
             <li key={t.tipo_alerta} className="flex flex-wrap items-center justify-between gap-2 py-2.5">
               <div>
@@ -187,6 +190,21 @@ function MotivosAtencao({ alertas }: { alertas: AlertaRow[] }) {
                 <span className="ml-2 text-xs text-gray-400 dark:text-gray-500">
                   {total} ocorrência{total !== 1 ? "s" : ""}
                 </span>
+                {ehExecutivo && (
+                  <p className="mt-0.5 text-[11px] text-gray-500 dark:text-gray-400">
+                    Triagem por Poder com base em instituição identificada como Prefeitura no RREO.
+                  </p>
+                )}
+                {ehConsolidado && (
+                  <p className="mt-0.5 text-[11px] text-gray-500 dark:text-gray-400">
+                    Triagem consolidada complementar, sem substituição da análise individual por Poder.
+                  </p>
+                )}
+                {ehLegislativo && (
+                  <p className="mt-0.5 text-[11px] text-gray-500 dark:text-gray-400">
+                    Cálculo do Legislativo depende de fonte fiscal específica. Atualmente não há dados suficientes no DataLake/RGF para ativar esta verificação.
+                  </p>
+                )}
               </div>
               <div className="flex flex-wrap gap-1.5">
                 {t.criticos > 0 && (
@@ -218,6 +236,20 @@ function MotivosAtencao({ alertas }: { alertas: AlertaRow[] }) {
           );
         })}
       </ul>
+
+      <div className="mt-4 border-t border-gray-100 pt-3 text-[11px] leading-relaxed text-gray-500 dark:border-gray-700 dark:text-gray-400">
+        <p>
+          <strong className="text-gray-600 dark:text-gray-300">Como ler:</strong>{" "}
+          Despesa com pessoal do <strong>Executivo</strong> é calculada via RREO quando há
+          instituição identificada como Prefeitura. A relação <strong>consolidada</strong>{" "}
+          (Executivo + Legislativo) é uma triagem complementar e não substitui a análise
+          individual por Poder. A despesa com pessoal do <strong>Legislativo</strong>{" "}
+          (Câmara Municipal) <strong>não é avaliada nesta versão</strong>: depende de fonte
+          oficial complementar, pois o DataLake/RGF não disponibilizou dados fiscais
+          suficientes para cálculo do limite de 6% da RCL. A ausência de alerta de
+          Legislativo, portanto, não atesta regularidade.
+        </p>
+      </div>
     </div>
   );
 }

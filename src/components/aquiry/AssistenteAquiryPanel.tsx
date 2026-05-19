@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { OrigemRespostaAquiry } from "@/lib/aquiry/tiposContextoAquiry";
 
 export type MensagemChat = {
@@ -18,7 +18,36 @@ interface AssistenteAquiryPanelProps {
   valorInput: string;
   onChangeInput: (valor: string) => void;
   onEnviar: (pergunta?: string) => void;
+  onNovaConversa: () => void;
   sugestoes: string[];
+}
+
+// Limite de sugestões visíveis no estado inicial — reduz poluição visual.
+const SUGESTOES_VISIVEIS = 3;
+
+// Resumo curto da base, derivado de origem.bases — usado na linha colapsada.
+function resumirBases(bases: string[] | undefined): string {
+  if (!bases || bases.length === 0) return "Orientação geral da IA";
+  const partes: string[] = [];
+  if (bases.includes("Fonte estruturada necessária")) {
+    partes.push("Fonte estruturada necessária");
+  } else if (bases.includes("Pesquisa externa realizada")) {
+    partes.push("Pesquisa externa");
+  } else if (bases.includes("Busca externa necessária")) {
+    partes.push("Busca externa necessária");
+  }
+  if (
+    bases.includes("Contexto da tela atual") ||
+    bases.includes("Análise contextual do Varadouro") ||
+    bases.includes("Contexto da rota")
+  ) {
+    partes.push("Varadouro");
+  }
+  if (bases.includes("Base documental do Aquiry")) {
+    partes.push("Documental");
+  }
+  if (partes.length === 0) return "Orientação geral da IA";
+  return `${partes.join(" + ")} + IA`;
 }
 
 export default function AssistenteAquiryPanel({
@@ -29,10 +58,27 @@ export default function AssistenteAquiryPanel({
   valorInput,
   onChangeInput,
   onEnviar,
+  onNovaConversa,
   sugestoes,
 }: AssistenteAquiryPanelProps) {
   const containerMensagensRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  // Quais respostas têm o detalhe da base expandido — controla mensagem a mensagem.
+  const [expandidos, setExpandidos] = useState<Set<number>>(new Set());
+
+  function alternarExpandido(idx: number) {
+    setExpandidos((prev) => {
+      const next = new Set(prev);
+      if (next.has(idx)) next.delete(idx);
+      else next.add(idx);
+      return next;
+    });
+  }
+
+  function novaConversaHandler() {
+    setExpandidos(new Set());
+    onNovaConversa();
+  }
 
   // Rola para a última mensagem sempre que o histórico atualiza ou o painel abre
   useEffect(() => {
@@ -89,6 +135,30 @@ export default function AssistenteAquiryPanel({
             </p>
           </div>
         </div>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={novaConversaHandler}
+            aria-label="Iniciar nova conversa"
+            title="Iniciar nova conversa"
+            disabled={carregando}
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 disabled:cursor-not-allowed disabled:opacity-40 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-300"
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              aria-hidden="true"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M3 12a9 9 0 1 0 3-6.7" />
+              <polyline points="3 4 3 10 9 10" />
+            </svg>
+          </button>
         <button
           type="button"
           onClick={onFechar}
@@ -104,6 +174,7 @@ export default function AssistenteAquiryPanel({
             />
           </svg>
         </button>
+        </div>
       </div>
 
       {/* Histórico de mensagens */}
@@ -127,12 +198,115 @@ export default function AssistenteAquiryPanel({
               <p className="whitespace-pre-wrap leading-relaxed">{msg.content}</p>
             </div>
 
-            {/* Linha de origem — apenas em respostas da IA com metadados */}
-            {msg.role === "assistant" && msg.origem?.bases && msg.origem.bases.length > 0 && (
-              <p className="mt-1 max-w-[90%] text-[10px] leading-tight text-gray-400 dark:text-gray-600">
-                Base: {msg.origem.bases.join(" · ")}
-              </p>
-            )}
+            {/* Linha de origem colapsada + expansor de detalhes */}
+            {msg.role === "assistant" && msg.origem && (() => {
+              const aberto = expandidos.has(i);
+              const temBases = !!msg.origem.bases && msg.origem.bases.length > 0;
+              const temDocumentos =
+                !!msg.origem.documentosBase && msg.origem.documentosBase.length > 0;
+              const temFontes =
+                !!msg.origem.fontesExternas && msg.origem.fontesExternas.length > 0;
+              if (!temBases && !temDocumentos && !temFontes) return null;
+              const idDetalhe = `aquiry-detalhe-${i}`;
+              return (
+                <div className="mt-1 max-w-[90%]">
+                  <button
+                    type="button"
+                    onClick={() => alternarExpandido(i)}
+                    aria-expanded={aberto}
+                    aria-controls={idDetalhe}
+                    className="inline-flex items-center gap-1 text-[10px] leading-tight text-gray-400 transition-colors hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
+                  >
+                    <span>Base: {resumirBases(msg.origem.bases)}</span>
+                    <svg
+                      width="10"
+                      height="10"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                      className={`transition-transform ${aberto ? "rotate-180" : ""}`}
+                    >
+                      <polyline points="6 9 12 15 18 9" />
+                    </svg>
+                    <span className="sr-only">
+                      {aberto ? "Ocultar detalhes da base" : "Ver detalhes da base"}
+                    </span>
+                  </button>
+
+                  {aberto && (
+                    <div
+                      id={idDetalhe}
+                      className="mt-1 space-y-2 rounded-md border border-gray-100 bg-gray-50/50 px-2 py-1.5 dark:border-gray-700 dark:bg-gray-800/50"
+                    >
+                      {temBases && (
+                        <p className="text-[10px] leading-tight text-gray-500 dark:text-gray-400">
+                          <span className="font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+                            Bases:
+                          </span>{" "}
+                          {msg.origem.bases!.join(" · ")}
+                        </p>
+                      )}
+                      {temDocumentos && (
+                        <div>
+                          <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+                            Documentos-base
+                          </p>
+                          <ul className="mt-0.5 space-y-0.5">
+                            {msg.origem.documentosBase!.slice(0, 3).map((d, idx) => (
+                              <li
+                                key={`${i}-doc-${idx}`}
+                                className="text-[11px] leading-snug text-gray-500 dark:text-gray-400"
+                              >
+                                <span>{d.titulo}</span>
+                                {d.area && (
+                                  <span className="ml-1 text-[10px] text-gray-400 dark:text-gray-600">
+                                    — {d.area}
+                                  </span>
+                                )}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {temFontes && (
+                        <div>
+                          <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+                            Fontes
+                          </p>
+                          <ul className="mt-0.5 space-y-0.5">
+                            {msg.origem.fontesExternas!.slice(0, 3).map((f, idx) => (
+                              <li
+                                key={`${i}-fonte-${idx}`}
+                                className="text-[11px] leading-snug"
+                              >
+                                <a
+                                  href={f.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-blue-600 hover:underline dark:text-blue-400"
+                                  title={f.fonte ?? f.url}
+                                >
+                                  {f.titulo}
+                                </a>
+                                {f.fonte && (
+                                  <span className="ml-1 text-[10px] text-gray-400 dark:text-gray-600">
+                                    · {f.fonte}
+                                  </span>
+                                )}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         ))}
 
@@ -165,7 +339,7 @@ export default function AssistenteAquiryPanel({
             Sugestões
           </p>
           <div className="flex flex-wrap gap-1.5">
-            {sugestoes.map((s) => (
+            {sugestoes.slice(0, SUGESTOES_VISIVEIS).map((s) => (
               <button
                 key={s}
                 type="button"
