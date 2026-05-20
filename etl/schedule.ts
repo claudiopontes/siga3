@@ -30,6 +30,7 @@ import { executarMartSiconfiRreo } from "./jobs/refresh-mart-siconfi-rreo";
 import { executarSiconfiRgfFullPostgres } from "./jobs/siconfi-rgf-full-postgres";
 import { executarMartSiconfiRgf } from "./jobs/refresh-mart-siconfi-rgf";
 import { executarSiconfiExtratoEntregasPostgres } from "./jobs/siconfi-extrato-entregas-postgres";
+import { executarFolhaSicapBase } from "./jobs/folha-sicap-carga-base";
 
 const TIMEZONE = process.env.ETL_TIMEZONE || "America/Rio_Branco";
 const FACT_ETL_CRON = process.env.FACT_ETL_CRON || "0 1 * * *"; // 01:00 daily
@@ -66,6 +67,8 @@ const RUN_SICONFI_RGF_NIGHTLY =
   (process.env.RUN_SICONFI_RGF_NIGHTLY ?? "true").toLowerCase() !== "false";
 const RUN_SICONFI_EXTRATO_NIGHTLY =
   (process.env.RUN_SICONFI_EXTRATO_NIGHTLY ?? "true").toLowerCase() !== "false";
+const RUN_FOLHA_SICAP_NIGHTLY =
+  (process.env.RUN_FOLHA_SICAP_NIGHTLY ?? "true").toLowerCase() !== "false";
 
 console.log("ETL scheduler started - Varadouro Digital");
 console.log(`Nightly pipeline: cron="${FACT_ETL_CRON}" timezone="${TIMEZONE}"`);
@@ -81,6 +84,7 @@ console.log(`Nightly Processos Gabinete: ${RUN_PROCESSOS_GABINETE_NIGHTLY ? "ena
 console.log(`Nightly SICONFI RREO: ${RUN_SICONFI_RREO_NIGHTLY ? "enabled" : "disabled"}\n`);
 console.log(`Nightly SICONFI RGF: ${RUN_SICONFI_RGF_NIGHTLY ? "enabled" : "disabled"}\n`);
 console.log(`Nightly SICONFI Extrato: ${RUN_SICONFI_EXTRATO_NIGHTLY ? "enabled" : "disabled"}\n`);
+console.log(`Nightly Folha SICAP: ${RUN_FOLHA_SICAP_NIGHTLY ? "enabled" : "disabled"}\n`);
 
 // Full nightly pipeline: once per day
 cron.schedule(
@@ -287,6 +291,23 @@ cron.schedule(
       });
     } else {
       console.log("[CRON] Step 21: SICONFI extrato skipped by RUN_SICONFI_EXTRATO_NIGHTLY=false");
+    }
+
+    if (RUN_FOLHA_SICAP_NIGHTLY) {
+      // Carga noturna processa apenas a competência corrente para evitar
+      // reprocessar 24 meses todo dia. Para janelas maiores, usar o painel
+      // /seguranca/etl ou rodar o job manualmente com FOLHA_COMPETENCIA /
+      // FOLHA_ANO_INICIAL definidos.
+      const agora = new Date();
+      const compCorrente = `${agora.getFullYear()}-${String(agora.getMonth() + 1).padStart(2, "0")}`;
+      process.env.FOLHA_COMPETENCIA = compCorrente;
+      console.log(`[CRON] Step 22: Folha SICAP base (competência ${compCorrente})`);
+      await executarFolhaSicapBase().catch((error) => {
+        console.error("[CRON] folha sicap base failed:", error);
+      });
+      delete process.env.FOLHA_COMPETENCIA;
+    } else {
+      console.log("[CRON] Step 22: Folha SICAP skipped by RUN_FOLHA_SICAP_NIGHTLY=false");
     }
 
     console.log("[CRON] Nightly pipeline finished.");

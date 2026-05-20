@@ -3,12 +3,15 @@ import { Pool, PoolClient, QueryResult, QueryResultRow } from "pg";
 let _pool: Pool | null = null;
 
 function buildConfig() {
+  // Timeout de conexão: evita que um host inacessível trave a sessão silenciosamente.
+  const connectionTimeoutMillis = Number(process.env.PG_CONNECTION_TIMEOUT_MS ?? "10000");
   if (process.env.DATABASE_URL) {
     const url = new URL(process.env.DATABASE_URL);
     const ssl = url.searchParams.get("sslmode");
     return {
       connectionString: process.env.DATABASE_URL,
       ssl: ssl === "require" || ssl === "verify-full" ? { rejectUnauthorized: false } : false,
+      connectionTimeoutMillis,
     };
   }
   const sslmode = process.env.PGSSLMODE ?? "disable";
@@ -19,6 +22,7 @@ function buildConfig() {
     user: process.env.PGUSER ?? "varadouro",
     password: process.env.PGPASSWORD ?? "varadouro_dev",
     ssl: sslmode === "require" || sslmode === "verify-full" ? { rejectUnauthorized: false } : false,
+    connectionTimeoutMillis,
   };
 }
 

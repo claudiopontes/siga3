@@ -107,7 +107,8 @@
     "mart:gasto-aluno": "ts-node jobs/refresh-mart-gasto-aluno.ts",
     "carga-gasto-aluno:postgres": "npm run mart:gasto-aluno",
     "inep-base-dos-dados-geo:ingest": "ts-node jobs/ingest-base-dos-dados-escolas-geo.ts",
-    "carga-inep-base-dos-dados-geo:postgres": "npm run inep-base-dos-dados-geo:ingest"
+    "carga-inep-base-dos-dados-geo:postgres": "npm run inep-base-dos-dados-geo:ingest",
+    "folha:sicap:base": "ts-node jobs/folha-sicap-carga-base.ts"
   },
   "dependencies": {
     "dotenv": "^16.5.0",
