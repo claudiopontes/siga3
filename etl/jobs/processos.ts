@@ -327,6 +327,7 @@ export async function executarCargaProcessos(): Promise<void> {
     if (idsParaProcessar.length === 0) {
       console.log("  -> Nada a atualizar. ETL encerrado.");
       await gravarLog("sucesso", 0, Date.now() - inicio, "Sem processos para atualizar.");
+      await finalizarCargaEtl({ idCarga: idCargaAudit, status: "ok", registrosLidos: 0, registrosGravados: 0, mensagem: "Sem processos para atualizar." });
       return;
     }
 
@@ -335,6 +336,7 @@ export async function executarCargaProcessos(): Promise<void> {
       console.log(`  Para arquivos (novos + pendentes): ${idsParaArquivos.size}`);
       console.log(`  Para movimentações (novos + abertos): ${idsParaMovs.size}`);
       console.log("--- Fim dry-run ---\n");
+      await finalizarCargaEtl({ idCarga: idCargaAudit, status: "ok", registrosLidos: idsParaProcessar.length, registrosGravados: 0, mensagem: `dry-run — arquivos=${idsParaArquivos.size}, movs=${idsParaMovs.size}` });
       return;
     }
 
@@ -371,8 +373,10 @@ export async function executarCargaProcessos(): Promise<void> {
     await finalizarCarga(cargaId, "sucesso", totalProcessados);
 
     const duracao = Date.now() - inicio;
-    await gravarLog("sucesso", totalProcessados, duracao);
-    console.log(`  OK — ${MODULO} em ${duracao} ms (${arquivosProcessados} arquivos, ${movsProcessadas} movimentações)`);
+    const mensagem = `${arquivosProcessados} arquivos, ${movsProcessadas} movimentações`;
+    await gravarLog("sucesso", totalProcessados, duracao, mensagem);
+    await finalizarCargaEtl({ idCarga: idCargaAudit, status: "ok", registrosLidos: idsParaProcessar.length, registrosGravados: totalProcessados, mensagem });
+    console.log(`  OK — ${MODULO} em ${duracao} ms (${mensagem})`);
 
   } catch (error) {
     const duracao = Date.now() - inicio;
@@ -388,6 +392,7 @@ export async function executarCargaProcessos(): Promise<void> {
     await gravarLog("erro", totalProcessados, duracao, mensagem).catch((e) => {
       console.error(`  ERRO ao gravar etl_log: ${e instanceof Error ? e.message : String(e)}`);
     });
+    await finalizarCargaEtl({ idCarga: idCargaAudit, status: "erro", registrosLidos: 0, registrosGravados: totalProcessados, mensagem }).catch(() => void 0);
     throw error;
 
   } finally {

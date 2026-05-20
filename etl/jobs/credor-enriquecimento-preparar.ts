@@ -13,6 +13,9 @@
 
 import "dotenv/config";
 import { pgQuery, withPgTransaction, closePgPool } from "../connectors/postgres";
+import { iniciarCargaEtl, finalizarCargaEtl, registrarLogEtl } from "../lib/auditoria";
+
+const MODULO = "credor_preparar";
 
 // -------------------------------------------------------
 // Helpers
@@ -58,6 +61,14 @@ export async function executarCredorEnriquecimentoPreparar(): Promise<void> {
   const inicio = Date.now();
   console.log("[credor:preparar] Iniciando preparação de credores...");
 
+  const idCarga = await iniciarCargaEtl({
+    modulo: MODULO,
+    modoCarga: "incremental_upsert",
+    origem: "public.fato_empenho",
+    destino: "dw.dim_credor_enriquecido + audit.credor_enriquecimento_log",
+  });
+
+  try {
   // 1. Busca documentos distintos de fato_empenho
   const docRows = await pgQuery<{ cpf_cnpj_credor: string }>(`
     SELECT DISTINCT cpf_cnpj_credor
@@ -135,13 +146,21 @@ export async function executarCredorEnriquecimentoPreparar(): Promise<void> {
     }
   });
 
-  const duracao = Date.now() - inicio;
-  console.log(`[credor:preparar] Concluído em ${duracao}ms — inseridos: ${inseridos}, atualizados: ${atualizados}, inválidos: ${invalidos}.`);
+    const duracao = Date.now() - inicio;
+    const gravados = inseridos + atualizados;
+    const mensagem = `Inseridos: ${inseridos}, atualizados: ${atualizados}, inválidos: ${invalidos}`;
+    console.log(`[credor:preparar] Concluído em ${duracao}ms — ${mensagem}`);
 
-  await pgQuery(`
-    INSERT INTO audit.etl_log (modulo, status, mensagem, registros, duracao_ms)
-    VALUES ('credor:preparar', 'OK', 'Preparação de credores concluída', $1, $2)
-  `, [inseridos + atualizados, duracao]);
+    await registrarLogEtl({ modulo: MODULO, status: "ok", registros: gravados, duracaoMs: duracao, mensagem });
+    await finalizarCargaEtl({ idCarga, status: "ok", registrosLidos: gravados + invalidos, registrosGravados: gravados, mensagem });
+  } catch (error) {
+    const duracao = Date.now() - inicio;
+    const mensagem = error instanceof Error ? error.message : String(error);
+    console.error(`[credor:preparar] ERRO — ${mensagem}`);
+    await registrarLogEtl({ modulo: MODULO, status: "erro", registros: 0, duracaoMs: duracao, mensagem }).catch(() => void 0);
+    await finalizarCargaEtl({ idCarga, status: "erro", registrosLidos: 0, registrosGravados: 0, mensagem }).catch(() => void 0);
+    throw error;
+  }
 }
 
 if (require.main === module) {

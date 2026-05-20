@@ -2,8 +2,14 @@
  * ETL — Folha SICAP / Gasto de Pessoal (Fase 17B base)
  *
  * Origem (SQL Server SICAP):
- *   - dbo.vw_folha_contracheque_base    (~12.071.144 linhas, 1 por contracheque)
- *   - dbo.vw_folha_verbas_detalhada     (~63.466.413 linhas, 1 por verba/rubrica)
+ *   - dbo.ContraCheque + dbo.CadastroUnico + dbo.PessoaFisica + dbo.Beneficiario
+ *   - dbo.VerbasContraCheque + dbo.ContraCheque + dbo.Verba
+ *
+ * Histórico: a leitura era feita pelas views vw_folha_contracheque_base
+ * (~12M linhas) e vw_folha_verbas_detalhada (~63M linhas), mas o dedup de
+ * PessoaFisica nelas forçava materialização completa em cada batch. A leitura
+ * direta nas tabelas base com OUTER APPLY TOP 1 para PessoaFisica é >100x
+ * mais rápida e aproveita o índice ContraCheque_ano_IDX (ano, mes).
  *
  * Destino (PostgreSQL analítico — schema `folha`):
  *   Dimensões: dim_tempo, dim_entidade, dim_servidor, dim_cargo, dim_lotacao,
@@ -256,19 +262,23 @@ type VerbaContraChequeRow = {
 // ---------------------------------------------------------------------------
 
 async function contarContracheques(ano: number, mes: number): Promise<number> {
+  // Conta direto na tabela base, usando o índice ContraCheque_ano_IDX (ano, mes).
   const rows = await sicapQuery<{ total: number }>(`
     SELECT COUNT(*) AS total
-    FROM dbo.vw_folha_contracheque_base
+    FROM dbo.ContraCheque
     WHERE ano = ${ano} AND mes = ${mes}
   `);
   return rows[0]?.total ?? 0;
 }
 
 async function contarVerbas(ano: number, mes: number): Promise<number> {
+  // VerbasContraCheque não tem ano/mes; conta via INNER JOIN com ContraCheque
+  // filtrando pelo índice (ano, mes).
   const rows = await sicapQuery<{ total: number }>(`
     SELECT COUNT(*) AS total
-    FROM dbo.vw_folha_verbas_detalhada
-    WHERE ano = ${ano} AND mes = ${mes}
+    FROM dbo.VerbasContraCheque vcc
+    INNER JOIN dbo.ContraCheque cc ON cc.id = vcc.idContraCheque
+    WHERE cc.ano = ${ano} AND cc.mes = ${mes}
   `);
   return rows[0]?.total ?? 0;
 }
@@ -668,39 +678,57 @@ async function carregarFatoContracheque(ano: number, mes: number): Promise<{ lid
 
   let lidos = 0;
   let gravados = 0;
-  let offset = 0;
+  // Paginação keyset: usar id_contracheque > lastId em vez de OFFSET, que degrada
+  // dramaticamente na view de 12M linhas. Com keyset cada batch usa o índice.
+  let lastId = 0;
 
   while (true) {
+    // Query direta nas tabelas base — evita a materialização da view
+    // vw_folha_contracheque_base que faz dedup de PessoaFisica.
+    // OUTER APPLY TOP 1 garante 1 nome de servidor por contracheque sem
+    // exigir DISTINCT/ROW_NUMBER caro.
+    // Aproveita índices: ContraCheque_ano_IDX (ano, mes) + PK em id.
     const rows = await sicapQuery<ContraChequeRow>(`
-      SELECT
-        id_contracheque                     AS id_contracheque_sicap,
-        ano, mes,
-        id_entidade_cjur,
-        id_cadastro_unico                   AS id_cadastro_unico_sicap,
-        id_beneficiario                     AS id_beneficiario_sicap,
-        cpf,
-        servidor_nome                       AS nome_servidor,
-        matricula,
-        id_cargo_contracheque               AS id_cargo_sicap,
-        id_tipo_folha                       AS id_tipo_folha_sicap,
-        id_unidade_lotacao                  AS id_unidade_lotacao_sicap,
-        id_remessa                          AS id_remessa_sicap,
-        totalVencimentos                    AS total_vencimentos,
-        totalDescontos                      AS total_descontos,
-        total_liquido,
-        baseFgts                            AS base_fgts,
-        baseIrpf                            AS base_irpf,
-        basePrevidenciariaPatronal          AS base_previdenciaria_patronal,
-        basePrevidenciariaSegurado          AS base_previdenciaria_segurado,
-        situacao_beneficiario_contracheque  AS situacao_beneficiario,
-        situacao_atual_servidor
-      FROM dbo.vw_folha_contracheque_base
-      WHERE ano = ${ano} AND mes = ${mes}
-      ORDER BY id_contracheque
-      OFFSET ${offset} ROWS FETCH NEXT ${BATCH_SIZE} ROWS ONLY
+      SELECT TOP ${BATCH_SIZE}
+        cc.id                                       AS id_contracheque_sicap,
+        cc.ano                                      AS ano,
+        cc.mes                                      AS mes,
+        cc.idEntidadeCjur                           AS id_entidade_cjur,
+        cc.idCadastroUnico                          AS id_cadastro_unico_sicap,
+        cc.idBeneficiario                           AS id_beneficiario_sicap,
+        cu.cpf                                      AS cpf,
+        pf.nome                                     AS nome_servidor,
+        CAST(b.matricula AS VARCHAR(32))            AS matricula,
+        cc.idCargo                                  AS id_cargo_sicap,
+        cc.idTipoFolha                              AS id_tipo_folha_sicap,
+        cc.idUnidadeLotacao                         AS id_unidade_lotacao_sicap,
+        cc.idRemessa                                AS id_remessa_sicap,
+        cc.totalVencimentos                         AS total_vencimentos,
+        cc.totalDescontos                           AS total_descontos,
+        (COALESCE(cc.totalVencimentos,0) - COALESCE(cc.totalDescontos,0)) AS total_liquido,
+        cc.baseFgts                                 AS base_fgts,
+        cc.baseIrpf                                 AS base_irpf,
+        cc.basePrevidenciariaPatronal               AS base_previdenciaria_patronal,
+        cc.basePrevidenciariaSegurado               AS base_previdenciaria_segurado,
+        cc.situacaoBeneficiario                     AS situacao_beneficiario,
+        CAST(cc.situacaoAtualServidor AS VARCHAR(10)) AS situacao_atual_servidor
+      FROM dbo.ContraCheque cc
+      LEFT JOIN dbo.CadastroUnico cu ON cu.id = cc.idCadastroUnico
+      OUTER APPLY (
+        SELECT TOP 1 pf_x.nome
+        FROM dbo.PessoaFisica pf_x
+        WHERE pf_x.idCadastroUnico = cc.idCadastroUnico
+        ORDER BY pf_x.id DESC
+      ) pf
+      LEFT JOIN dbo.Beneficiario b ON b.id = cc.idBeneficiario
+      WHERE cc.ano = ${ano} AND cc.mes = ${mes}
+        AND cc.id > ${lastId}
+      ORDER BY cc.id
     `);
     if (rows.length === 0) break;
     lidos += rows.length;
+    // Avança o cursor keyset para o maior id retornado neste batch.
+    lastId = Number(rows[rows.length - 1].id_contracheque_sicap);
 
     // Postgres limita 65.535 parâmetros por query (int16). Com 30 colunas o
     // teto seguro é ~2.100 linhas/INSERT; mantemos 1.500 para uniformidade
@@ -788,14 +816,13 @@ async function carregarFatoContracheque(ano: number, mes: number): Promise<{ lid
     }
 
     if (rows.length < BATCH_SIZE) break;
-    offset += BATCH_SIZE;
   }
 
   return { lidos, gravados };
 }
 
 // ---------------------------------------------------------------------------
-// Carga de fato_verba_contracheque (por competência, paginada)
+// Carga de fato_verba_contracheque (por competência, paginada por keyset)
 // ---------------------------------------------------------------------------
 
 async function carregarFatoVerbaContracheque(ano: number, mes: number): Promise<{ lidos: number; gravados: number }> {
@@ -806,33 +833,60 @@ async function carregarFatoVerbaContracheque(ano: number, mes: number): Promise<
 
   let lidos = 0;
   let gravados = 0;
-  let offset = 0;
+  // Paginação keyset: id_verba_contracheque > lastId. Sem OFFSET, cada batch
+  // usa o índice direto, evitando degradação na view de 63M linhas.
+  let lastId = 0;
 
   while (true) {
+    // Query direta nas tabelas base. Filtro ano/mes mora em ContraCheque
+    // (índice ContraCheque_ano_IDX). VerbasContraCheque não tem ano/mes,
+    // então faz INNER JOIN. ORDER BY vcc.id usa a PK; keyset >.
     const rows = await sicapQuery<VerbaContraChequeRow>(`
-      SELECT
-        id_verba_contracheque  AS id_verba_contracheque_sicap,
-        id_contracheque        AS id_contracheque_sicap,
-        ano, mes,
-        id_entidade_cjur,
-        id_cadastro_unico      AS id_cadastro_unico_sicap,
-        id_beneficiario        AS id_beneficiario_sicap,
-        cpf, matricula,
-        id_verba               AS id_verba_sicap,
-        verba_codigo, verba_descricao, verba_natureza, verba_tipo_referencia,
-        verba_categoria_economica, verba_grupo_natureza_despesa, verba_modalidade_aplicacao,
-        verba_elemento_despesa, verba_compoe_vencimento_padrao,
-        verba_base_fgts, verba_base_irpf, verba_base_previdencia,
-        verba_subgrupo_classificacao, verba_referencia, verba_valor,
-        id_tipo_folha          AS id_tipo_folha_sicap,
-        id_remessa             AS id_remessa_sicap
-      FROM dbo.vw_folha_verbas_detalhada
-      WHERE ano = ${ano} AND mes = ${mes}
-      ORDER BY id_verba_contracheque
-      OFFSET ${offset} ROWS FETCH NEXT ${BATCH_SIZE} ROWS ONLY
+      SELECT TOP ${BATCH_SIZE}
+        vcc.id                            AS id_verba_contracheque_sicap,
+        vcc.idContraCheque                AS id_contracheque_sicap,
+        cc.ano                            AS ano,
+        cc.mes                            AS mes,
+        vcc.idEntidadeCjur                AS id_entidade_cjur,
+        cc.idCadastroUnico                AS id_cadastro_unico_sicap,
+        cc.idBeneficiario                 AS id_beneficiario_sicap,
+        cu.cpf                            AS cpf,
+        CAST(b.matricula AS VARCHAR(32))  AS matricula,
+        vcc.idVerba                       AS id_verba_sicap,
+        v.codigo                          AS verba_codigo,
+        v.descricao                       AS verba_descricao,
+        v.natureza                        AS verba_natureza,
+        v.tipoReferencia                  AS verba_tipo_referencia,
+        v.categoriaEconomica              AS verba_categoria_economica,
+        v.grupoNaturezaDespesa            AS verba_grupo_natureza_despesa,
+        v.modalidadeAplicacao             AS verba_modalidade_aplicacao,
+        v.elementoDespesa                 AS verba_elemento_despesa,
+        v.compoeVencimentoPadrao          AS verba_compoe_vencimento_padrao,
+        v.baseFGTS                        AS verba_base_fgts,
+        v.baseIRPF                        AS verba_base_irpf,
+        v.basePrevidencia                 AS verba_base_previdencia,
+        v.subGrupoClassificacaoVerba      AS verba_subgrupo_classificacao,
+        vcc.referencia                    AS verba_referencia,
+        vcc.valor                         AS verba_valor,
+        vcc.idTipoFolha                   AS id_tipo_folha_sicap,
+        vcc.idRemessa                     AS id_remessa_sicap
+      FROM dbo.VerbasContraCheque vcc
+      INNER JOIN dbo.ContraCheque cc ON cc.id = vcc.idContraCheque
+      LEFT  JOIN dbo.CadastroUnico cu ON cu.id = cc.idCadastroUnico
+      LEFT  JOIN dbo.Beneficiario  b  ON b.id  = cc.idBeneficiario
+      LEFT  JOIN dbo.Verba         v  ON v.id  = vcc.idVerba
+      WHERE cc.ano = ${ano} AND cc.mes = ${mes}
+        AND vcc.id > ${lastId}
+      ORDER BY vcc.id
     `);
     if (rows.length === 0) break;
     lidos += rows.length;
+    lastId = Number(rows[rows.length - 1].id_verba_contracheque_sicap);
+    // Progresso a cada 50 mil verbas lidas (~25 batches) — janela longa demais
+    // para ficar em silêncio.
+    if (Math.floor(lidos / 50000) > Math.floor((lidos - rows.length) / 50000)) {
+      process.stdout.write(`        … fato_verba: ${lidos.toLocaleString("pt-BR")} lidos\n`);
+    }
 
     // Postgres limita 65.535 parâmetros por query (int16). Com 33 colunas,
     // o teto seguro é ~1.800 linhas/INSERT. Mantemos a leitura SQL Server em
@@ -919,7 +973,6 @@ async function carregarFatoVerbaContracheque(ano: number, mes: number): Promise<
     }
 
     if (rows.length < BATCH_SIZE) break;
-    offset += BATCH_SIZE;
   }
 
   return { lidos, gravados };
@@ -972,7 +1025,7 @@ export async function executarFolhaSicapBase(): Promise<void> {
   const idCarga = await iniciarCargaEtl({
     modulo: MODULO,
     modoCarga: "delete_insert_por_competencia",
-    origem: `${SICAP_DATABASE}.dbo.vw_folha_contracheque_base + dbo.vw_folha_verbas_detalhada`,
+    origem: `${SICAP_DATABASE}.dbo.ContraCheque + dbo.VerbasContraCheque (+ CadastroUnico/PessoaFisica/Beneficiario/Verba)`,
     destino: "folha.fato_contracheque + folha.fato_verba_contracheque + folha.dim_*",
   });
 

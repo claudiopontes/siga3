@@ -12,6 +12,9 @@
 import "dotenv/config";
 import { queryInDatabase } from "../connectors/sqlserver";
 import { pgQuery, withPgTransaction, closePgPool } from "../connectors/postgres";
+import { iniciarCargaEtl, finalizarCargaEtl, registrarLogEtl } from "../lib/auditoria";
+
+const MODULO = "credor_enriquecer_interno";
 
 // -------------------------------------------------------
 // Configuração
@@ -47,17 +50,29 @@ function tipoDocumento(digits: string): "CPF" | "CNPJ" | "DESCONHECIDO" {
 // -------------------------------------------------------
 
 export async function executarCredorEnriquecerInterno(): Promise<void> {
+  const inicio = Date.now();
   if (!TABELA || !COL_DOC || !COL_NOME) {
     console.log("[credor:enriquecer:interno] CREDOR_INTERNO_TABLE, CREDOR_INTERNO_DOCUMENTO_COLUMN");
     console.log("  e CREDOR_INTERNO_NOME_COLUMN não estão configurados no .env.");
     console.log("  Execute primeiro: npm run credor:fontes:inspecionar");
     console.log("  Encerrando sem erro.");
+    const idCargaSkip = await iniciarCargaEtl({ modulo: MODULO, modoCarga: "skip", origem: "config ausente", destino: "—" });
+    await registrarLogEtl({ modulo: MODULO, status: "ok", registros: 0, duracaoMs: Date.now() - inicio, mensagem: "Pulado — configuração ausente no .env" });
+    await finalizarCargaEtl({ idCarga: idCargaSkip, status: "ok", registrosLidos: 0, registrosGravados: 0, mensagem: "Pulado — configuração ausente no .env" });
     return;
   }
 
-  const inicio = Date.now();
   console.log(`[credor:enriquecer:interno] Fonte: [${DB}].[${TABELA}]`);
   console.log(`[credor:enriquecer:interno] Colunas: doc=${COL_DOC}, nome=${COL_NOME}`);
+
+  const idCarga = await iniciarCargaEtl({
+    modulo: MODULO,
+    modoCarga: "incremental_update",
+    origem: `${DB}.${TABELA}`,
+    destino: "dw.dim_credor_enriquecido",
+  });
+
+  try {
 
   // 1. Busca credores pendentes no Postgres
   const pendentes = await pgQuery<{ cpf_cnpj: string; tipo_documento: string }>(`
@@ -180,13 +195,20 @@ export async function executarCredorEnriquecerInterno(): Promise<void> {
     }
   });
 
-  const duracao = Date.now() - inicio;
-  console.log(`[credor:enriquecer:interno] Concluído em ${duracao}ms — enriquecidos: ${enriquecidos}, sem match: ${semMatch}.`);
+    const duracao = Date.now() - inicio;
+    const mensagem = `Enriquecidos: ${enriquecidos}, sem match: ${semMatch}`;
+    console.log(`[credor:enriquecer:interno] Concluído em ${duracao}ms — ${mensagem}`);
 
-  await pgQuery(`
-    INSERT INTO audit.etl_log (modulo, status, mensagem, registros, duracao_ms)
-    VALUES ('credor:enriquecer:interno', 'OK', 'Enriquecimento interno concluído', $1, $2)
-  `, [enriquecidos, duracao]);
+    await registrarLogEtl({ modulo: MODULO, status: "ok", registros: enriquecidos, duracaoMs: duracao, mensagem });
+    await finalizarCargaEtl({ idCarga, status: "ok", registrosLidos: enriquecidos + semMatch, registrosGravados: enriquecidos, mensagem });
+  } catch (error) {
+    const duracao = Date.now() - inicio;
+    const mensagem = error instanceof Error ? error.message : String(error);
+    console.error(`[credor:enriquecer:interno] ERRO — ${mensagem}`);
+    await registrarLogEtl({ modulo: MODULO, status: "erro", registros: 0, duracaoMs: duracao, mensagem }).catch(() => void 0);
+    await finalizarCargaEtl({ idCarga, status: "erro", registrosLidos: 0, registrosGravados: 0, mensagem }).catch(() => void 0);
+    throw error;
+  }
 }
 
 if (require.main === module) {

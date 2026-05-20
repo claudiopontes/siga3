@@ -14,6 +14,9 @@
 
 import "dotenv/config";
 import { pgQuery, withPgTransaction, closePgPool } from "../connectors/postgres";
+import { iniciarCargaEtl, finalizarCargaEtl, registrarLogEtl } from "../lib/auditoria";
+
+const MODULO = "credor_enriquecer_cnpj";
 
 // -------------------------------------------------------
 // Configuração
@@ -216,14 +219,27 @@ async function consultar(cnpj: string): Promise<CnpjDados> {
 // -------------------------------------------------------
 
 export async function executarCredorEnriquecerCnpj(): Promise<void> {
+  const inicio = Date.now();
+
   if (PROVIDER === "none") {
     console.log("[credor:enriquecer:cnpj] CNPJ_ENRICH_PROVIDER=none — enriquecimento via API desativado.");
     console.log("  Para ativar: CNPJ_ENRICH_PROVIDER=brasilapi ou CNPJ_ENRICH_PROVIDER=receitaws");
+    const idCargaSkip = await iniciarCargaEtl({ modulo: MODULO, modoCarga: "skip", origem: "provider=none", destino: "—" });
+    await registrarLogEtl({ modulo: MODULO, status: "ok", registros: 0, duracaoMs: Date.now() - inicio, mensagem: "Provider=none — enriquecimento desativado" });
+    await finalizarCargaEtl({ idCarga: idCargaSkip, status: "ok", registrosLidos: 0, registrosGravados: 0, mensagem: "Provider=none — enriquecimento desativado" });
     return;
   }
 
-  const inicio = Date.now();
   console.log(`[credor:enriquecer:cnpj] Provider: ${PROVIDER} | rate limit: ${RATE_LIMIT_MS}ms | max: ${MAX_PER_RUN}`);
+
+  const idCarga = await iniciarCargaEtl({
+    modulo: MODULO,
+    modoCarga: "incremental_update",
+    origem: `API CNPJ (${PROVIDER})`,
+    destino: "dw.dim_credor_enriquecido",
+  });
+
+  try {
 
   // Busca CNPJs pendentes
   const pendentes = await pgQuery<{ cpf_cnpj: string }>(`
@@ -348,13 +364,20 @@ export async function executarCredorEnriquecerCnpj(): Promise<void> {
     if (RATE_LIMIT_MS > 0) await sleep(RATE_LIMIT_MS);
   }
 
-  const duracao = Date.now() - inicio;
-  console.log(`[credor:enriquecer:cnpj] Concluído em ${duracao}ms — enriquecidos: ${enriquecidos}, erros: ${erros}.`);
+    const duracao = Date.now() - inicio;
+    const mensagem = `provider=${PROVIDER} — enriquecidos: ${enriquecidos}, erros: ${erros}`;
+    console.log(`[credor:enriquecer:cnpj] Concluído em ${duracao}ms — ${mensagem}`);
 
-  await pgQuery(`
-    INSERT INTO audit.etl_log (modulo, status, mensagem, registros, duracao_ms)
-    VALUES ('credor:enriquecer:cnpj', 'OK', $1, $2, $3)
-  `, [`provider=${PROVIDER}`, enriquecidos, duracao]);
+    await registrarLogEtl({ modulo: MODULO, status: "ok", registros: enriquecidos, duracaoMs: duracao, mensagem });
+    await finalizarCargaEtl({ idCarga, status: "ok", registrosLidos: enriquecidos + erros, registrosGravados: enriquecidos, mensagem });
+  } catch (error) {
+    const duracao = Date.now() - inicio;
+    const mensagem = error instanceof Error ? error.message : String(error);
+    console.error(`[credor:enriquecer:cnpj] ERRO — ${mensagem}`);
+    await registrarLogEtl({ modulo: MODULO, status: "erro", registros: 0, duracaoMs: duracao, mensagem }).catch(() => void 0);
+    await finalizarCargaEtl({ idCarga, status: "erro", registrosLidos: 0, registrosGravados: 0, mensagem }).catch(() => void 0);
+    throw error;
+  }
 }
 
 if (require.main === module) {

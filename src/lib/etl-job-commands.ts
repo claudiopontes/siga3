@@ -1,10 +1,6 @@
 const NPM_COMMAND = process.platform === "win32" ? "npm.cmd" : "npm";
 
 export const ETL_JOB_COMMANDS: Record<string, { command: string; args: string[] }> = {
-  mart_remessas: {
-    command: NPM_COMMAND,
-    args: ["--prefix", "etl", "run", "carga-remessas:postgres"],
-  },
   despesa_full_postgres: {
     command: NPM_COMMAND,
     args: ["--prefix", "etl", "run", "carga-despesa:incremental"],
@@ -17,9 +13,11 @@ export const ETL_JOB_COMMANDS: Record<string, { command: string; args: string[] 
     command: NPM_COMMAND,
     args: ["--prefix", "etl", "run", "pauta-julgamento"],
   },
-  processos_eprocess: {
+  // Botão de processos_ce dispara a cadeia inteira (cadastro + arquivos/movs).
+  // processos_eprocess fica visível no painel mas sem botão próprio.
+  processos_ce: {
     command: NPM_COMMAND,
-    args: ["--prefix", "etl", "run", "processos-eprocess"],
+    args: ["--prefix", "etl", "run", "carga-processos:postgres"],
   },
   receita_publica: {
     command: NPM_COMMAND,
@@ -53,9 +51,41 @@ export const ETL_JOB_COMMANDS: Record<string, { command: string; args: string[] 
     command: NPM_COMMAND,
     args: ["--prefix", "etl", "run", "carga-cnes-ubs:postgres"],
   },
-  mart_siconfi_rreo: {
+  // Refresh isolado (sem refetch das fontes). Os pais já encadeiam este script.
+  mart_saude_consolidado: {
+    command: NPM_COMMAND,
+    args: ["--prefix", "etl", "run", "mart:saude-consolidado"],
+  },
+  // Macro: roda todos os 7 ETLs de saúde em sequência + refresh do Consolidado.
+  // Executado pelo botão "Recarregar tudo (saúde)" e pelo cron semanal.
+  saude_completa: {
+    command: NPM_COMMAND,
+    args: ["--prefix", "etl", "run", "carga-saude:postgres"],
+  },
+  // Pai dispara cadeia completa (a função executarSiconfiRreoIncremental
+  // já invoca executarMartSiconfiRreo no final).
+  siconfi_rreo_incremental: {
     command: NPM_COMMAND,
     args: ["--prefix", "etl", "run", "carga-siconfi-rreo:incremental"],
+  },
+  // Pai dispara cadeia completa (full + refresh do mart).
+  siconfi_rgf_full: {
+    command: NPM_COMMAND,
+    args: ["--prefix", "etl", "run", "carga-siconfi-rgf:postgres"],
+  },
+  // Pai dispara cadeia inteira (4 etapas: preparar → interno → cnpj → mart).
+  credor_preparar: {
+    command: NPM_COMMAND,
+    args: ["--prefix", "etl", "run", "credor:enriquecimento"],
+  },
+  folha_sicap_base: {
+    command: NPM_COMMAND,
+    args: ["--prefix", "etl", "run", "folha:sicap:base"],
+  },
+  // Pai dispara cadeia completa (full → dimensões → mart).
+  remessas_full_postgres: {
+    command: NPM_COMMAND,
+    args: ["--prefix", "etl", "run", "carga-remessas:postgres"],
   },
   mis_bolsa_familia_bpc: {
     command: NPM_COMMAND,

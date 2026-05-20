@@ -26,7 +26,8 @@
  */
 
 import "dotenv/config";
-import { pgQuery, withPgTransaction, closePgPool } from "../connectors/postgres";
+import { withPgTransaction, closePgPool } from "../connectors/postgres";
+import { iniciarCargaEtl, finalizarCargaEtl, registrarLogEtl } from "../lib/auditoria";
 
 // ---------------------------------------------------------------------------
 // Configuração
@@ -154,11 +155,19 @@ export async function executarSiconfiRgfFullPostgres(): Promise<void> {
   console.log(`[siconfi-rgf:full] Exercícios : ${ANOS_RGF.join(", ")}`);
   console.log(`[siconfi-rgf:full] Municípios : ${MUNICIPIOS_ACRE.length}`);
 
+  const idCarga = await iniciarCargaEtl({
+    modulo: MODULO,
+    modoCarga: "full_delete_insert",
+    origem: "SICONFI API /extrato_entregas (co_entregavel=RGF)",
+    destino: "dw.fato_siconfi_extrato_entregas + raw.siconfi_extrato_entregas_raw",
+  });
+
   let totalComRgf   = 0;
   let totalSemRgf   = 0;
   let totalErros    = 0;
   let totalEntregas = 0;
 
+  try {
   for (const ano of ANOS_RGF) {
     console.log(`\n[siconfi-rgf:full] ── Exercício ${ano} ──`);
 
@@ -245,13 +254,16 @@ export async function executarSiconfiRgfFullPostgres(): Promise<void> {
   console.log(`  Total de entregas RGF         : ${totalEntregas}`);
   console.log(`  Erros                         : ${totalErros}`);
 
-  try {
-    await pgQuery(`
-      INSERT INTO audit.etl_log (modulo, status, mensagem, registros, duracao_ms)
-      VALUES ($1, 'OK', 'Carga SICONFI/RGF via extrato_entregas concluída', $2, $3)
-    `, [MODULO, totalEntregas, duracao]);
-  } catch {
-    // audit.etl_log pode não existir em ambiente de desenvolvimento
+    const mensagem = `RGF: ${totalEntregas} entregas (${totalComRgf} municípios com RGF, ${totalSemRgf} sem, ${totalErros} erros)`;
+    await registrarLogEtl({ modulo: MODULO, status: "ok", registros: totalEntregas, duracaoMs: duracao, mensagem });
+    await finalizarCargaEtl({ idCarga, status: "ok", registrosLidos: totalComRgf + totalSemRgf, registrosGravados: totalEntregas, mensagem });
+  } catch (error) {
+    const duracao = Date.now() - inicio;
+    const mensagem = error instanceof Error ? error.message : String(error);
+    console.error(`[siconfi-rgf:full] ERRO — ${mensagem}`);
+    await registrarLogEtl({ modulo: MODULO, status: "erro", registros: totalEntregas, duracaoMs: duracao, mensagem }).catch(() => void 0);
+    await finalizarCargaEtl({ idCarga, status: "erro", registrosLidos: 0, registrosGravados: totalEntregas, mensagem }).catch(() => void 0);
+    throw error;
   }
 }
 

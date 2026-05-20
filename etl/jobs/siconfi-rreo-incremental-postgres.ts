@@ -33,6 +33,9 @@
 import "dotenv/config";
 import { pgQuery, withPgTransaction, closePgPool } from "../connectors/postgres";
 import { executarMartSiconfiRreo } from "./refresh-mart-siconfi-rreo";
+import { iniciarCargaEtl, finalizarCargaEtl, registrarLogEtl } from "../lib/auditoria";
+
+const MODULO = "siconfi_rreo_incremental";
 
 // ---------------------------------------------------------------------------
 // Configuração
@@ -542,6 +545,14 @@ export async function executarSiconfiRreoIncremental(): Promise<void> {
   console.log(`[incremental] Anos extrato: ${ANOS_EXTRATO.join(", ")}`);
   console.log(`[incremental] Municípios  : ${MUNICIPIOS_ACRE.length}`);
 
+  const idCarga = await iniciarCargaEtl({
+    modulo: MODULO,
+    modoCarga: "incremental_upsert",
+    origem: "SICONFI API (Tesouro Nacional)",
+    destino: "dw.fato_siconfi_rreo + mart.siconfi_rreo_extrato_entregas",
+  });
+
+  try {
   // ── Fase 0: Snapshot ──
   console.log("\n[incremental] ── Fase 0: Snapshot do DW atual ──");
   const snapshot = await tirarSnapshot();
@@ -615,17 +626,16 @@ export async function executarSiconfiRreoIncremental(): Promise<void> {
   console.log(`  Registros RREO carregados: ${rreoRegistros}`);
   console.log(`  Erros                    : ${erros}`);
 
-  try {
-    await pgQuery(`
-      INSERT INTO audit.etl_log (modulo, status, mensagem, registros, duracao_ms)
-      VALUES ('mart_siconfi_rreo', 'OK', $1, $2, $3)
-    `, [
-      `Incremental: ${alterados.length} alterado(s), ${lacunas.length} lacuna(s), ${rreoRegistros} registros RREO`,
-      rreoRegistros,
-      duracao,
-    ]);
-  } catch {
-    // audit.etl_log pode não existir
+    const mensagem = `Incremental: ${alterados.length} alterado(s), ${lacunas.length} lacuna(s), ${rreoRegistros} registros RREO`;
+    await registrarLogEtl({ modulo: MODULO, status: "ok", registros: rreoRegistros, duracaoMs: duracao, mensagem });
+    await finalizarCargaEtl({ idCarga, status: "ok", registrosLidos: alterados.length + lacunas.length, registrosGravados: rreoRegistros, mensagem });
+  } catch (error) {
+    const duracao = Date.now() - inicio;
+    const mensagem = error instanceof Error ? error.message : String(error);
+    console.error(`[incremental] ERRO — ${mensagem}`);
+    await registrarLogEtl({ modulo: MODULO, status: "erro", registros: 0, duracaoMs: duracao, mensagem }).catch(() => void 0);
+    await finalizarCargaEtl({ idCarga, status: "erro", registrosLidos: 0, registrosGravados: 0, mensagem }).catch(() => void 0);
+    throw error;
   }
 }
 

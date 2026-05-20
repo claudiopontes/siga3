@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { RefreshCw, Play, Clock, Database, AlertCircle, CheckCircle2, TimerOff } from "lucide-react";
+import { RefreshCw, Play, Clock, Database, AlertCircle, CheckCircle2, TimerOff, GitMerge } from "lucide-react";
 import { ETL_CONFIG, classificarCarga, type EtlExecucao, type EtlExecucaoManual, type StatusCarga } from "@/lib/etl-config";
 
 interface EtlCarga {
@@ -31,12 +31,24 @@ interface EtlStatus {
   carga: EtlCarga | null;
 }
 
-type SortBy = "modulo" | "status" | "executado_em";
+type SortBy = "modulo" | "status" | "executado_em" | "cadeia";
 type SortDir = "asc" | "desc";
 type FiltroStatus = "todos" | "ok" | "erro" | "desatualizado" | "pendente";
 
 function labelModulo(item: EtlStatus) {
   return item.nomeExibicao ?? ETL_CONFIG[item.modulo]?.nomeExibicao ?? item.modulo;
+}
+
+function dependenciasDe(modulo: string): string[] {
+  const dep = ETL_CONFIG[modulo]?.dependeDe;
+  if (!dep) return [];
+  return Array.isArray(dep) ? dep : [dep];
+}
+
+function nomeExibicaoModulo(modulo: string, dados: EtlStatus[]): string {
+  const it = dados.find((d) => d.modulo === modulo);
+  if (it) return labelModulo(it);
+  return ETL_CONFIG[modulo]?.nomeExibicao ?? modulo;
 }
 
 function formatDuracao(ms: number | null) {
@@ -83,7 +95,26 @@ function StatusBadge({ s }: { s: StatusCarga }) {
 
 type ClassifiedItem = EtlStatus & { statusCarga: StatusCarga };
 
-function EtlCard({ item, onExecutar, executando }: { item: ClassifiedItem; onExecutar: () => void; executando: boolean }) {
+interface DependenciaInfo {
+  modulo: string;
+  nome: string;
+  statusCarga: StatusCarga | null; // null = não há registro no painel
+}
+
+function EtlCard({
+  item,
+  onExecutar,
+  executando,
+  dependencias,
+  ehFilhoNaCadeia,
+}: {
+  item: ClassifiedItem;
+  onExecutar: () => void;
+  executando: boolean;
+  dependencias: DependenciaInfo[];
+  /** Quando true, agrupa visualmente como filho (recuo + borda esquerda). */
+  ehFilhoNaCadeia: boolean;
+}) {
   const fallback = ETL_CONFIG[item.modulo];
   const configManual = item.execucaoManual ?? fallback?.execucaoManual;
   const periodicidade = item.periodicidade ?? fallback?.periodicidade;
@@ -91,17 +122,53 @@ function EtlCard({ item, onExecutar, executando }: { item: ClassifiedItem; onExe
   const permiteExecucao = configManual?.permiteExecucaoManual === true;
   const st = STATUS_STYLES[item.statusCarga];
 
+  // Encadeamento: se alguma dependência está em erro/desatualizado, este módulo
+  // está "bloqueado em cascata" — o cron pula a execução pra não rodar em cima
+  // de fonte quebrada/desatualizada.
+  const depComProblema = dependencias.find(
+    (d) => d.statusCarga === "erro" || d.statusCarga === "muito_desatualizado" || d.statusCarga === "desatualizado",
+  );
+  const bloqueadoEmCascata = item.statusCarga !== "ok" && !!depComProblema;
+
   return (
-    <div className={`rounded-xl border bg-white dark:bg-gray-800 ${
-      item.statusCarga === "erro" ? "border-red-200 dark:border-red-800/50" :
-      item.statusCarga === "ok"   ? "border-gray-200 dark:border-gray-700" :
-      "border-yellow-200 dark:border-yellow-800/40"
-    }`}>
+    <div
+      className={`rounded-xl border bg-white dark:bg-gray-800 ${
+        item.statusCarga === "erro" ? "border-red-200 dark:border-red-800/50" :
+        item.statusCarga === "ok"   ? "border-gray-200 dark:border-gray-700" :
+        "border-yellow-200 dark:border-yellow-800/40"
+      } ${ehFilhoNaCadeia ? "border-l-4 border-l-blue-300 dark:border-l-blue-700/60 ml-0 lg:ml-6" : ""}`}
+    >
       {/* Cabeçalho do card */}
       <div className="flex items-start justify-between gap-3 px-4 pt-3.5 pb-3">
-        <div className="flex min-w-0 items-center gap-2.5">
-          <span className={`mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full ${st.dot}`} />
-          <p className="truncate text-sm font-semibold text-gray-900 dark:text-white">{labelModulo(item)}</p>
+        <div className="flex min-w-0 flex-col gap-1">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <span className={`mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full ${st.dot}`} />
+            <p className="truncate text-sm font-semibold text-gray-900 dark:text-white">{labelModulo(item)}</p>
+          </div>
+          {dependencias.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5 pl-5 text-[11px] text-gray-500 dark:text-gray-400">
+              <GitMerge className="h-3 w-3 -rotate-90 text-blue-500" />
+              <span>depende de:</span>
+              {dependencias.map((d, i) => {
+                const corDep =
+                  d.statusCarga === "erro" ? "text-red-600 dark:text-red-400 font-semibold" :
+                  d.statusCarga === "desatualizado" || d.statusCarga === "muito_desatualizado" ? "text-yellow-700 dark:text-yellow-400 font-semibold" :
+                  d.statusCarga === "ok" ? "text-emerald-700 dark:text-emerald-400" :
+                  "text-gray-500 dark:text-gray-400";
+                const sufixo =
+                  d.statusCarga === "erro" ? " (em erro)" :
+                  d.statusCarga === "muito_desatualizado" ? " (muito desatualizado)" :
+                  d.statusCarga === "desatualizado" ? " (desatualizado)" :
+                  d.statusCarga === "pendente" ? " (pendente)" :
+                  "";
+                return (
+                  <span key={d.modulo} className={corDep}>
+                    {d.nome}{sufixo}{i < dependencias.length - 1 ? "," : ""}
+                  </span>
+                );
+              })}
+            </div>
+          )}
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <StatusBadge s={item.statusCarga} />
@@ -121,6 +188,16 @@ function EtlCard({ item, onExecutar, executando }: { item: ClassifiedItem; onExe
           )}
         </div>
       </div>
+
+      {/* Aviso de bloqueio em cascata */}
+      {bloqueadoEmCascata && depComProblema && (
+        <div className="flex items-start gap-2 border-t border-yellow-100 bg-yellow-50 px-4 py-2 dark:border-yellow-900/30 dark:bg-yellow-900/10">
+          <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-yellow-600 dark:text-yellow-400" />
+          <p className="text-xs text-yellow-700 dark:text-yellow-300">
+            Possível bloqueio em cascata: dependência <strong>{depComProblema.nome}</strong> está com problema. O cron pula esta etapa quando o pai falha.
+          </p>
+        </div>
+      )}
 
       {/* Métricas */}
       <div className="grid grid-cols-2 gap-px border-t border-gray-100 bg-gray-100 dark:border-gray-700 dark:bg-gray-700 sm:grid-cols-4">
@@ -259,6 +336,42 @@ export default function EtlStatusClient() {
 
   const dadosOrdenados = useMemo(() => {
     const pesosStatus: Record<StatusCarga, number> = { erro: 0, muito_desatualizado: 1, desatualizado: 2, pendente: 3, ok: 4 };
+
+    if (sortBy === "cadeia") {
+      // Coloca pais antes dos filhos. Itens sem dependência são pais (ou solitários).
+      // Itens com dependência são posicionados imediatamente após o respectivo pai.
+      const porModulo = new Map(dadosFiltrados.map((d) => [d.modulo, d]));
+      const filhosPorPai = new Map<string, ClassifiedItem[]>();
+      const semPai: ClassifiedItem[] = [];
+
+      for (const d of dadosFiltrados) {
+        const deps = dependenciasDe(d.modulo).filter((p) => porModulo.has(p));
+        if (deps.length === 0) {
+          semPai.push(d);
+        } else {
+          // Aninha sob o primeiro pai presente no painel (caso raro com múltiplos pais).
+          const paiPrincipal = deps[0];
+          const arr = filhosPorPai.get(paiPrincipal) ?? [];
+          arr.push(d);
+          filhosPorPai.set(paiPrincipal, arr);
+        }
+      }
+
+      semPai.sort((a, b) => labelModulo(a).localeCompare(labelModulo(b), "pt-BR"));
+      for (const arr of filhosPorPai.values()) {
+        arr.sort((a, b) => labelModulo(a).localeCompare(labelModulo(b), "pt-BR"));
+      }
+
+      const resultado: ClassifiedItem[] = [];
+      const empilhar = (item: ClassifiedItem) => {
+        resultado.push(item);
+        const filhos = filhosPorPai.get(item.modulo);
+        if (filhos) filhos.forEach(empilhar);
+      };
+      semPai.forEach(empilhar);
+      return resultado;
+    }
+
     return [...dadosFiltrados].sort((a, b) => {
       let cmp = 0;
       if (sortBy === "modulo") cmp = labelModulo(a).localeCompare(labelModulo(b), "pt-BR");
@@ -267,6 +380,13 @@ export default function EtlStatusClient() {
       return sortDir === "asc" ? cmp : -cmp;
     });
   }, [dadosFiltrados, sortBy, sortDir]);
+
+  // Mapeia módulo → status classificado, para resolver as dependências no card.
+  const statusPorModulo = useMemo(() => {
+    const m = new Map<string, StatusCarga>();
+    for (const d of dadosClassificados) m.set(d.modulo, d.statusCarga);
+    return m;
+  }, [dadosClassificados]);
 
   const totalOk = dadosClassificados.filter((d) => d.statusCarga === "ok").length;
   const totalErro = dadosClassificados.filter((d) => d.statusCarga === "erro").length;
@@ -331,6 +451,7 @@ export default function EtlStatusClient() {
               }}
               className="h-8 rounded-lg border border-gray-200 bg-white px-2 text-xs text-gray-700 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200"
             >
+              <option value="cadeia-asc">Por cadeia (pais e filhos juntos)</option>
               <option value="executado_em-desc">Última execução (recente)</option>
               <option value="executado_em-asc">Última execução (antiga)</option>
               <option value="status-asc">Status (pior primeiro)</option>
@@ -386,15 +507,26 @@ export default function EtlStatusClient() {
           {busca || filtroStatus !== "todos" ? "Nenhum módulo encontrado para o filtro aplicado." : "Nenhum registro de execução ETL encontrado."}
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-          {dadosOrdenados.map((item) => (
-            <EtlCard
-              key={item.modulo}
-              item={item}
-              onExecutar={() => void solicitarExecucaoManual(item)}
-              executando={moduloEmExecucao === item.modulo}
-            />
-          ))}
+        <div className={`grid grid-cols-1 gap-3 ${sortBy === "cadeia" ? "" : "lg:grid-cols-2"}`}>
+          {dadosOrdenados.map((item) => {
+            const deps = dependenciasDe(item.modulo);
+            const dependencias: DependenciaInfo[] = deps.map((dm) => ({
+              modulo: dm,
+              nome: nomeExibicaoModulo(dm, dados),
+              statusCarga: statusPorModulo.get(dm) ?? null,
+            }));
+            const ehFilho = sortBy === "cadeia" && dependencias.some((d) => d.statusCarga !== null);
+            return (
+              <EtlCard
+                key={item.modulo}
+                item={item}
+                onExecutar={() => void solicitarExecucaoManual(item)}
+                executando={moduloEmExecucao === item.modulo}
+                dependencias={dependencias}
+                ehFilhoNaCadeia={ehFilho}
+              />
+            );
+          })}
         </div>
       )}
     </div>

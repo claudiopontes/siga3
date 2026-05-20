@@ -4,6 +4,7 @@
  */
 
 import "dotenv/config";
+import { spawn } from "node:child_process";
 import cron from "node-cron";
 import { executarETLCombustivel } from "./jobs/combustivel";
 import { executarCargaDimensoesCsv } from "./jobs/dimensoes-csv";
@@ -34,6 +35,13 @@ import { executarFolhaSicapBase } from "./jobs/folha-sicap-carga-base";
 
 const TIMEZONE = process.env.ETL_TIMEZONE || "America/Rio_Branco";
 const FACT_ETL_CRON = process.env.FACT_ETL_CRON || "0 1 * * *"; // 01:00 daily
+// Saúde — carga completa semanal (default: terça 02:00 BRT/America/Rio_Branco)
+// Roda o macro `npm run carga-saude:postgres`, que encadeia os 7 ETLs de
+// saúde e o refresh do Consolidado. Pode ser desativado com
+// RUN_SAUDE_COMPLETA_WEEKLY=false.
+const SAUDE_COMPLETA_CRON = process.env.SAUDE_COMPLETA_CRON || "0 2 * * 2";
+const RUN_SAUDE_COMPLETA_WEEKLY =
+  (process.env.RUN_SAUDE_COMPLETA_WEEKLY ?? "true").toLowerCase() !== "false";
 const RUN_DIMENSOES_NIGHTLY = (process.env.RUN_DIMENSOES_NIGHTLY ?? "true").toLowerCase() !== "false";
 const RUN_APC_POLANCO_NIGHTLY = (process.env.RUN_APC_POLANCO_NIGHTLY ?? "true").toLowerCase() !== "false";
 const RUN_APC_POLANCO_SUPABASE_SYNC_NIGHTLY =
@@ -119,20 +127,31 @@ cron.schedule(
       console.log("[CRON] Step 3/14: pauta julgamento skipped by RUN_PAUTA_JULGAMENTO_NIGHTLY=false");
     }
 
+    // processos_eprocess (arquivos/movimentações) lê de public.processo, que é
+    // populado por processos_ce. Se o cadastro falhar, pular o eprocess para
+    // não rodar em cima de uma fonte vazia/desatualizada.
+    let processosCeOk = false;
     if (RUN_PROCESSOS_CE_NIGHTLY) {
       console.log("[CRON] Step 4/14: processos CE (EPROCESS -> public.processo)");
-      await executarCargaProcessosCe().catch((error) => {
+      try {
+        await executarCargaProcessosCe();
+        processosCeOk = true;
+      } catch (error) {
         console.error("[CRON] processos-ce failed:", error);
-      });
+      }
     } else {
       console.log("[CRON] Step 4/14: processos CE skipped by RUN_PROCESSOS_CE_NIGHTLY=false");
     }
 
     if (RUN_PROCESSOS_EPROCESS_NIGHTLY) {
-      console.log("[CRON] Step 5/14: processos arquivos/movimentações (EPROCESS -> PostgreSQL)");
-      await executarCargaProcessos().catch((error) => {
-        console.error("[CRON] processos-eprocess failed:", error);
-      });
+      if (!processosCeOk) {
+        console.log("[CRON] Step 5/14: processos eprocess skipped — processos-ce não executou com sucesso (dependência).");
+      } else {
+        console.log("[CRON] Step 5/14: processos arquivos/movimentações (EPROCESS -> PostgreSQL)");
+        await executarCargaProcessos().catch((error) => {
+          console.error("[CRON] processos-eprocess failed:", error);
+        });
+      }
     } else {
       console.log("[CRON] Step 5/14: processos eprocess skipped by RUN_PROCESSOS_EPROCESS_NIGHTLY=false");
     }
@@ -356,6 +375,46 @@ cron.schedule(
   },
   { timezone: TIMEZONE },
 );
+
+// ---------------------------------------------------------------------------
+// Cron semanal — Saúde Completa
+// Dispara `npm run carga-saude:postgres` via spawn. Cada etapa interna
+// (SIOPS, CNES/UBS, SISAGUA, InfoDengue, PNI, PNI Cobertura, Mortalidade)
+// loga seu próprio status em audit.etl_log + audit.etl_carga. PNI Cobertura e
+// Mortalidade dependem de arquivos manuais — se ausentes, falham essas etapas
+// mas as demais seguem.
+// ---------------------------------------------------------------------------
+if (RUN_SAUDE_COMPLETA_WEEKLY) {
+  console.log(`Weekly Saúde Completa: cron="${SAUDE_COMPLETA_CRON}" timezone="${TIMEZONE}"`);
+
+  cron.schedule(
+    SAUDE_COMPLETA_CRON,
+    () => {
+      console.log("\n[CRON] Saúde — carga completa semanal iniciando…");
+      const npmCmd = process.platform === "win32" ? "npm.cmd" : "npm";
+      const child = spawn(npmCmd, ["run", "carga-saude:postgres"], {
+        cwd: __dirname,
+        env: process.env,
+        stdio: "inherit",
+      });
+      child.on("exit", (code, signal) => {
+        if (code === 0) {
+          console.log("[CRON] Saúde — carga completa: concluído com sucesso.");
+        } else {
+          console.error(
+            `[CRON] Saúde — carga completa terminou com falha (code=${code ?? "null"}, signal=${signal ?? "null"}).`,
+          );
+        }
+      });
+      child.on("error", (err) => {
+        console.error("[CRON] Saúde — carga completa: erro de processo:", err);
+      });
+    },
+    { timezone: TIMEZONE },
+  );
+} else {
+  console.log("Weekly Saúde Completa: desativada por RUN_SAUDE_COMPLETA_WEEKLY=false");
+}
 
 process.on("SIGINT", () => {
   console.log("\nScheduler stopped.");
