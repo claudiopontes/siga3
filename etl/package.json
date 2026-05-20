@@ -102,6 +102,10 @@
     "carga-inep-ideb-escolas:postgres": "npm run inep-ideb-escolas:ingest",
     "carga-inep-censo-geo:postgres": "npm run inep-censo-geo:ingest",
     "carga-educacao-escolas:postgres": "npm run inep-censo-geo:ingest && npm run inep-ideb-escolas:ingest",
+    "inep-distorcao:ingest": "ts-node jobs/ingest-inep-distorcao-municipios.ts",
+    "carga-inep-distorcao:postgres": "npm run inep-distorcao:ingest",
+    "mart:gasto-aluno": "ts-node jobs/refresh-mart-gasto-aluno.ts",
+    "carga-gasto-aluno:postgres": "npm run mart:gasto-aluno",
     "inep-base-dos-dados-geo:ingest": "ts-node jobs/ingest-base-dos-dados-escolas-geo.ts",
     "carga-inep-base-dos-dados-geo:postgres": "npm run inep-base-dos-dados-geo:ingest"
   },

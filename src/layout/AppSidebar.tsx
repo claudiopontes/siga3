@@ -51,6 +51,7 @@ const baseNavItems: NavItem[] = [
       { name: "Indicadores Educacionais", path: "/painel-educacao" },
       { name: "Escolas",                  path: "/painel-educacao/escolas" },
       { name: "Censo Escolar",            path: "/painel-educacao/censo" },
+      { name: "Eficiência",               path: "/painel-educacao/eficiencia" },
     ],
   },
   {

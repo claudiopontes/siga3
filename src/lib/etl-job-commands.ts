@@ -85,6 +85,14 @@ export const ETL_JOB_COMMANDS: Record<string, { command: string; args: string[] 
     command: NPM_COMMAND,
     args: ["--prefix", "etl", "run", "carga-inep-base-dos-dados-geo:postgres"],
   },
+  inep_distorcao_municipios: {
+    command: NPM_COMMAND,
+    args: ["--prefix", "etl", "run", "carga-inep-distorcao:postgres"],
+  },
+  mart_gasto_aluno: {
+    command: NPM_COMMAND,
+    args: ["--prefix", "etl", "run", "carga-gasto-aluno:postgres"],
+  },
 };
 
 export function hasEtlJobCommand(modulo: string): boolean {

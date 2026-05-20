@@ -69,6 +69,7 @@ export default function EscolasClient() {
   const [situacaoSel, setSituacaoSel]   = useState<string>("");
   const [busca, setBusca]               = useState<string>("");
   const [somenteComIdeb, setSomenteComIdeb] = useState<boolean>(false);
+  const [modalidadeSel, setModalidadeSel] = useState<string>(""); // "indigena" | "quilombola" | ""
 
   // View
   const [viewMode, setViewMode] = useState<ViewMode>("mapa");
@@ -85,6 +86,7 @@ export default function EscolasClient() {
     if (situacaoSel) qs.set("situacao", situacaoSel);
     if (busca.trim()) qs.set("busca", busca.trim());
     if (somenteComIdeb) qs.set("somente_com_ideb", "1");
+    if (modalidadeSel) qs.set("modalidade", modalidadeSel);
     const url = `/api/educacao/escolas${qs.toString() ? "?" + qs.toString() : ""}`;
     fetch(url)
       .then((r) => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
@@ -94,7 +96,7 @@ export default function EscolasClient() {
       })
       .catch((e) => setErro(String(e)))
       .finally(() => setCarregando(false));
-  }, [edicaoSel, municipioSel, redeSel, localSel, situacaoSel, busca, somenteComIdeb]);
+  }, [edicaoSel, municipioSel, redeSel, localSel, situacaoSel, busca, somenteComIdeb, modalidadeSel]);
 
   // KPIs derivados
   const kpis = useMemo(() => {
@@ -244,6 +246,18 @@ export default function EscolasClient() {
           </select>
         </Field>
 
+        <Field label="Modalidade">
+          <select
+            value={modalidadeSel}
+            onChange={(e) => setModalidadeSel(e.target.value)}
+            className="rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200"
+          >
+            <option value="">Todas</option>
+            <option value="indigena">Educação Indígena</option>
+            <option value="quilombola">Educação Quilombola</option>
+          </select>
+        </Field>
+
         {/* Busca */}
         <Field label="Buscar escola">
           <input
@@ -297,25 +311,43 @@ export default function EscolasClient() {
                   <th className="px-3 py-2 text-center text-xs font-semibold uppercase tracking-wide text-gray-500">IDEB AI</th>
                   <th className="px-3 py-2 text-center text-xs font-semibold uppercase tracking-wide text-gray-500">IDEB AF</th>
                   <th className="px-3 py-2 text-center text-xs font-semibold uppercase tracking-wide text-gray-500">IDEB EM</th>
+                  <th className="px-3 py-2 text-center text-xs font-semibold uppercase tracking-wide text-indigo-600">Matr.</th>
+                  <th className="px-3 py-2 text-center text-xs font-semibold uppercase tracking-wide text-purple-600">Doc.</th>
+                  <th className="px-3 py-2 text-center text-xs font-semibold uppercase tracking-wide text-blue-600" title="Água potável">💧</th>
+                  <th className="px-3 py-2 text-center text-xs font-semibold uppercase tracking-wide text-amber-600" title="Energia elétrica">⚡</th>
+                  <th className="px-3 py-2 text-center text-xs font-semibold uppercase tracking-wide text-cyan-600" title="Internet">🌐</th>
                   <th className="px-3 py-2" />
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
                 {carregando
                   ? Array.from({ length: 10 }).map((_, i) => (
-                      <tr key={i}>{Array.from({ length: 8 }).map((__, j) => (
+                      <tr key={i}>{Array.from({ length: 13 }).map((__, j) => (
                         <td key={j} className="px-3 py-2"><div className="h-4 animate-pulse rounded bg-gray-100 dark:bg-gray-700" /></td>
                       ))}</tr>
                     ))
                   : (resp?.escolas ?? []).slice(0, 200).map((e) => (
                       <tr key={e.cod_escola} className="hover:bg-gray-50 dark:hover:bg-gray-700/30">
-                        <td className="px-3 py-2 font-medium text-gray-900 dark:text-white">{e.nome ?? "—"}</td>
+                        <td className="px-3 py-2 font-medium text-gray-900 dark:text-white">
+                          {e.ed_indigena && <span className="mr-1" title="Educação Indígena">🪶</span>}
+                          {e.ed_quilombola && <span className="mr-1" title="Educação Quilombola">✊🏿</span>}
+                          {e.nome ?? "—"}
+                        </td>
                         <td className="px-3 py-2 text-xs text-gray-500">{e.no_municipio ?? "—"}</td>
                         <td className="px-3 py-2 text-xs text-gray-500">{e.dependencia ?? "—"}</td>
                         <td className="px-3 py-2 text-xs text-gray-500">{e.localizacao ?? "—"}</td>
                         <td className="px-3 py-2 text-center font-bold" style={{ color: getColorIdeb(e.ideb_ai) }}>{fmt(e.ideb_ai)}</td>
                         <td className="px-3 py-2 text-center font-bold" style={{ color: getColorIdeb(e.ideb_af) }}>{fmt(e.ideb_af)}</td>
                         <td className="px-3 py-2 text-center font-bold" style={{ color: getColorIdeb(e.ideb_em) }}>{fmt(e.ideb_em)}</td>
+                        <td className="px-3 py-2 text-center text-xs text-indigo-700 dark:text-indigo-400">
+                          {e.qt_mat_bas !== null && e.qt_mat_bas !== undefined ? e.qt_mat_bas.toLocaleString("pt-BR") : "—"}
+                        </td>
+                        <td className="px-3 py-2 text-center text-xs text-purple-700 dark:text-purple-400">
+                          {e.qt_doc_bas !== null && e.qt_doc_bas !== undefined ? e.qt_doc_bas.toLocaleString("pt-BR") : "—"}
+                        </td>
+                        <td className="px-3 py-2 text-center">{infraDot(e.infra?.agua_potavel)}</td>
+                        <td className="px-3 py-2 text-center">{infraDot(e.infra?.energia_eletrica)}</td>
+                        <td className="px-3 py-2 text-center">{infraDot(e.infra?.internet)}</td>
                         <td className="px-3 py-2 text-right">
                           <button
                             onClick={() => setDetalhe(e)}
@@ -348,6 +380,18 @@ export default function EscolasClient() {
                 <p className="text-xs text-gray-400">
                   Cód. INEP {detalhe.cod_escola} · {detalhe.no_municipio ?? "—"}
                 </p>
+                <div className="mt-1 flex flex-wrap gap-1">
+                  {detalhe.ed_indigena && (
+                    <span className="inline-flex items-center rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-semibold text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">
+                      🪶 Educação Indígena
+                    </span>
+                  )}
+                  {detalhe.ed_quilombola && (
+                    <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800 dark:bg-amber-900/30 dark:text-amber-400">
+                      ✊🏿 Educação Quilombola
+                    </span>
+                  )}
+                </div>
               </div>
               <button onClick={() => setDetalhe(null)} className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700">✕</button>
             </div>
@@ -369,14 +413,19 @@ export default function EscolasClient() {
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="text-left text-[10px] uppercase text-gray-400">
-                      <th>Etapa</th><th className="text-right">Observado</th><th className="text-right">Meta</th><th className="text-right">Δ</th>
+                      <th>Etapa</th>
+                      <th className="text-right">Observado</th>
+                      <th className="text-right">Meta</th>
+                      <th className="text-right">Δ</th>
+                      <th className="text-right">SAEB Mat</th>
+                      <th className="text-right">SAEB LP</th>
                     </tr>
                   </thead>
                   <tbody>
                     {([
-                      { label: "Anos Iniciais", obs: detalhe.ideb_ai, meta: detalhe.meta_ai },
-                      { label: "Anos Finais",   obs: detalhe.ideb_af, meta: detalhe.meta_af },
-                      { label: "Ensino Médio",  obs: detalhe.ideb_em, meta: detalhe.meta_em },
+                      { label: "Anos Iniciais", obs: detalhe.ideb_ai, meta: detalhe.meta_ai, saeb: detalhe.saeb?.ai },
+                      { label: "Anos Finais",   obs: detalhe.ideb_af, meta: detalhe.meta_af, saeb: detalhe.saeb?.af },
+                      { label: "Ensino Médio",  obs: detalhe.ideb_em, meta: detalhe.meta_em, saeb: detalhe.saeb?.em },
                     ] as const).map((etapa) => {
                       const delta = (etapa.obs !== null && etapa.meta !== null) ? etapa.obs - etapa.meta : null;
                       return (
@@ -387,11 +436,14 @@ export default function EscolasClient() {
                           <td className="py-1.5 text-right font-medium" style={{ color: delta === null ? "#9ca3af" : delta >= 0 ? "#16a34a" : "#dc2626" }}>
                             {delta === null ? "—" : `${delta >= 0 ? "+" : ""}${delta.toFixed(1)}`}
                           </td>
+                          <td className="py-1.5 text-right text-blue-700 dark:text-blue-400">{etapa.saeb?.mat !== null && etapa.saeb?.mat !== undefined ? etapa.saeb.mat.toFixed(0) : "—"}</td>
+                          <td className="py-1.5 text-right text-emerald-700 dark:text-emerald-400">{etapa.saeb?.lp !== null && etapa.saeb?.lp !== undefined ? etapa.saeb.lp.toFixed(0) : "—"}</td>
                         </tr>
                       );
                     })}
                   </tbody>
                 </table>
+                <p className="mt-1 text-[10px] text-gray-400">SAEB: 0–500 (Mat) e 0–325 (LP) — quanto maior, melhor.</p>
               </section>
 
               <BlocoCenso detalhe={detalhe} />
@@ -414,4 +466,10 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       {children}
     </div>
   );
+}
+
+function infraDot(v: boolean | null | undefined) {
+  if (v === true)  return <span className="font-bold text-emerald-600" title="Tem">✓</span>;
+  if (v === false) return <span className="font-bold text-red-600"     title="Não tem">✗</span>;
+  return <span className="text-gray-300" title="Não informado">—</span>;
 }

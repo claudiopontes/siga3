@@ -339,6 +339,31 @@ export const ETL_CONFIG: Record<string, EtlConfigEntry> = {
         "Reprocessa o microdado do Censo Escolar mais recente em etl/data/inep/censo/. Extração ~30s; ingestão ~10s. Deseja continuar?",
     },
   },
+  inep_distorcao_municipios: {
+    nomeExibicao: "Distorção Idade-Série (INEP)",
+    periodicidade: "variavel",
+    toleranciaDias: 36500,
+    ativoPainel: true,
+    descricaoPeriodicidade:
+      "Sob demanda. Anual no INEP. Arquivos baixados manualmente em etl/data/inep/distorcao/. Complementa Rendimento Escolar e IDEB com indicador de fluxo (% alunos com 2+ anos de atraso).",
+    execucao: {
+      tipoCargaPadrao: "full",
+      modoCargaPadrao: "full_upsert_hash",
+      escopoCarga: "tudo",
+      preservaHistoricoAnterior: true,
+      requerConfirmacaoManual: false,
+      observacaoRegraNegocio:
+        "Lê todos os ZIPs em etl/data/inep/distorcao/. Filtro padrão UF=AC. Cada linha = município × localização × dependência.",
+    },
+    execucaoManual: {
+      permiteExecucaoManual: true,
+      permiteFullManual: true,
+      permiteIncrementalManual: false,
+      labelBotao: "Reprocessar Distorção",
+      mensagemConfirmacao:
+        "Reprocessa todos os ZIPs de Taxa de Distorção Idade-Série em etl/data/inep/distorcao/. Deseja continuar?",
+    },
+  },
   mart_painel_educacao: {
     nomeExibicao: "Painel Educação — Consolidado",
     periodicidade: "variavel",

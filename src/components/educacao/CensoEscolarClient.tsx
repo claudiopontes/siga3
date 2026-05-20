@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import type { ApexOptions } from "apexcharts";
 import BlocoCenso from "./BlocoCenso";
@@ -15,6 +15,10 @@ interface ApiEscolasResp {
 }
 
 type ViewMode = "analise" | "escolas";
+
+type OrdemCol =
+  | "nome" | "municipio" | "rede" | "localizacao"
+  | "matriculas" | "ei" | "ef" | "em" | "docentes";
 
 // ---------------------------------------------------------------------------
 // Tipos
@@ -76,6 +80,7 @@ export default function CensoEscolarClient() {
   const [municipioSel, setMunicipioSel]     = useState<string>("");
   const [dependenciaSel, setDependenciaSel] = useState<string>("");
   const [localizacaoSel, setLocalizacaoSel] = useState<string>("");
+  const [modalidadeSel, setModalidadeSel]   = useState<string>("");
 
   // View toggle + lista de escolas
   const [viewMode, setViewMode] = useState<ViewMode>("analise");
@@ -83,6 +88,20 @@ export default function CensoEscolarClient() {
   const [carregandoEscolas, setCarregandoEscolas] = useState(false);
   const [busca, setBusca] = useState<string>("");
   const [detalhe, setDetalhe] = useState<EscolaPonto | null>(null);
+  // Ordenação da lista
+  const [ordemCol, setOrdemCol] = useState<OrdemCol>("nome");
+  const [ordemAsc, setOrdemAsc] = useState<boolean>(true);
+
+  const escolasOrdenadas = useMemo(() => {
+    const arr = [...escolas];
+    arr.sort((a, b) => compararEscolas(a, b, ordemCol));
+    return ordemAsc ? arr : arr.reverse();
+  }, [escolas, ordemCol, ordemAsc]);
+
+  const toggleOrdem = (col: OrdemCol) => {
+    if (ordemCol === col) setOrdemAsc((v) => !v);
+    else { setOrdemCol(col); setOrdemAsc(true); }
+  };
 
   useEffect(() => {
     setCarregando(true);
@@ -108,12 +127,13 @@ export default function CensoEscolarClient() {
     if (dependenciaSel) qs.set("rede", dependenciaSel);
     if (localizacaoSel) qs.set("localizacao", localizacaoSel);
     if (busca.trim())   qs.set("busca", busca.trim());
+    if (modalidadeSel)  qs.set("modalidade", modalidadeSel);
     fetch(`/api/educacao/escolas?${qs.toString()}`)
       .then((r) => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
       .then((d: ApiEscolasResp) => setEscolas(d.escolas ?? []))
       .catch(() => setEscolas([]))
       .finally(() => setCarregandoEscolas(false));
-  }, [viewMode, municipioSel, dependenciaSel, localizacaoSel, busca]);
+  }, [viewMode, municipioSel, dependenciaSel, localizacaoSel, busca, modalidadeSel]);
 
   if (erro) {
     return (
@@ -179,6 +199,20 @@ export default function CensoEscolarClient() {
             {resp?.filtros?.localizacoes.map((r) => <option key={r} value={r}>{r}</option>)}
           </select>
         </Field>
+
+        {viewMode === "escolas" && (
+          <Field label="Modalidade">
+            <select
+              value={modalidadeSel}
+              onChange={(e) => setModalidadeSel(e.target.value)}
+              className="rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200"
+            >
+              <option value="">Todas</option>
+              <option value="indigena">Educação Indígena</option>
+              <option value="quilombola">Educação Quilombola</option>
+            </select>
+          </Field>
+        )}
 
         {viewMode === "escolas" && (
           <Field label="Buscar escola">
@@ -271,7 +305,162 @@ export default function CensoEscolarClient() {
           </div>
         </div>
       )}
+
+      {/* ─── Lista de Escolas (view "escolas") ─── */}
+      {viewMode === "escolas" && (
+        <div className="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
+          <div className="flex items-center justify-between border-b border-gray-100 px-4 py-2 text-xs text-gray-500 dark:border-gray-700 dark:text-gray-400">
+            <span>
+              <strong className="text-gray-700 dark:text-gray-200">{escolasOrdenadas.length}</strong>
+              {" escolas em atividade no filtro atual"}
+            </span>
+            <span className="text-[10px] text-gray-400">Clique em uma coluna para ordenar · Clique em uma linha para detalhar</span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-900/50">
+                  <ThSort col="nome"        ordemCol={ordemCol} ordemAsc={ordemAsc} onClick={toggleOrdem} align="left"   colorClass="text-gray-500">Escola</ThSort>
+                  <ThSort col="municipio"   ordemCol={ordemCol} ordemAsc={ordemAsc} onClick={toggleOrdem} align="left"   colorClass="text-gray-500">Município</ThSort>
+                  <ThSort col="rede"        ordemCol={ordemCol} ordemAsc={ordemAsc} onClick={toggleOrdem} align="left"   colorClass="text-gray-500">Rede</ThSort>
+                  <ThSort col="localizacao" ordemCol={ordemCol} ordemAsc={ordemAsc} onClick={toggleOrdem} align="left"   colorClass="text-gray-500">Loc.</ThSort>
+                  <ThSort col="matriculas"  ordemCol={ordemCol} ordemAsc={ordemAsc} onClick={toggleOrdem} align="center" colorClass="text-indigo-600">Matrículas</ThSort>
+                  <ThSort col="ei"          ordemCol={ordemCol} ordemAsc={ordemAsc} onClick={toggleOrdem} align="center" colorClass="text-gray-500">EI</ThSort>
+                  <ThSort col="ef"          ordemCol={ordemCol} ordemAsc={ordemAsc} onClick={toggleOrdem} align="center" colorClass="text-gray-500">EF</ThSort>
+                  <ThSort col="em"          ordemCol={ordemCol} ordemAsc={ordemAsc} onClick={toggleOrdem} align="center" colorClass="text-gray-500">EM</ThSort>
+                  <ThSort col="docentes"    ordemCol={ordemCol} ordemAsc={ordemAsc} onClick={toggleOrdem} align="center" colorClass="text-purple-600">Docentes</ThSort>
+                  <th className="px-3 py-2 text-center text-xs font-semibold uppercase tracking-wide text-blue-600" title="Água potável">💧</th>
+                  <th className="px-3 py-2 text-center text-xs font-semibold uppercase tracking-wide text-amber-600" title="Energia elétrica">⚡</th>
+                  <th className="px-3 py-2 text-center text-xs font-semibold uppercase tracking-wide text-cyan-600" title="Internet">🌐</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                {carregandoEscolas ? (
+                  Array.from({ length: 12 }).map((_, i) => (
+                    <tr key={i}>{Array.from({ length: 12 }).map((__, j) => (
+                      <td key={j} className="px-3 py-2"><div className="h-4 animate-pulse rounded bg-gray-100 dark:bg-gray-700" /></td>
+                    ))}</tr>
+                  ))
+                ) : (
+                  escolasOrdenadas.map((e) => (
+                    <tr
+                      key={e.cod_escola}
+                      onClick={() => setDetalhe(e)}
+                      className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/30"
+                    >
+                      <td className="px-3 py-2 font-medium text-gray-900 dark:text-white">
+                        {e.ed_indigena && <span className="mr-1" title="Educação Indígena">🪶</span>}
+                        {e.ed_quilombola && <span className="mr-1" title="Educação Quilombola">✊🏿</span>}
+                        {e.nome ?? "—"}
+                      </td>
+                      <td className="px-3 py-2 text-xs text-gray-500">{e.no_municipio ?? "—"}</td>
+                      <td className="px-3 py-2 text-xs text-gray-500">{e.dependencia ?? "—"}</td>
+                      <td className="px-3 py-2 text-xs text-gray-500">{e.localizacao ?? "—"}</td>
+                      <td className="px-3 py-2 text-center font-medium text-indigo-700 dark:text-indigo-400">{fmtInt(e.qt_mat_bas)}</td>
+                      <td className="px-3 py-2 text-center text-xs text-gray-600 dark:text-gray-400">{fmtInt(e.qt_mat_inf)}</td>
+                      <td className="px-3 py-2 text-center text-xs text-gray-600 dark:text-gray-400">{fmtInt(e.qt_mat_fund)}</td>
+                      <td className="px-3 py-2 text-center text-xs text-gray-600 dark:text-gray-400">{fmtInt(e.qt_mat_med)}</td>
+                      <td className="px-3 py-2 text-center text-purple-700 dark:text-purple-400">{fmtInt(e.qt_doc_bas)}</td>
+                      <td className="px-3 py-2 text-center">{infraIcon(e.infra?.agua_potavel)}</td>
+                      <td className="px-3 py-2 text-center">{infraIcon(e.infra?.energia_eletrica)}</td>
+                      <td className="px-3 py-2 text-center">{infraIcon(e.infra?.internet)}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Modal detalhe (view "escolas") ─── */}
+      {detalhe && (
+        <div
+          className="fixed inset-0 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm"
+          style={{ zIndex: 99999 }}
+          onClick={(e) => { if (e.target === e.currentTarget) setDetalhe(null); }}
+        >
+          <div className="flex w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-800">
+            <div className="flex items-start justify-between border-b border-gray-200 px-5 py-3 dark:border-gray-700">
+              <div>
+                <h2 className="text-base font-bold text-gray-900 dark:text-white">{detalhe.nome ?? "(sem nome)"}</h2>
+                <p className="text-xs text-gray-400">
+                  Cód. INEP {detalhe.cod_escola}
+                  {detalhe.no_municipio ? ` · ${detalhe.no_municipio}` : ""}
+                  {detalhe.dependencia ? ` · ${detalhe.dependencia}` : ""}
+                  {detalhe.localizacao ? ` · ${detalhe.localizacao}` : ""}
+                </p>
+              </div>
+              <button onClick={() => setDetalhe(null)} className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700">✕</button>
+            </div>
+            <div className="space-y-4 p-5 text-sm">
+              <BlocoCenso detalhe={detalhe} />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
+  );
+}
+
+function infraIcon(v: boolean | null | undefined) {
+  if (v === true) return <span className="font-bold text-emerald-600">✓</span>;
+  if (v === false) return <span className="font-bold text-red-600">✗</span>;
+  return <span className="text-gray-300">—</span>;
+}
+
+// ---------------------------------------------------------------------------
+// Ordenação
+// ---------------------------------------------------------------------------
+
+/** Comparador. Sempre crescente; a inversão (asc/desc) é feita no .reverse() pós-sort. */
+function compararEscolas(a: EscolaPonto, b: EscolaPonto, col: OrdemCol): number {
+  const txt = (x: string | null | undefined) => (x ?? "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+  const numCmp = (x: number | null | undefined, y: number | null | undefined) => {
+    // Null sempre por último mesmo após .reverse() — quando inverter, ficam primeiros.
+    // Tratamos null como -Infinity para ASC: vai para o topo após reverse (desc) traz nulls ao final.
+    const xv = x ?? Number.NEGATIVE_INFINITY;
+    const yv = y ?? Number.NEGATIVE_INFINITY;
+    return xv - yv;
+  };
+  switch (col) {
+    case "nome":         return txt(a.nome).localeCompare(txt(b.nome));
+    case "municipio":    return txt(a.no_municipio).localeCompare(txt(b.no_municipio));
+    case "rede":         return txt(a.dependencia).localeCompare(txt(b.dependencia));
+    case "localizacao":  return txt(a.localizacao).localeCompare(txt(b.localizacao));
+    case "matriculas":   return numCmp(a.qt_mat_bas,  b.qt_mat_bas);
+    case "ei":           return numCmp(a.qt_mat_inf,  b.qt_mat_inf);
+    case "ef":           return numCmp(a.qt_mat_fund, b.qt_mat_fund);
+    case "em":           return numCmp(a.qt_mat_med,  b.qt_mat_med);
+    case "docentes":     return numCmp(a.qt_doc_bas,  b.qt_doc_bas);
+  }
+}
+
+function ThSort({
+  col, ordemCol, ordemAsc, onClick, align = "left", colorClass = "text-gray-500", children,
+}: {
+  col: OrdemCol;
+  ordemCol: OrdemCol;
+  ordemAsc: boolean;
+  onClick: (c: OrdemCol) => void;
+  align?: "left" | "center" | "right";
+  colorClass?: string;
+  children: React.ReactNode;
+}) {
+  const ativo = ordemCol === col;
+  const seta = !ativo ? "↕" : ordemAsc ? "↑" : "↓";
+  const corSeta = ativo ? "text-gray-700 dark:text-gray-200" : "text-gray-300";
+  const alignClass = align === "left" ? "text-left" : align === "center" ? "text-center" : "text-right";
+  return (
+    <th
+      className={`cursor-pointer select-none px-3 py-2 text-xs font-semibold uppercase tracking-wide hover:text-gray-700 dark:hover:text-gray-200 ${alignClass} ${colorClass}`}
+      onClick={() => onClick(col)}
+    >
+      <span className="inline-flex items-center gap-1">
+        {children}
+        <span className={`text-[10px] ${corSeta}`}>{seta}</span>
+      </span>
+    </th>
   );
 }
 

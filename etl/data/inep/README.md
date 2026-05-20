@@ -47,6 +47,25 @@ Mesmo padrão, trocando o ano. Edições bienais: 2021, 2019, 2017, 2015, 2013, 
 > Comece pela edição 2023 (3 arquivos). Histórico pode entrar depois sem
 > mudar código — o ingestor processa qualquer ZIP que encontrar no diretório.
 
+## 2b. Distorção Idade-Série (anual)
+
+**Diretório de destino:** `etl/data/inep/distorcao/`
+
+Indicador de fluxo escolar — % de alunos com 2+ anos de atraso. Complementa
+o IDEB (bienal) e Taxas de Rendimento. **Anual**, mesma fonte INEP.
+
+**Onde baixar:**
+1. https://www.gov.br/inep/pt-br/acesso-a-informacao/dados-abertos/indicadores-educacionais/taxa-de-distorcao-idade-serie
+2. Aba do ano mais recente → arquivo "Municípios" (ZIP).
+
+**Salvar como** (exemplo 2023):
+```
+etl/data/inep/distorcao/tx_distorcao_idade_serie_municipios_2023.zip
+```
+
+O ingestor identifica o ano pelo nome do arquivo e processa todos os ZIPs
+da pasta. Idempotente.
+
 ## 2. Taxas de Rendimento Escolar (anual)
 
 **Diretório de destino:** `etl/data/inep/rendimento/`

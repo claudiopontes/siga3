@@ -99,11 +99,22 @@ const REGEX_ANEXO_EDUCACIONAL: RegExp[] = [
   /\bFUNDEB\b/i,
 ];
 
-// Regex de classificação por categoria (mantidas iguais às Fases 16B/16C)
+// Regex de classificação por categoria (refinadas após inspeção dos dados reais
+// do RREO Anexo 8 — Fase 16C.2 revisitada com Fase 18B).
 const CATEGORIAS: { rotulo: string; flag: keyof FlagsCategoria; padroes: RegExp[] }[] = [
   { rotulo: "MDE",
     flag: "eh_mde",
-    padroes: [/manuten[çc][ãa]o.*desenvolvimento.*ensino/i, /\bMDE\b/, /aplicado.*ensino/i, /25\s?%/, /m[íi]nimo.*constitucional/i] },
+    padroes: [
+      // Indicador percentual
+      /manuten[çc][ãa]o.*desenvolvimento.*ensino/i,
+      /\bMDE\b/,
+      /aplicado.*ensino/i,
+      /m[íi]nimo.*constitucional/i,
+      // Sub-funções de despesa educacional (MDE concreto)
+      /^educa[çc][ãa]o\s+(infantil|fundamental|b[áa]sica|m[ée]dio|especial|de\s+jovens|profissional|superior)/i,
+      /^educa[çc][ãa]o$/i,
+      /ensino\s+(fundamental|m[ée]dio|infantil|superior|profissional)/i,
+    ] },
   { rotulo: "FUNDEB",
     flag: "eh_fundeb",
     padroes: [/FUNDEB/i, /complementa[çc][ãa]o.*uni[ãa]o.*FUNDEB/i] },
@@ -118,7 +129,13 @@ const CATEGORIAS: { rotulo: string; flag: keyof FlagsCategoria; padroes: RegExp[
     padroes: [/transfer[êe]ncia.*constitucional/i, /\bFPM\b/, /\bFPE\b/, /cota[- ]parte/i, /lei\s*kandir/i, /royalties/i, /\bIPI\b.*export/i] },
   { rotulo: "DESPESA_EDUCACAO",
     flag: "eh_despesa_educacao",
-    padroes: [/despesa.*educa[çc][ãa]o/i, /fun[çc][ãa]o\s*12/i, /ensino\s+(fundamental|m[ée]dio|infantil|superior|profissional)/i] },
+    padroes: [
+      /despesa.*educa[çc][ãa]o/i,
+      /fun[çc][ãa]o\s*12/i,
+      /^educa[çc][ãa]o\s+(infantil|fundamental|b[áa]sica|m[ée]dio|especial|de\s+jovens|profissional|superior)/i,
+      /^educa[çc][ãa]o$/i,
+      /ensino\s+(fundamental|m[ée]dio|infantil|superior|profissional)/i,
+    ] },
   { rotulo: "RESTOS_A_PAGAR",
     flag: "eh_resto_pagar",
     padroes: [/restos\s+a\s+pagar/i, /inscritos.*sem.*disponibilidade/i] },
@@ -491,6 +508,10 @@ async function processarEnte(
         `DELETE FROM mart.siope_risco_educacao_basico WHERE an_exercicio = $1 AND nr_periodo = $2 AND id_ente = $3`,
         [exercicio, periodoOk, idEnteStr],
       );
+      // Mart usa SEMPRE coluna "DESPESAS LIQUIDADAS ATÉ O BIMESTRE (d)" para
+      // valores em reais (acumulado anual de execução). Outras colunas como
+      // "% (b/total b)" ou "DOTAÇÃO INICIAL" estão na mesma fato e seriam
+      // misturadas no SUM sem este filtro, produzindo números inconsistentes.
       await client.query(`
         INSERT INTO mart.siope_risco_educacao_basico
           (an_exercicio, nr_periodo, id_ente, no_ente, uf, esfera,
@@ -501,13 +522,13 @@ async function processarEnte(
           an_exercicio, nr_periodo, id_ente,
           MAX(no_ente), MAX(uf), MAX(esfera),
           COUNT(*),
-          SUM(valor) FILTER (WHERE eh_mde),
-          SUM(valor) FILTER (WHERE eh_fundeb),
-          SUM(valor) FILTER (WHERE eh_remuneracao_profissionais),
-          SUM(valor) FILTER (WHERE eh_receita_impostos),
-          SUM(valor) FILTER (WHERE eh_transferencia_constitucional),
-          SUM(valor) FILTER (WHERE eh_despesa_educacao),
-          SUM(valor) FILTER (WHERE eh_resto_pagar),
+          SUM(valor) FILTER (WHERE eh_mde                          AND coluna ILIKE 'DESPESAS LIQUIDADAS ATÉ O BIMESTRE%'),
+          SUM(valor) FILTER (WHERE eh_fundeb                       AND coluna ILIKE 'DESPESAS LIQUIDADAS ATÉ O BIMESTRE%'),
+          SUM(valor) FILTER (WHERE eh_remuneracao_profissionais    AND coluna ILIKE 'DESPESAS LIQUIDADAS ATÉ O BIMESTRE%'),
+          SUM(valor) FILTER (WHERE eh_receita_impostos             AND coluna ILIKE 'RECEITAS REALIZADAS%'),
+          SUM(valor) FILTER (WHERE eh_transferencia_constitucional AND coluna ILIKE 'RECEITAS REALIZADAS%'),
+          SUM(valor) FILTER (WHERE eh_despesa_educacao             AND coluna ILIKE 'DESPESAS LIQUIDADAS ATÉ O BIMESTRE%'),
+          SUM(valor) FILTER (WHERE eh_resto_pagar                  AND coluna ILIKE 'INSCRITAS EM RESTOS A PAGAR%'),
           now()
         FROM dw.fato_siope_rreo_anexo8
         WHERE an_exercicio = $1 AND nr_periodo = $2 AND id_ente = $3

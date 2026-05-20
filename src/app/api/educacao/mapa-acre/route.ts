@@ -95,7 +95,65 @@ export async function GET(req: Request) {
       porMun.set(r.cod_municipio, cur);
     }
 
-    // ── 4. Rendimento mais recente (Total/Total) ──
+    // ── 4. Gasto MDE por Aluno (por município) ──
+    interface LinhaGasto {
+      cod_municipio: number;
+      an_exercicio: number | null;
+      nr_periodo: number | null;
+      total_mde: string | null;
+      total_despesa_educacao: string | null;
+      total_matriculas_bas: number | null;
+      gasto_aluno_mde: string | null;
+      gasto_aluno_educacao: string | null;
+      ano_referencia_tce: number | null;
+      total_mde_tce: string | null;
+      total_despesa_educacao_tce: string | null;
+      receita_base_mde_tce: string | null;
+      pct_aplicado_mde_tce: string | null;
+      gasto_aluno_mde_tce: string | null;
+      divergencia_mde_pct: string | null;
+    }
+    let porGasto = new Map<number, LinhaGasto>();
+    try {
+      const gastoRows = await dbQuery<LinhaGasto>(`
+        SELECT cod_municipio, an_exercicio, nr_periodo,
+               total_mde::text, total_despesa_educacao::text, total_matriculas_bas,
+               gasto_aluno_mde::text, gasto_aluno_educacao::text,
+               ano_referencia_tce,
+               total_mde_tce::text, total_despesa_educacao_tce::text,
+               receita_base_mde_tce::text, pct_aplicado_mde_tce::text,
+               gasto_aluno_mde_tce::text, divergencia_mde_pct::text
+        FROM mart.gasto_aluno_municipio
+        WHERE sg_uf = 'AC'
+      `);
+      porGasto = new Map(gastoRows.map((g) => [g.cod_municipio, g]));
+    } catch {
+      porGasto = new Map();
+    }
+
+    // ── 5. Distorção Idade-Série mais recente (Total/Total) ──
+    interface LinhaDistorcao {
+      cod_municipio: number; ano: number;
+      dist_fund_total: string | null; dist_fund_ai: string | null;
+      dist_fund_af: string | null;    dist_em_total: string | null;
+    }
+    let porDistorcao = new Map<number, LinhaDistorcao>();
+    try {
+      const distRows = await dbQuery<LinhaDistorcao>(`
+        SELECT DISTINCT ON (cod_municipio)
+          cod_municipio, ano,
+          dist_fund_total, dist_fund_ai, dist_fund_af, dist_em_total
+        FROM dw.fato_inep_distorcao_municipal
+        WHERE sg_uf = 'AC' AND localizacao = $1 AND dependencia = $2
+        ORDER BY cod_municipio, ano DESC
+      `, [LOCALIZACAO_TOTAL, DEPENDENCIA_TOTAL]);
+      porDistorcao = new Map(distRows.map((r) => [r.cod_municipio, r]));
+    } catch {
+      // Tabela ainda não migrada ou vazia — segue sem distorção
+      porDistorcao = new Map();
+    }
+
+    // ── 5. Rendimento mais recente (Total/Total) ──
     const rendRows = await dbQuery<{
       cod_municipio: number; ano: number;
       aprov_fund_total: string | null; aprov_em_total: string | null;
@@ -128,6 +186,8 @@ export async function GET(req: Request) {
     const municipios = [...codigosUnicos].map((cod) => {
       const ideb = porMun.get(cod);
       const rend = porRend.get(cod);
+      const dist = porDistorcao.get(cod);
+      const gasto = porGasto.get(cod);
       const composite = media([ideb?.ai ?? null, ideb?.af ?? null, ideb?.em ?? null]);
       return {
         codigo_ibge: String(cod),
@@ -148,6 +208,27 @@ export async function GET(req: Request) {
         reprovacao_em_total:   num(rend?.reprov_em_total),
         abandono_fund_total:   num(rend?.abandono_fund_total),
         abandono_em_total:     num(rend?.abandono_em_total),
+        ano_distorcao:         dist?.ano ?? null,
+        distorcao_fund_total:  num(dist?.dist_fund_total),
+        distorcao_fund_ai:     num(dist?.dist_fund_ai),
+        distorcao_fund_af:     num(dist?.dist_fund_af),
+        distorcao_em_total:    num(dist?.dist_em_total),
+        // Eficiência: gasto/aluno (SICONFI)
+        gasto_ano_siconfi:     gasto?.an_exercicio ?? null,
+        gasto_periodo_siconfi: gasto?.nr_periodo ?? null,
+        total_mde:                  num(gasto?.total_mde),
+        total_despesa_educacao:     num(gasto?.total_despesa_educacao),
+        total_matriculas_censo:     gasto?.total_matriculas_bas ?? null,
+        gasto_aluno_mde:            num(gasto?.gasto_aluno_mde),
+        gasto_aluno_educacao:       num(gasto?.gasto_aluno_educacao),
+        // Eficiência: gasto/aluno (TCE — SIPAC)
+        ano_referencia_tce:           gasto?.ano_referencia_tce ?? null,
+        total_mde_tce:                num(gasto?.total_mde_tce),
+        total_despesa_educacao_tce:   num(gasto?.total_despesa_educacao_tce),
+        receita_base_mde_tce:         num(gasto?.receita_base_mde_tce),
+        pct_aplicado_mde_tce:         num(gasto?.pct_aplicado_mde_tce),
+        gasto_aluno_mde_tce:          num(gasto?.gasto_aluno_mde_tce),
+        divergencia_mde_pct:          num(gasto?.divergencia_mde_pct),
       };
     }).sort((a, b) => (a.nome ?? "").localeCompare(b.nome ?? ""));
 
@@ -275,6 +356,35 @@ export async function GET(req: Request) {
       SELECT MAX(atualizado_em)::text AS atualizado_em FROM mart.painel_educacao_municipio
     `);
 
+    // ── Gasto MDE por aluno (estadual médio) ──
+    let gastoAluno: {
+      ano_siconfi: number | null;
+      periodo_siconfi: number | null;
+      gasto_medio_mde_aluno: number | null;
+      gasto_medio_educacao_aluno: number | null;
+      municipios_com_calculo: number;
+    } | null = null;
+    try {
+      const [g] = await dbQuery<{
+        an_exercicio: number | null; nr_periodo: number | null;
+        media_mde: string | null; media_edu: string | null; n: string;
+      }>(`
+        SELECT MAX(an_exercicio) AS an_exercicio,
+               MAX(nr_periodo) AS nr_periodo,
+               AVG(gasto_aluno_mde)::text AS media_mde,
+               AVG(gasto_aluno_educacao)::text AS media_edu,
+               COUNT(*) FILTER (WHERE gasto_aluno_mde IS NOT NULL)::text AS n
+        FROM mart.gasto_aluno_municipio
+        WHERE sg_uf = 'AC'
+      `);
+      if (g) gastoAluno = {
+        ano_siconfi: g.an_exercicio, periodo_siconfi: g.nr_periodo,
+        gasto_medio_mde_aluno:      num(g.media_mde),
+        gasto_medio_educacao_aluno: num(g.media_edu),
+        municipios_com_calculo:     parseInt(g.n, 10),
+      };
+    } catch { gastoAluno = null; }
+
     return NextResponse.json({
       edicoes,
       edicao: edicaoSel,
@@ -282,6 +392,7 @@ export async function GET(req: Request) {
       kpis,
       evolucao,
       censo,
+      gasto_aluno: gastoAluno,
       atualizado_em: atual?.atualizado_em ?? null,
       fonte: "INEP — IDEB municipal (rede Pública) + Taxas de Rendimento Escolar + Censo Escolar",
       // Mantém alias 'total' para compatibilidade com chamadas antigas

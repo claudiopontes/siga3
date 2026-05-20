@@ -35,6 +35,7 @@ const AppHeader: React.FC = () => {
   const isMapaPage             = pathname === "/gabinete-digital/mapa" || pathname === "/painel-educacao";
   const isEscolasPage          = pathname === "/painel-educacao/escolas";
   const isCensoPage            = pathname === "/painel-educacao/censo";
+  const isEficienciaPage       = pathname === "/painel-educacao/eficiencia";
   const isCalendarPage         = pathname === "/calendar";
   const isProfilePage          = pathname === "/profile";
   const isUsuariosPage         = pathname === "/seguranca/usuarios";
@@ -82,6 +83,7 @@ const AppHeader: React.FC = () => {
     "/painel-educacao":         { crumbs: [{ label: "Home", href: "/" }, { label: "Educação" }, { label: "Indicadores Educacionais" }] },
     "/painel-educacao/escolas": { crumbs: [{ label: "Home", href: "/" }, { label: "Educação" }, { label: "Escolas" }] },
     "/painel-educacao/censo":   { crumbs: [{ label: "Home", href: "/" }, { label: "Educação" }, { label: "Censo Escolar" }] },
+    "/painel-educacao/eficiencia": { crumbs: [{ label: "Home", href: "/" }, { label: "Educação" }, { label: "Eficiência" }] },
     "/remessas/calendario": { crumbs: [{ label: "Home", href: "/" }, { label: "Controle Externo" }, { label: "Envio SIPAC/TCE" }] },
     "/calendar": { crumbs: [{ label: "Home", href: "/" }, { label: "Agenda" }] },
     "/profile": { crumbs: [{ label: "Home", href: "/" }, { label: "Perfil" }] },
@@ -267,6 +269,17 @@ const AppHeader: React.FC = () => {
                 <span className="text-xs text-gray-400 dark:text-gray-500">
                   <span className="font-medium text-indigo-600 dark:text-indigo-400">Censo Escolar</span>
                   {" · "}INEP/MEC
+                </span>
+              </div>
+            )}
+            {isEficienciaPage && (
+              <div className="flex flex-col">
+                <span className="truncate text-sm text-gray-600 dark:text-gray-300">
+                  Gasto público em educação cruzado com IDEB e matrículas — eficiência por município.
+                </span>
+                <span className="text-xs text-gray-400 dark:text-gray-500">
+                  <span className="font-medium text-teal-600 dark:text-teal-400">SICONFI</span>
+                  {" · IDEB · Censo · "}STN + INEP
                 </span>
               </div>
             )}

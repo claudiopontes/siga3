@@ -41,6 +41,7 @@ export async function GET(req: Request) {
     const situacao         = url.searchParams.get("situacao");
     const busca            = url.searchParams.get("busca");
     const somenteComIdeb   = url.searchParams.get("somente_com_ideb") === "1";
+    const modalidade       = url.searchParams.get("modalidade"); // "indigena" | "quilombola"
 
     // ── 1. Edições disponíveis ──
     const edicoesRows = await dbQuery<{ ano: number }>(`
@@ -73,6 +74,10 @@ export async function GET(req: Request) {
       ideb_ai: string | null; meta_ai: string | null;
       ideb_af: string | null; meta_af: string | null;
       ideb_em: string | null; meta_em: string | null;
+      // SAEB notas por etapa
+      saeb_mat_ai: string | null; saeb_lp_ai: string | null; saeb_media_ai: string | null;
+      saeb_mat_af: string | null; saeb_lp_af: string | null; saeb_media_af: string | null;
+      saeb_mat_em: string | null; saeb_lp_em: string | null; saeb_media_em: string | null;
       // Censo — matrículas e docentes
       qt_mat_bas: number | null;
       qt_mat_inf: number | null;
@@ -95,6 +100,8 @@ export async function GET(req: Request) {
       infra_quadra_esportes: boolean | null;
       infra_alimentacao: boolean | null;
       infra_acessibilidade: boolean | null;
+      ed_indigena: boolean | null;
+      ed_quilombola: boolean | null;
     }
 
     const params: unknown[] = ["AC", edicaoSel];
@@ -123,6 +130,8 @@ export async function GET(req: Request) {
       where.push(`EXISTS (SELECT 1 FROM dw.fato_inep_ideb_escola f
                           WHERE f.cod_escola = dim.cod_escola AND f.ano = $2)`);
     }
+    if (modalidade === "indigena")   where.push(`dim.ed_indigena   = true`);
+    if (modalidade === "quilombola") where.push(`dim.ed_quilombola = true`);
 
     let sqlEscolas = `
       SELECT
@@ -134,13 +143,17 @@ export async function GET(req: Request) {
         ai.ideb_observado::text AS ideb_ai, ai.ideb_projetado::text AS meta_ai,
         af.ideb_observado::text AS ideb_af, af.ideb_projetado::text AS meta_af,
         em.ideb_observado::text AS ideb_em, em.ideb_projetado::text AS meta_em,
+        ai.nota_mat_saeb::text AS saeb_mat_ai, ai.nota_lp_saeb::text AS saeb_lp_ai, ai.nota_media_saeb::text AS saeb_media_ai,
+        af.nota_mat_saeb::text AS saeb_mat_af, af.nota_lp_saeb::text AS saeb_lp_af, af.nota_media_saeb::text AS saeb_media_af,
+        em.nota_mat_saeb::text AS saeb_mat_em, em.nota_lp_saeb::text AS saeb_lp_em, em.nota_media_saeb::text AS saeb_media_em,
         dim.qt_mat_bas, dim.qt_mat_inf, dim.qt_mat_fund, dim.qt_mat_med,
         dim.qt_mat_prof, dim.qt_mat_eja, dim.qt_mat_esp,
         dim.qt_doc_bas,
         dim.infra_agua_potavel, dim.infra_energia_eletrica, dim.infra_esgoto,
         dim.infra_lixo_coletado, dim.infra_internet, dim.infra_internet_alunos,
         dim.infra_biblioteca, dim.infra_lab_informatica, dim.infra_lab_ciencias,
-        dim.infra_quadra_esportes, dim.infra_alimentacao, dim.infra_acessibilidade
+        dim.infra_quadra_esportes, dim.infra_alimentacao, dim.infra_acessibilidade,
+        dim.ed_indigena, dim.ed_quilombola
       FROM public.dim_escola_inep dim
       LEFT JOIN dw.fato_inep_ideb_escola ai
         ON ai.cod_escola = dim.cod_escola AND ai.etapa = 'AI' AND ai.ano = $2
@@ -181,6 +194,11 @@ export async function GET(req: Request) {
       ideb_ai: num(r.ideb_ai), meta_ai: num(r.meta_ai),
       ideb_af: num(r.ideb_af), meta_af: num(r.meta_af),
       ideb_em: num(r.ideb_em), meta_em: num(r.meta_em),
+      saeb: {
+        ai: { mat: num(r.saeb_mat_ai), lp: num(r.saeb_lp_ai), media: num(r.saeb_media_ai) },
+        af: { mat: num(r.saeb_mat_af), lp: num(r.saeb_lp_af), media: num(r.saeb_media_af) },
+        em: { mat: num(r.saeb_mat_em), lp: num(r.saeb_lp_em), media: num(r.saeb_media_em) },
+      },
       ideb_composite: (() => {
         const vals = [num(r.ideb_ai), num(r.ideb_af), num(r.ideb_em)].filter((x): x is number => x !== null);
         if (!vals.length) return null;
@@ -192,6 +210,8 @@ export async function GET(req: Request) {
       qt_mat_prof: r.qt_mat_prof, qt_mat_eja:  r.qt_mat_eja,
       qt_mat_esp:  r.qt_mat_esp,
       qt_doc_bas:  r.qt_doc_bas,
+      ed_indigena:   r.ed_indigena,
+      ed_quilombola: r.ed_quilombola,
       infra: {
         agua_potavel:     r.infra_agua_potavel,
         energia_eletrica: r.infra_energia_eletrica,

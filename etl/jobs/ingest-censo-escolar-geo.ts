@@ -240,11 +240,13 @@ async function processarZip(zipPath: string): Promise<Resultado> {
                infra_internet, infra_internet_alunos, infra_biblioteca,
                infra_lab_informatica, infra_lab_ciencias, infra_quadra_esportes,
                infra_alimentacao, infra_acessibilidade,
+               ed_indigena, ed_quilombola,
                atualizado_em)
             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,
                     $16,$17,$18,$19,$20,$21,$22,
                     $23,$24,$25,$26,$27,
                     $28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38,$39,
+                    $40,$41,
                     now())
             ON CONFLICT (cod_escola) DO UPDATE SET
               no_escola         = COALESCE(EXCLUDED.no_escola, public.dim_escola_inep.no_escola),
@@ -285,6 +287,8 @@ async function processarZip(zipPath: string): Promise<Resultado> {
               infra_quadra_esportes  = COALESCE(EXCLUDED.infra_quadra_esportes, public.dim_escola_inep.infra_quadra_esportes),
               infra_alimentacao      = COALESCE(EXCLUDED.infra_alimentacao, public.dim_escola_inep.infra_alimentacao),
               infra_acessibilidade   = COALESCE(EXCLUDED.infra_acessibilidade, public.dim_escola_inep.infra_acessibilidade),
+              ed_indigena       = COALESCE(EXCLUDED.ed_indigena, public.dim_escola_inep.ed_indigena),
+              ed_quilombola     = COALESCE(EXCLUDED.ed_quilombola, public.dim_escola_inep.ed_quilombola),
               atualizado_em     = now()
           `, [
             row.cod_escola, row.no_escola, row.cod_municipio, row.no_municipio, row.sg_uf,
@@ -296,6 +300,7 @@ async function processarZip(zipPath: string): Promise<Resultado> {
             row.infra_internet, row.infra_internet_alunos, row.infra_biblioteca,
             row.infra_lab_informatica, row.infra_lab_ciencias, row.infra_quadra_esportes,
             row.infra_alimentacao, row.infra_acessibilidade,
+            row.ed_indigena, row.ed_quilombola,
           ]);
         }
       });
@@ -388,6 +393,17 @@ async function processarZip(zipPath: string): Promise<Resultado> {
       const infra_alimentacao      = bool(pick(cols, idxCol, "IN_ALIMENTACAO"));
       const infra_acessibilidade   = bool(pick(cols, idxCol, "IN_ACESSIBILIDADE_RAMPAS", "IN_ACESSIBILIDADE_CORRIMAO"));
 
+      // Modalidades especiais — relevantes para o Acre
+      // INEP usa:
+      //   IN_EDUCACAO_INDIGENA       → flag 0/1 da modalidade indígena
+      //   TP_LOCALIZACAO_DIFERENCIADA → 1=Assentamento, 2=Terra Indígena,
+      //                                3=Quilombola, 7=Não está em área diferenciada
+      const indigenaFlag     = bool(pick(cols, idxCol, "IN_EDUCACAO_INDIGENA"));
+      const tpLocalDifStr    = txt(pick(cols, idxCol, "TP_LOCALIZACAO_DIFERENCIADA"));
+      const tpLocalDif       = tpLocalDifStr ? parseInt(tpLocalDifStr, 10) : null;
+      const ed_indigena      = indigenaFlag === true || tpLocalDif === 2 ? true : indigenaFlag === false ? false : null;
+      const ed_quilombola    = tpLocalDif === 3 ? true : (tpLocalDif !== null ? false : null);
+
       bufferInsert.push({
         cod_escola,
         no_escola:    txt(cols[idxCol.get("NO_ENTIDADE") ?? idxCol.get("NO_ESCOLA") ?? -1]),
@@ -415,6 +431,7 @@ async function processarZip(zipPath: string): Promise<Resultado> {
         infra_internet, infra_internet_alunos, infra_biblioteca,
         infra_lab_informatica, infra_lab_ciencias, infra_quadra_esportes,
         infra_alimentacao, infra_acessibilidade,
+        ed_indigena, ed_quilombola,
       });
 
       if (bufferInsert.length >= BATCH) {

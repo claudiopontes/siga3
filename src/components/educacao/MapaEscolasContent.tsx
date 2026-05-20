@@ -27,6 +27,13 @@ export interface EscolaPonto {
   ideb_af: number | null; meta_af: number | null;
   ideb_em: number | null; meta_em: number | null;
   ideb_composite: number | null;
+  saeb?: {
+    ai: { mat: number | null; lp: number | null; media: number | null };
+    af: { mat: number | null; lp: number | null; media: number | null };
+    em: { mat: number | null; lp: number | null; media: number | null };
+  };
+  ed_indigena?: boolean | null;
+  ed_quilombola?: boolean | null;
   // Censo
   ano_censo?:   number | null;
   qt_mat_bas?:  number | null;
