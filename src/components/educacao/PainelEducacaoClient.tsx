@@ -17,6 +17,8 @@ interface ApiMunicipio extends DadosMunicipioIdeb {}
 interface ApiResp {
   edicoes: number[];
   edicao: number | null;
+  exercicios_fiscais: number[];
+  exercicio_fiscal: number | null;
   municipios: ApiMunicipio[];
   kpis: {
     total_municipios: number;
@@ -114,24 +116,30 @@ export default function PainelEducacaoClient() {
   const [erro, setErro] = useState<string | null>(null);
 
   const [edicaoSel, setEdicaoSel] = useState<number | null>(null);
+  const [exercicioFiscal, setExercicioFiscal] = useState<number | null>(null);
   const [metricaMapa, setMetricaMapa] = useState<MetricaMapa>("composite");
   const [viewMode, setViewMode] = useState<ViewMode>("mapa");
   const [filtroNome, setFiltroNome] = useState("");
   const [detalhe, setDetalhe] = useState<Municipio | null>(null);
 
-  // Carga inicial (último ano)
+  // Carga (responde a mudanças de edição IDEB e de exercício fiscal)
   useEffect(() => {
     setCarregando(true);
-    const url = edicaoSel ? `/api/educacao/mapa-acre?edicao=${edicaoSel}` : "/api/educacao/mapa-acre";
+    const params = new URLSearchParams();
+    if (edicaoSel) params.set("edicao", String(edicaoSel));
+    if (exercicioFiscal) params.set("exercicio", String(exercicioFiscal));
+    const qs = params.toString();
+    const url = qs ? `/api/educacao/mapa-acre?${qs}` : "/api/educacao/mapa-acre";
     fetch(url)
       .then((r) => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
       .then((d: ApiResp) => {
         setResp(d);
         if (edicaoSel === null && d.edicao) setEdicaoSel(d.edicao);
+        if (exercicioFiscal === null && d.exercicio_fiscal) setExercicioFiscal(d.exercicio_fiscal);
       })
       .catch((e) => setErro(String(e)))
       .finally(() => setCarregando(false));
-  }, [edicaoSel]);
+  }, [edicaoSel, exercicioFiscal]);
 
   const dadosMapa = useMemo(
     () => resp ? dadosParaMapa(resp.municipios, metricaMapa) : {},
@@ -259,6 +267,19 @@ export default function PainelEducacaoClient() {
               className="rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-sm text-gray-700 outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
             >
               {resp?.edicoes.map((a) => <option key={a} value={a}>{a}</option>)}
+            </select>
+          </div>
+
+          {/* Filtro de exercício fiscal (Custo com Educação SICONFI/TCE) */}
+          <div className="flex items-center gap-1.5">
+            <label className="text-xs text-gray-500 dark:text-gray-400">Exercício fiscal:</label>
+            <select
+              value={exercicioFiscal ?? ""}
+              onChange={(e) => setExercicioFiscal(parseInt(e.target.value, 10))}
+              disabled={!resp || !resp.exercicios_fiscais?.length}
+              className="rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-sm text-gray-700 outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+            >
+              {resp?.exercicios_fiscais?.map((a) => <option key={a} value={a}>{a}</option>)}
             </select>
           </div>
 
@@ -472,44 +493,45 @@ export default function PainelEducacaoClient() {
                 </section>
               )}
 
-              {(detalhe.gasto_aluno_mde !== null || detalhe.total_mde !== null || detalhe.total_mde_tce !== null) && (
+              {(detalhe.gasto_aluno_educacao !== null || detalhe.total_despesa_educacao !== null || detalhe.total_despesa_educacao_tce !== null) && (
                 <section>
                   <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
-                    Eficiência — comparativo SICONFI × SIPAC/TCE
+                    Custo com Educação — comparativo SICONFI × SIPAC/TCE
+                    {detalhe.gasto_ano_siconfi ? ` · exercício ${detalhe.gasto_ano_siconfi}` : ""}
                   </h3>
                   <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                     {/* SICONFI */}
-                    <div className="rounded-lg border border-teal-200 bg-teal-50/40 p-3 dark:border-teal-800/30 dark:bg-teal-900/10">
-                      <p className="mb-1 text-[10px] font-semibold uppercase text-teal-700 dark:text-teal-400">
+                    <div className="rounded-lg border border-cyan-200 bg-cyan-50/40 p-3 dark:border-cyan-800/30 dark:bg-cyan-900/10">
+                      <p className="mb-1 text-[10px] font-semibold uppercase text-cyan-700 dark:text-cyan-400">
                         SICONFI {detalhe.gasto_ano_siconfi ? `· ${detalhe.gasto_ano_siconfi}/${detalhe.gasto_periodo_siconfi}` : ""}
                       </p>
                       <p className="text-[10px] text-gray-500">declarado no RREO Anexo 8</p>
                       <div className="mt-2 text-center">
-                        <p className="text-[10px] uppercase text-teal-600">Gasto MDE/Aluno</p>
-                        <p className="text-xl font-bold text-teal-700 dark:text-teal-400">
-                          {detalhe.gasto_aluno_mde !== null
-                            ? `R$ ${detalhe.gasto_aluno_mde.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}`
+                        <p className="text-[10px] uppercase text-cyan-600">Gasto Educação / Aluno</p>
+                        <p className="text-xl font-bold text-cyan-700 dark:text-cyan-400">
+                          {detalhe.gasto_aluno_educacao !== null
+                            ? `R$ ${detalhe.gasto_aluno_educacao.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}`
                             : "—"}
                         </p>
                       </div>
                       <table className="mt-2 w-full text-xs">
                         <tbody>
-                          <tr className="border-t border-teal-200/40">
-                            <td className="py-1 text-gray-500">Total MDE</td>
+                          <tr className="border-t border-cyan-200/40">
+                            <td className="py-1 text-gray-500">Total Despesa Educação</td>
+                            <td className="py-1 text-right font-medium text-cyan-700 dark:text-cyan-400">
+                              {detalhe.total_despesa_educacao !== null ? `R$ ${detalhe.total_despesa_educacao.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}` : "—"}
+                            </td>
+                          </tr>
+                          <tr className="border-t border-cyan-200/40">
+                            <td className="py-1 text-gray-500">Total MDE (referência)</td>
                             <td className="py-1 text-right font-medium text-teal-700 dark:text-teal-400">
                               {detalhe.total_mde !== null ? `R$ ${detalhe.total_mde.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}` : "—"}
                             </td>
                           </tr>
-                          <tr className="border-t border-teal-200/40">
-                            <td className="py-1 text-gray-500">Total Despesa Educação</td>
+                          <tr className="border-t border-cyan-200/40">
+                            <td className="py-1 text-gray-500">MDE / Aluno</td>
                             <td className="py-1 text-right font-medium text-teal-700 dark:text-teal-400">
-                              {detalhe.total_despesa_educacao !== null ? `R$ ${detalhe.total_despesa_educacao.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}` : "—"}
-                            </td>
-                          </tr>
-                          <tr className="border-t border-teal-200/40">
-                            <td className="py-1 text-gray-500">Gasto Total/Aluno</td>
-                            <td className="py-1 text-right font-medium text-cyan-700 dark:text-cyan-400">
-                              {detalhe.gasto_aluno_educacao !== null ? `R$ ${detalhe.gasto_aluno_educacao.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}` : "—"}
+                              {detalhe.gasto_aluno_mde !== null ? `R$ ${detalhe.gasto_aluno_mde.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}` : "—"}
                             </td>
                           </tr>
                         </tbody>
@@ -519,79 +541,38 @@ export default function PainelEducacaoClient() {
                     {/* SIPAC/TCE */}
                     <div className="rounded-lg border border-fuchsia-200 bg-fuchsia-50/40 p-3 dark:border-fuchsia-800/30 dark:bg-fuchsia-900/10">
                       <p className="mb-1 text-[10px] font-semibold uppercase text-fuchsia-700 dark:text-fuchsia-400">
-                        SIPAC/TCE {detalhe.ano_referencia_tce ? `· ${detalhe.ano_referencia_tce - 1}–${detalhe.ano_referencia_tce}` : ""}
+                        SIPAC/TCE {detalhe.ano_referencia_tce ? `· ${detalhe.ano_referencia_tce}` : ""}
                       </p>
-                      <p className="text-[10px] text-gray-500">apurado via fato_empenho (função 12)</p>
+                      <p className="text-[10px] text-gray-500">apurado via fato_empenho (função 12 completa)</p>
                       <div className="mt-2 text-center">
-                        <p className="text-[10px] uppercase text-fuchsia-600">Gasto MDE/Aluno</p>
+                        <p className="text-[10px] uppercase text-fuchsia-600">Gasto Educação / Aluno</p>
                         <p className="text-xl font-bold text-fuchsia-700 dark:text-fuchsia-400">
-                          {detalhe.gasto_aluno_mde_tce !== null
-                            ? `R$ ${detalhe.gasto_aluno_mde_tce.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}`
+                          {detalhe.gasto_aluno_educacao_tce !== null
+                            ? `R$ ${detalhe.gasto_aluno_educacao_tce.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}`
                             : "—"}
                         </p>
                       </div>
                       <table className="mt-2 w-full text-xs">
                         <tbody>
                           <tr className="border-t border-fuchsia-200/40">
-                            <td className="py-1 text-gray-500">Total MDE</td>
-                            <td className="py-1 text-right font-medium text-fuchsia-700 dark:text-fuchsia-400">
-                              {detalhe.total_mde_tce !== null ? `R$ ${detalhe.total_mde_tce.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}` : "—"}
-                            </td>
-                          </tr>
-                          <tr className="border-t border-fuchsia-200/40">
-                            <td className="py-1 text-gray-500">Total Despesa Educação</td>
+                            <td className="py-1 text-gray-500">Custo Total com Educação</td>
                             <td className="py-1 text-right font-medium text-fuchsia-700 dark:text-fuchsia-400">
                               {detalhe.total_despesa_educacao_tce !== null ? `R$ ${detalhe.total_despesa_educacao_tce.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}` : "—"}
                             </td>
                           </tr>
                           <tr className="border-t border-fuchsia-200/40">
-                            <td className="py-1 text-gray-500">Receita base MDE</td>
-                            <td className="py-1 text-right font-medium text-violet-700 dark:text-violet-400">
-                              {detalhe.receita_base_mde_tce !== null ? `R$ ${detalhe.receita_base_mde_tce.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}` : "—"}
-                            </td>
+                            <td className="py-1 text-gray-500">Inclui</td>
+                            <td className="py-1 text-right text-[11px] text-gray-500">MDE + FUNDEB + administração</td>
                           </tr>
                           <tr className="border-t border-fuchsia-200/40">
-                            <td className="py-1 text-gray-500">% MDE aplicado</td>
-                            <td className="py-1 text-right font-medium text-violet-700 dark:text-violet-400">
-                              {detalhe.pct_aplicado_mde_tce !== null
-                                ? `${detalhe.pct_aplicado_mde_tce.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`
-                                : "—"}
+                            <td className="py-1 text-gray-500" colSpan={2}>
+                              <span className="text-[10px] italic">MDE constitucional puro fica fora — requer tratamento próprio.</span>
                             </td>
                           </tr>
                         </tbody>
                       </table>
                     </div>
                   </div>
-
-                  {/* Divergência */}
-                  {detalhe.divergencia_mde_pct !== null && (
-                    <div className={`mt-3 rounded-lg border p-3 text-center ${
-                      Math.abs(detalhe.divergencia_mde_pct) <= 2
-                        ? "border-emerald-200 bg-emerald-50/40 dark:border-emerald-800/30 dark:bg-emerald-900/10"
-                        : Math.abs(detalhe.divergencia_mde_pct) <= 5
-                          ? "border-amber-200 bg-amber-50/40 dark:border-amber-800/30 dark:bg-amber-900/10"
-                          : "border-rose-200 bg-rose-50/40 dark:border-rose-800/30 dark:bg-rose-900/10"
-                    }`}>
-                      <p className="text-[10px] uppercase tracking-wide text-gray-500">Δ Divergência (TCE − SICONFI) / SICONFI</p>
-                      <p className={`text-2xl font-bold ${
-                        Math.abs(detalhe.divergencia_mde_pct) <= 2
-                          ? "text-emerald-700 dark:text-emerald-400"
-                          : Math.abs(detalhe.divergencia_mde_pct) <= 5
-                            ? "text-amber-700 dark:text-amber-400"
-                            : "text-rose-700 dark:text-rose-400"
-                      }`}>
-                        {detalhe.divergencia_mde_pct > 0 ? "+" : ""}
-                        {detalhe.divergencia_mde_pct.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%
-                      </p>
-                      <p className="mt-1 text-[10px] text-gray-500">
-                        {Math.abs(detalhe.divergencia_mde_pct) <= 2
-                          ? "Convergente — informações batem entre RREO e empenho TCE."
-                          : Math.abs(detalhe.divergencia_mde_pct) <= 5
-                            ? "Divergência moderada — vale verificar classificação MCASP."
-                            : "Divergência relevante — investigar diferença entre RREO declarado e empenho TCE."}
-                      </p>
-                    </div>
-                  )}
 
                   <p className="mt-2 text-[10px] text-gray-400">
                     Matrículas (Censo): {detalhe.total_matriculas_censo !== null ? detalhe.total_matriculas_censo.toLocaleString("pt-BR") : "—"}
@@ -703,12 +684,8 @@ function abrirDetalheDaLista(m: ApiMunicipio, set: (mu: Municipio | null) => voi
     gasto_aluno_mde:            m.gasto_aluno_mde ?? null,
     gasto_aluno_educacao:       m.gasto_aluno_educacao ?? null,
     ano_referencia_tce:         m.ano_referencia_tce ?? null,
-    total_mde_tce:              m.total_mde_tce ?? null,
     total_despesa_educacao_tce: m.total_despesa_educacao_tce ?? null,
-    receita_base_mde_tce:       m.receita_base_mde_tce ?? null,
-    pct_aplicado_mde_tce:       m.pct_aplicado_mde_tce ?? null,
-    gasto_aluno_mde_tce:        m.gasto_aluno_mde_tce ?? null,
-    divergencia_mde_pct:        m.divergencia_mde_pct ?? null,
+    gasto_aluno_educacao_tce:   m.gasto_aluno_educacao_tce ?? null,
   });
 }
 

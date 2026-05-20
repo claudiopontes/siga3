@@ -22,8 +22,17 @@ function num(v: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
+    const { searchParams } = new URL(req.url);
+    const exercicioParam = parseInt(searchParams.get("exercicio") ?? "", 10);
+    const exercicio = Number.isFinite(exercicioParam) ? exercicioParam : new Date().getFullYear();
+
+    // Lista de exercícios disponíveis no mart (para popular o seletor)
+    const exerciciosRows = await dbQuery<{ an_exercicio: number }>(
+      `SELECT DISTINCT an_exercicio FROM mart.gasto_aluno_municipio WHERE sg_uf = 'AC' ORDER BY an_exercicio DESC`,
+    );
+    const exercicios = exerciciosRows.map((r) => r.an_exercicio);
     interface Linha {
       cod_municipio: number;
       no_municipio: string | null;
@@ -35,18 +44,16 @@ export async function GET() {
       gasto_aluno_mde: string | null;
       gasto_aluno_educacao: string | null;
       ano_referencia_tce: number | null;
-      total_mde_tce: string | null;
       total_despesa_educacao_tce: string | null;
-      receita_base_mde_tce: string | null;
-      pct_aplicado_mde_tce: string | null;
-      gasto_aluno_mde_tce: string | null;
-      divergencia_mde_pct: string | null;
+      gasto_aluno_educacao_tce: string | null;
+      divergencia_educacao_pct: string | null;
       ideb_publico_ai: string | null;
       ideb_publico_af: string | null;
       ideb_publico_em: string | null;
       edicao_ideb: number | null;
     }
 
+    // Linha por município (rede municipal — esfera 'M')
     const rows = await dbQuery<Linha>(`
       SELECT
         g.cod_municipio, g.no_municipio,
@@ -55,21 +62,39 @@ export async function GET() {
         g.total_matriculas_bas,
         g.gasto_aluno_mde::text, g.gasto_aluno_educacao::text,
         g.ano_referencia_tce,
-        g.total_mde_tce::text, g.total_despesa_educacao_tce::text,
-        g.receita_base_mde_tce::text, g.pct_aplicado_mde_tce::text,
-        g.gasto_aluno_mde_tce::text, g.divergencia_mde_pct::text,
+        g.total_despesa_educacao_tce::text,
+        g.gasto_aluno_educacao_tce::text,
+        g.divergencia_educacao_pct::text,
         m.ideb_publico_ai::text, m.ideb_publico_af::text, m.ideb_publico_em::text,
         m.edicao_ideb
       FROM mart.gasto_aluno_municipio g
       LEFT JOIN mart.painel_educacao_municipio m ON m.cod_municipio = g.cod_municipio
       WHERE g.sg_uf = 'AC'
+        AND g.esfera = 'M'
+        AND g.an_exercicio = $1
       ORDER BY g.no_municipio
-    `);
+    `, [exercicio]);
+
+    // Linha do estado AC (rede estadual — esfera 'E')
+    const [estado] = await dbQuery<{
+      total_mde: string | null;
+      total_despesa_educacao_tce: string | null;
+      total_matriculas_bas: number | null;
+      gasto_aluno_mde: string | null;
+      gasto_aluno_educacao_tce: string | null;
+    }>(`
+      SELECT total_mde::text, total_despesa_educacao_tce::text, total_matriculas_bas,
+             gasto_aluno_mde::text, gasto_aluno_educacao_tce::text
+      FROM mart.gasto_aluno_municipio
+      WHERE sg_uf = 'AC' AND esfera = 'E' AND an_exercicio = $1
+      LIMIT 1
+    `, [exercicio]);
 
     const municipios = rows.map((r) => {
-      const gasto_mde   = num(r.gasto_aluno_mde);
-      const gasto_total = num(r.gasto_aluno_educacao);
-      const ideb_ai     = num(r.ideb_publico_ai);
+      const gasto_mde       = num(r.gasto_aluno_mde);
+      const gasto_total     = num(r.gasto_aluno_educacao);
+      const gasto_tce_aluno = num(r.gasto_aluno_educacao_tce);
+      const ideb_ai         = num(r.ideb_publico_ai);
       const ideb_af     = num(r.ideb_publico_af);
       const ideb_em     = num(r.ideb_publico_em);
       const ideb_composite = [ideb_ai, ideb_af, ideb_em]
@@ -86,27 +111,27 @@ export async function GET() {
         total_matriculas:         r.total_matriculas_bas,
         gasto_aluno_mde:          gasto_mde,
         gasto_aluno_educacao:     gasto_total,
-        // TCE — calculado a partir do empenho/receita
+        // TCE — Custo Total com Educação (função 12 completa, mesmo exercício do SICONFI)
         ano_referencia_tce:         r.ano_referencia_tce,
-        total_mde_tce:              num(r.total_mde_tce),
         total_despesa_educacao_tce: num(r.total_despesa_educacao_tce),
-        receita_base_mde_tce:       num(r.receita_base_mde_tce),
-        pct_aplicado_mde_tce:       num(r.pct_aplicado_mde_tce),
-        gasto_aluno_mde_tce:        num(r.gasto_aluno_mde_tce),
-        divergencia_mde_pct:        num(r.divergencia_mde_pct),
+        gasto_aluno_educacao_tce:   num(r.gasto_aluno_educacao_tce),
+        divergencia_educacao_pct:   num(r.divergencia_educacao_pct),
         ideb_ai, ideb_af, ideb_em, ideb_composite,
-        // Custo/IDEB (R$ por ponto de IDEB) — proxy de eficiência
-        custo_por_ponto_ideb: (gasto_mde !== null && ideb_composite !== null && ideb_composite > 0)
-          ? gasto_mde / ideb_composite
+        // Custo/IDEB (R$ por ponto de IDEB) — proxy de eficiência.
+        // Usa Custo Total com Educação do TCE (função 12), pois reflete melhor o
+        // gasto real do que o total_mde do SICONFI (subestimado na carga atual).
+        custo_por_ponto_ideb: (gasto_tce_aluno !== null && ideb_composite !== null && ideb_composite > 0)
+          ? gasto_tce_aluno / ideb_composite
           : null,
       };
     });
 
     // KPIs
     const gastosMde   = municipios.map((m) => m.gasto_aluno_mde).filter((x): x is number => x !== null && x > 0);
-    const gastosTotal = municipios.map((m) => m.gasto_aluno_educacao).filter((x): x is number => x !== null && x > 0);
-    const totalMde    = municipios.reduce((a, m) => a + (m.total_mde ?? 0), 0);
-    const totalMat    = municipios.reduce((a, m) => a + (m.total_matriculas ?? 0), 0);
+    const totalMdeMun = municipios.reduce((a, m) => a + (m.total_mde ?? 0), 0);
+    const totalMatMun = municipios.reduce((a, m) => a + (m.total_matriculas ?? 0), 0);
+    const totalMdeEstado = num(estado?.total_mde) ?? 0;
+    const totalMatEstado = estado?.total_matriculas_bas ?? 0;
 
     const kpis = {
       total_municipios: municipios.length,
@@ -114,15 +139,28 @@ export async function GET() {
       gasto_medio_mde: gastosMde.length ? gastosMde.reduce((a, b) => a + b, 0) / gastosMde.length : null,
       gasto_min_mde:   gastosMde.length ? Math.min(...gastosMde) : null,
       gasto_max_mde:   gastosMde.length ? Math.max(...gastosMde) : null,
-      gasto_medio_total: gastosTotal.length ? gastosTotal.reduce((a, b) => a + b, 0) / gastosTotal.length : null,
-      total_mde_estadual: totalMde,
-      total_matriculas_estadual: totalMat,
+      // Totais estaduais = rede municipal (22 prefeituras) + rede estadual (governo AC)
+      total_mde_municipal: totalMdeMun,
+      total_mde_estadual_gov: totalMdeEstado,
+      total_mde_estadual: totalMdeMun + totalMdeEstado,
+      total_matriculas_municipal: totalMatMun,
+      total_matriculas_estadual_gov: totalMatEstado,
+      total_matriculas_estadual: totalMatMun + totalMatEstado,
     };
 
     return NextResponse.json({
+      exercicio,
+      exercicios,
       kpis,
       municipios,
-      fonte: "SICONFI/RREO Anexo 8 (despesa MDE/Educação liquidada acumulada) × Censo Escolar (matrículas)",
+      estado: estado ? {
+        total_mde:                  num(estado.total_mde),
+        total_despesa_educacao_tce: num(estado.total_despesa_educacao_tce),
+        total_matriculas:           estado.total_matriculas_bas,
+        gasto_aluno_mde:            num(estado.gasto_aluno_mde),
+        gasto_aluno_educacao_tce:   num(estado.gasto_aluno_educacao_tce),
+      } : null,
+      fonte: "SICONFI/RREO Anexo 8 (município + estado) × Censo Escolar (rede municipal/estadual) × TCE-AC fato_empenho (função 12)",
     });
   } catch (err) {
     console.error("[api/educacao/eficiencia]", err);

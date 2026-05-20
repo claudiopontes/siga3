@@ -21,14 +21,10 @@ interface Municipio {
   total_matriculas: number | null;
   gasto_aluno_mde: number | null;
   gasto_aluno_educacao: number | null;
-  // TCE (SIPAC/empenho)
+  // TCE (SIPAC/empenho — Custo Total com Educação, função 12)
   ano_referencia_tce: number | null;
-  total_mde_tce: number | null;
   total_despesa_educacao_tce: number | null;
-  receita_base_mde_tce: number | null;
-  pct_aplicado_mde_tce: number | null;
-  gasto_aluno_mde_tce: number | null;
-  divergencia_mde_pct: number | null;
+  gasto_aluno_educacao_tce: number | null;
   ideb_ai: number | null;
   ideb_af: number | null;
   ideb_em: number | null;
@@ -37,26 +33,36 @@ interface Municipio {
 }
 
 interface ApiResp {
+  exercicio: number;
+  exercicios: number[];
   kpis: {
     total_municipios: number;
     municipios_com_dado: number;
     gasto_medio_mde: number | null;
     gasto_min_mde: number | null;
     gasto_max_mde: number | null;
-    gasto_medio_total: number | null;
+    total_mde_municipal: number;
+    total_mde_estadual_gov: number;
     total_mde_estadual: number;
+    total_matriculas_municipal: number;
+    total_matriculas_estadual_gov: number;
     total_matriculas_estadual: number;
   };
   municipios: Municipio[];
+  estado: {
+    total_mde: number | null;
+    total_despesa_educacao_tce: number | null;
+    total_matriculas: number | null;
+    gasto_aluno_mde: number | null;
+    gasto_aluno_educacao_tce: number | null;
+  } | null;
   fonte: string;
 }
 
 type OrdemCol =
   | "nome" | "matriculas"
-  | "mde" | "mde_tce" | "divergencia"
-  | "despesa"
-  | "gasto_mde" | "gasto_mde_tce" | "gasto_total"
-  | "pct_tce"
+  | "mde" | "despesa_tce"
+  | "gasto_mde" | "gasto_total_tce"
   | "ideb" | "custo_ideb";
 
 // ---------------------------------------------------------------------------
@@ -75,20 +81,6 @@ function fmtInt(n: number | null | undefined): string {
 function fmtNum(n: number | null | undefined, dec = 1): string {
   if (n === null || n === undefined) return "—";
   return n.toLocaleString("pt-BR", { minimumFractionDigits: dec, maximumFractionDigits: dec });
-}
-
-function getColorDivergencia(pct: number | null | undefined): string {
-  if (pct === null || pct === undefined) return "text-gray-400";
-  const abs = Math.abs(pct);
-  if (abs <= 2)  return "text-emerald-600 dark:text-emerald-400";
-  if (abs <= 5)  return "text-amber-600 dark:text-amber-400";
-  return "text-rose-600 dark:text-rose-400";
-}
-
-function fmtDelta(pct: number | null | undefined): string {
-  if (pct === null || pct === undefined) return "—";
-  const sinal = pct > 0 ? "+" : "";
-  return `${sinal}${pct.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`;
 }
 
 function getColorIdeb(ideb: number | null): string {
@@ -120,6 +112,9 @@ export default function EficienciaClient() {
   const [ordemCol, setOrdemCol] = useState<OrdemCol>("gasto_mde");
   const [ordemAsc, setOrdemAsc] = useState<boolean>(false);
 
+  // Exercício fiscal selecionado (default = ano atual, ajustado após resposta)
+  const [exercicio, setExercicio] = useState<number | null>(null);
+
   // Filtros
   const [busca, setBusca]                 = useState<string>("");
   const [portePorte, setPortePorte]       = useState<"todos" | "pequeno" | "medio" | "grande">("todos");
@@ -127,12 +122,16 @@ export default function EficienciaClient() {
 
   useEffect(() => {
     setCarregando(true);
-    fetch("/api/educacao/eficiencia")
+    const url = exercicio ? `/api/educacao/eficiencia?exercicio=${exercicio}` : "/api/educacao/eficiencia";
+    fetch(url)
       .then((r) => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
-      .then((d: ApiResp) => setResp(d))
+      .then((d: ApiResp) => {
+        setResp(d);
+        if (exercicio === null) setExercicio(d.exercicio);
+      })
       .catch((e) => setErro(String(e)))
       .finally(() => setCarregando(false));
-  }, []);
+  }, [exercicio]);
 
   // Aplica filtros + ordenação
   const municipiosFiltrados = useMemo(() => {
@@ -172,16 +171,12 @@ export default function EficienciaClient() {
       switch (ordemCol) {
         case "nome":        return (m.nome ?? "").toLowerCase();
         case "matriculas":  return m.total_matriculas ?? -1;
-        case "mde":           return m.total_mde ?? -1;
-        case "mde_tce":       return m.total_mde_tce ?? -1;
-        case "divergencia":   return m.divergencia_mde_pct ?? -9999;
-        case "despesa":       return m.total_despesa_educacao ?? -1;
-        case "gasto_mde":     return m.gasto_aluno_mde ?? -1;
-        case "gasto_mde_tce": return m.gasto_aluno_mde_tce ?? -1;
-        case "gasto_total":   return m.gasto_aluno_educacao ?? -1;
-        case "pct_tce":       return m.pct_aplicado_mde_tce ?? -1;
-        case "ideb":          return m.ideb_composite ?? -1;
-        case "custo_ideb":    return m.custo_por_ponto_ideb ?? -1;
+        case "mde":             return m.total_mde ?? -1;
+        case "despesa_tce":     return m.total_despesa_educacao_tce ?? -1;
+        case "gasto_mde":       return m.gasto_aluno_mde ?? -1;
+        case "gasto_total_tce": return m.gasto_aluno_educacao_tce ?? -1;
+        case "ideb":            return m.ideb_composite ?? -1;
+        case "custo_ideb":      return m.custo_por_ponto_ideb ?? -1;
       }
     };
     arr.sort((a, b) => {
@@ -215,35 +210,45 @@ export default function EficienciaClient() {
           Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)
         ) : (
           <>
-            <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
+            <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800"
+                 title="Quantos municípios têm cálculo de MDE/Aluno (SICONFI) disponível para este exercício, de um total de 22.">
               <p className="text-xs font-medium uppercase tracking-wide text-gray-400">Municípios c/ dado</p>
               <p className="mt-1 text-3xl font-bold text-gray-900 dark:text-white">{kpis?.municipios_com_dado ?? 0}</p>
               <p className="mt-1 text-[10px] text-gray-400">de {kpis?.total_municipios ?? 0}</p>
             </div>
-            <div className="rounded-xl border border-teal-200 bg-white p-4 dark:border-teal-800/40 dark:bg-gray-800">
+            <div className="rounded-xl border border-teal-200 bg-white p-4 dark:border-teal-800/40 dark:bg-gray-800"
+                 title="Média aritmética do MDE/Aluno (SICONFI) entre os municípios com dado disponível. Indicador de tendência central, não soma estadual.">
               <p className="text-xs font-medium uppercase tracking-wide text-teal-600">Gasto MDE médio</p>
               <p className="mt-1 text-2xl font-bold text-teal-700 dark:text-teal-400">{fmtBRL(kpis?.gasto_medio_mde)}</p>
               <p className="mt-1 text-[10px] text-gray-400">por aluno (média estadual)</p>
             </div>
-            <div className="rounded-xl border border-emerald-200 bg-white p-4 dark:border-emerald-800/40 dark:bg-gray-800">
+            <div className="rounded-xl border border-emerald-200 bg-white p-4 dark:border-emerald-800/40 dark:bg-gray-800"
+                 title="Município com o MENOR MDE/Aluno (SICONFI) entre os municípios com dado. Pode indicar subaplicação ou subdeclaração.">
               <p className="text-xs font-medium uppercase tracking-wide text-emerald-600">Gasto MDE mín.</p>
               <p className="mt-1 text-2xl font-bold text-emerald-700 dark:text-emerald-400">{fmtBRL(kpis?.gasto_min_mde)}</p>
               <p className="mt-1 text-[10px] text-gray-400">município com menor gasto</p>
             </div>
-            <div className="rounded-xl border border-rose-200 bg-white p-4 dark:border-rose-800/40 dark:bg-gray-800">
+            <div className="rounded-xl border border-rose-200 bg-white p-4 dark:border-rose-800/40 dark:bg-gray-800"
+                 title="Município com o MAIOR MDE/Aluno (SICONFI). Investigar consistência da declaração e classificação MCASP.">
               <p className="text-xs font-medium uppercase tracking-wide text-rose-600">Gasto MDE máx.</p>
               <p className="mt-1 text-2xl font-bold text-rose-700 dark:text-rose-400">{fmtBRL(kpis?.gasto_max_mde)}</p>
               <p className="mt-1 text-[10px] text-gray-400">município com maior gasto</p>
             </div>
-            <div className="rounded-xl border border-indigo-200 bg-white p-4 dark:border-indigo-800/40 dark:bg-gray-800">
+            <div className="rounded-xl border border-indigo-200 bg-white p-4 dark:border-indigo-800/40 dark:bg-gray-800"
+                 title="Total MDE declarado em todo o Acre no exercício: soma dos 22 municípios (rede municipal) + Governo do Estado (rede estadual). Fonte: SICONFI/RREO Anexo 8.">
               <p className="text-xs font-medium uppercase tracking-wide text-indigo-600">Total MDE estadual</p>
               <p className="mt-1 text-xl font-bold text-indigo-700 dark:text-indigo-400">{fmtBRL(kpis?.total_mde_estadual)}</p>
-              <p className="mt-1 text-[10px] text-gray-400">soma de todos municípios</p>
+              <p className="mt-1 text-[10px] text-gray-400">
+                Munic. {fmtBRL(kpis?.total_mde_municipal)} + Est. {fmtBRL(kpis?.total_mde_estadual_gov)}
+              </p>
             </div>
-            <div className="rounded-xl border border-purple-200 bg-white p-4 dark:border-purple-800/40 dark:bg-gray-800">
+            <div className="rounded-xl border border-purple-200 bg-white p-4 dark:border-purple-800/40 dark:bg-gray-800"
+                 title="Total de matrículas da Educação Básica no AC no último Censo Escolar: rede municipal (22 prefeituras) + rede estadual (Governo do Estado). Não inclui federal e privada.">
               <p className="text-xs font-medium uppercase tracking-wide text-purple-600">Total matrículas</p>
               <p className="mt-1 text-xl font-bold text-purple-700 dark:text-purple-400">{fmtInt(kpis?.total_matriculas_estadual)}</p>
-              <p className="mt-1 text-[10px] text-gray-400">Censo Escolar</p>
+              <p className="mt-1 text-[10px] text-gray-400">
+                Munic. {fmtInt(kpis?.total_matriculas_municipal)} + Est. {fmtInt(kpis?.total_matriculas_estadual_gov)}
+              </p>
             </div>
           </>
         )}
@@ -252,6 +257,19 @@ export default function EficienciaClient() {
       {/* ─── Filtros ─── */}
       {!carregando && resp && (
         <div className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-800 sm:flex-row sm:flex-wrap sm:items-end">
+          <div className="flex flex-col gap-0.5">
+            <label className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Exercício fiscal</label>
+            <select
+              value={exercicio ?? resp.exercicio}
+              onChange={(e) => setExercicio(parseInt(e.target.value, 10))}
+              className="rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-sm font-semibold dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200"
+            >
+              {resp.exercicios.map((ano) => (
+                <option key={ano} value={ano}>{ano}</option>
+              ))}
+            </select>
+          </div>
+
           <div className="flex flex-col gap-0.5">
             <label className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Buscar município</label>
             <input
@@ -339,17 +357,34 @@ export default function EficienciaClient() {
               <thead>
                 <tr className="border-b border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-900/50">
                   <Th col="nome"        ordemCol={ordemCol} ordemAsc={ordemAsc} onClick={toggleOrdem} align="left">Município</Th>
-                  <Th col="matriculas"  ordemCol={ordemCol} ordemAsc={ordemAsc} onClick={toggleOrdem} align="center" color="text-purple-600">Matrículas</Th>
-                  <Th col="mde"           ordemCol={ordemCol} ordemAsc={ordemAsc} onClick={toggleOrdem} align="right"  color="text-teal-600">Total MDE <span className="text-[9px] font-normal normal-case">(SICONFI)</span></Th>
-                  <Th col="mde_tce"       ordemCol={ordemCol} ordemAsc={ordemAsc} onClick={toggleOrdem} align="right"  color="text-fuchsia-600">Total MDE <span className="text-[9px] font-normal normal-case">(SIPAC/TCE)</span></Th>
-                  <Th col="divergencia"   ordemCol={ordemCol} ordemAsc={ordemAsc} onClick={toggleOrdem} align="right"  color="text-gray-600">Δ %</Th>
-                  <Th col="despesa"       ordemCol={ordemCol} ordemAsc={ordemAsc} onClick={toggleOrdem} align="right"  color="text-cyan-600">Despesa Edu.</Th>
-                  <Th col="gasto_mde"     ordemCol={ordemCol} ordemAsc={ordemAsc} onClick={toggleOrdem} align="right"  color="text-teal-700">MDE/Aluno <span className="text-[9px] font-normal normal-case">(SICONFI)</span></Th>
-                  <Th col="gasto_mde_tce" ordemCol={ordemCol} ordemAsc={ordemAsc} onClick={toggleOrdem} align="right"  color="text-fuchsia-700">MDE/Aluno <span className="text-[9px] font-normal normal-case">(SIPAC/TCE)</span></Th>
-                  <Th col="gasto_total"   ordemCol={ordemCol} ordemAsc={ordemAsc} onClick={toggleOrdem} align="right"  color="text-cyan-700">Edu/Aluno</Th>
-                  <Th col="pct_tce"       ordemCol={ordemCol} ordemAsc={ordemAsc} onClick={toggleOrdem} align="right"  color="text-violet-600">% MDE <span className="text-[9px] font-normal normal-case">(TCE)</span></Th>
-                  <Th col="ideb"          ordemCol={ordemCol} ordemAsc={ordemAsc} onClick={toggleOrdem} align="center" color="text-blue-600">IDEB</Th>
-                  <Th col="custo_ideb"    ordemCol={ordemCol} ordemAsc={ordemAsc} onClick={toggleOrdem} align="right"  color="text-amber-600">Custo/IDEB</Th>
+                  <Th col="matriculas"  ordemCol={ordemCol} ordemAsc={ordemAsc} onClick={toggleOrdem} align="center" color="text-purple-600"
+                      hint="Matrículas da Educação Básica da rede MUNICIPAL no município (Censo Escolar INEP, último ano disponível).">
+                    Matrículas
+                  </Th>
+                  <Th col="mde"             ordemCol={ordemCol} ordemAsc={ordemAsc} onClick={toggleOrdem} align="right"  color="text-teal-600"
+                      hint="Despesa total com Manutenção e Desenvolvimento do Ensino (MDE) declarada pelo município no SICONFI/RREO Anexo 8 — acumulado do exercício selecionado.">
+                    Total MDE <span className="text-[9px] font-normal normal-case">(SICONFI)</span>
+                  </Th>
+                  <Th col="despesa_tce"     ordemCol={ordemCol} ordemAsc={ordemAsc} onClick={toggleOrdem} align="right"  color="text-fuchsia-600"
+                      hint="Custo Total com Educação: soma dos empenhos liquidados na função 12 (Educação) registrados no SIPAC/TCE-AC. Inclui MDE + FUNDEB + administração + outras subfunções de educação.">
+                    Custo Total Educação <span className="text-[9px] font-normal normal-case">(SIPAC/TCE)</span>
+                  </Th>
+                  <Th col="gasto_mde"       ordemCol={ordemCol} ordemAsc={ordemAsc} onClick={toggleOrdem} align="right"  color="text-teal-700"
+                      hint="Total MDE (SICONFI) ÷ Matrículas (Censo). Quanto o município declara gastar por aluno em MDE.">
+                    MDE/Aluno <span className="text-[9px] font-normal normal-case">(SICONFI)</span>
+                  </Th>
+                  <Th col="gasto_total_tce" ordemCol={ordemCol} ordemAsc={ordemAsc} onClick={toggleOrdem} align="right"  color="text-fuchsia-700"
+                      hint="Custo Total Educação (SIPAC/TCE) ÷ Matrículas (Censo). Quanto o município efetivamente empenhou em educação por aluno.">
+                    Edu/Aluno <span className="text-[9px] font-normal normal-case">(SIPAC/TCE)</span>
+                  </Th>
+                  <Th col="ideb"            ordemCol={ordemCol} ordemAsc={ordemAsc} onClick={toggleOrdem} align="center" color="text-blue-600"
+                      hint="IDEB composto: média simples das etapas disponíveis (Anos Iniciais, Anos Finais e Ensino Médio) da rede pública do município. Fonte: INEP, última edição disponível.">
+                    IDEB
+                  </Th>
+                  <Th col="custo_ideb"      ordemCol={ordemCol} ordemAsc={ordemAsc} onClick={toggleOrdem} align="right"  color="text-amber-600"
+                      hint="Proxy de eficiência: Edu/Aluno (SIPAC/TCE) ÷ IDEB composto. Quantos R$ empenhados por aluno o município gasta para cada ponto de IDEB. Quanto MENOR, mais eficiente.">
+                    Custo/IDEB
+                  </Th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
@@ -358,13 +393,9 @@ export default function EficienciaClient() {
                     <td className="px-3 py-2 font-medium text-gray-900 dark:text-white">{m.nome ?? "—"}</td>
                     <td className="px-3 py-2 text-center text-purple-700 dark:text-purple-400">{fmtInt(m.total_matriculas)}</td>
                     <td className="px-3 py-2 text-right text-teal-700 dark:text-teal-400">{fmtBRL(m.total_mde)}</td>
-                    <td className="px-3 py-2 text-right text-fuchsia-700 dark:text-fuchsia-400">{fmtBRL(m.total_mde_tce)}</td>
-                    <td className={`px-3 py-2 text-right font-semibold ${getColorDivergencia(m.divergencia_mde_pct)}`}>{fmtDelta(m.divergencia_mde_pct)}</td>
-                    <td className="px-3 py-2 text-right text-cyan-700 dark:text-cyan-400">{fmtBRL(m.total_despesa_educacao)}</td>
+                    <td className="px-3 py-2 text-right text-fuchsia-700 dark:text-fuchsia-400">{fmtBRL(m.total_despesa_educacao_tce)}</td>
                     <td className="px-3 py-2 text-right font-bold text-teal-700 dark:text-teal-400">{fmtBRL(m.gasto_aluno_mde)}</td>
-                    <td className="px-3 py-2 text-right font-bold text-fuchsia-700 dark:text-fuchsia-400">{fmtBRL(m.gasto_aluno_mde_tce)}</td>
-                    <td className="px-3 py-2 text-right font-bold text-cyan-700 dark:text-cyan-400">{fmtBRL(m.gasto_aluno_educacao)}</td>
-                    <td className="px-3 py-2 text-right text-violet-700 dark:text-violet-400">{m.pct_aplicado_mde_tce !== null ? `${m.pct_aplicado_mde_tce.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%` : "—"}</td>
+                    <td className="px-3 py-2 text-right font-bold text-fuchsia-700 dark:text-fuchsia-400">{fmtBRL(m.gasto_aluno_educacao_tce)}</td>
                     <td className="px-3 py-2 text-center font-bold" style={{ color: getColorIdeb(m.ideb_composite) }}>{fmtNum(m.ideb_composite)}</td>
                     <td className="px-3 py-2 text-right text-amber-700 dark:text-amber-400">{fmtBRL(m.custo_por_ponto_ideb)}</td>
                   </tr>
@@ -383,12 +414,13 @@ export default function EficienciaClient() {
 // ---------------------------------------------------------------------------
 
 function Th({
-  col, ordemCol, ordemAsc, onClick, align = "left", color = "text-gray-500", children,
+  col, ordemCol, ordemAsc, onClick, align = "left", color = "text-gray-500", hint, children,
 }: {
   col: OrdemCol; ordemCol: OrdemCol; ordemAsc: boolean;
   onClick: (c: OrdemCol) => void;
   align?: "left" | "center" | "right";
   color?: string;
+  hint?: string;
   children: React.ReactNode;
 }) {
   const ativo = ordemCol === col;
@@ -398,9 +430,18 @@ function Th({
     <th
       className={`cursor-pointer select-none px-3 py-2 text-xs font-semibold uppercase tracking-wide hover:text-gray-700 dark:hover:text-gray-200 ${alignClass} ${color}`}
       onClick={() => onClick(col)}
+      title={hint}
     >
       <span className="inline-flex items-center gap-1">
         {children}
+        {hint && (
+          <span
+            className="inline-flex h-3.5 w-3.5 items-center justify-center rounded-full border border-current text-[8px] font-bold opacity-60 hover:opacity-100"
+            aria-label="ajuda"
+          >
+            ?
+          </span>
+        )}
         <span className={`text-[10px] ${ativo ? "text-gray-700 dark:text-gray-200" : "text-gray-300"}`}>{seta}</span>
       </span>
     </th>

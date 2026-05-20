@@ -59,6 +59,16 @@ export async function GET(req: Request) {
       ? parseInt(edicaoParam, 10)
       : edicoes[0];
 
+    // ── 2b. Exercício fiscal selecionado (Custo Educação SICONFI/TCE) ──
+    const exerciciosFiscaisRows = await dbQuery<{ an_exercicio: number }>(
+      `SELECT DISTINCT an_exercicio FROM mart.gasto_aluno_municipio WHERE sg_uf = 'AC' ORDER BY an_exercicio DESC`,
+    );
+    const exerciciosFiscais = exerciciosFiscaisRows.map((r) => r.an_exercicio);
+    const exercicioParam = parseInt(url.searchParams.get("exercicio") ?? "", 10);
+    const exercicioSel = exerciciosFiscais.includes(exercicioParam)
+      ? exercicioParam
+      : (exerciciosFiscais[0] ?? new Date().getFullYear());
+
     // ── 3. Município × etapa para a edição selecionada (rede Pública) ──
     interface LinhaIdeb {
       cod_municipio: number;
@@ -106,12 +116,9 @@ export async function GET(req: Request) {
       gasto_aluno_mde: string | null;
       gasto_aluno_educacao: string | null;
       ano_referencia_tce: number | null;
-      total_mde_tce: string | null;
       total_despesa_educacao_tce: string | null;
-      receita_base_mde_tce: string | null;
-      pct_aplicado_mde_tce: string | null;
-      gasto_aluno_mde_tce: string | null;
-      divergencia_mde_pct: string | null;
+      gasto_aluno_educacao_tce: string | null;
+      divergencia_educacao_pct: string | null;
     }
     let porGasto = new Map<number, LinhaGasto>();
     try {
@@ -120,12 +127,14 @@ export async function GET(req: Request) {
                total_mde::text, total_despesa_educacao::text, total_matriculas_bas,
                gasto_aluno_mde::text, gasto_aluno_educacao::text,
                ano_referencia_tce,
-               total_mde_tce::text, total_despesa_educacao_tce::text,
-               receita_base_mde_tce::text, pct_aplicado_mde_tce::text,
-               gasto_aluno_mde_tce::text, divergencia_mde_pct::text
+               total_despesa_educacao_tce::text,
+               gasto_aluno_educacao_tce::text,
+               divergencia_educacao_pct::text
         FROM mart.gasto_aluno_municipio
         WHERE sg_uf = 'AC'
-      `);
+          AND esfera = 'M'
+          AND an_exercicio = $1
+      `, [exercicioSel]);
       porGasto = new Map(gastoRows.map((g) => [g.cod_municipio, g]));
     } catch {
       porGasto = new Map();
@@ -221,14 +230,11 @@ export async function GET(req: Request) {
         total_matriculas_censo:     gasto?.total_matriculas_bas ?? null,
         gasto_aluno_mde:            num(gasto?.gasto_aluno_mde),
         gasto_aluno_educacao:       num(gasto?.gasto_aluno_educacao),
-        // Eficiência: gasto/aluno (TCE — SIPAC)
+        // Eficiência: Custo Total com Educação (TCE — SIPAC, função 12 completa)
         ano_referencia_tce:           gasto?.ano_referencia_tce ?? null,
-        total_mde_tce:                num(gasto?.total_mde_tce),
         total_despesa_educacao_tce:   num(gasto?.total_despesa_educacao_tce),
-        receita_base_mde_tce:         num(gasto?.receita_base_mde_tce),
-        pct_aplicado_mde_tce:         num(gasto?.pct_aplicado_mde_tce),
-        gasto_aluno_mde_tce:          num(gasto?.gasto_aluno_mde_tce),
-        divergencia_mde_pct:          num(gasto?.divergencia_mde_pct),
+        gasto_aluno_educacao_tce:     num(gasto?.gasto_aluno_educacao_tce),
+        divergencia_educacao_pct:     num(gasto?.divergencia_educacao_pct),
       };
     }).sort((a, b) => (a.nome ?? "").localeCompare(b.nome ?? ""));
 
@@ -375,8 +381,8 @@ export async function GET(req: Request) {
                AVG(gasto_aluno_educacao)::text AS media_edu,
                COUNT(*) FILTER (WHERE gasto_aluno_mde IS NOT NULL)::text AS n
         FROM mart.gasto_aluno_municipio
-        WHERE sg_uf = 'AC'
-      `);
+        WHERE sg_uf = 'AC' AND esfera = 'M' AND an_exercicio = $1
+      `, [exercicioSel]);
       if (g) gastoAluno = {
         ano_siconfi: g.an_exercicio, periodo_siconfi: g.nr_periodo,
         gasto_medio_mde_aluno:      num(g.media_mde),
@@ -388,6 +394,8 @@ export async function GET(req: Request) {
     return NextResponse.json({
       edicoes,
       edicao: edicaoSel,
+      exercicios_fiscais: exerciciosFiscais,
+      exercicio_fiscal: exercicioSel,
       municipios,
       kpis,
       evolucao,

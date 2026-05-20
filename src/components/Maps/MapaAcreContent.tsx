@@ -36,14 +36,10 @@ export type Municipio = {
   total_matriculas_censo: number | null;
   gasto_aluno_mde: number | null;
   gasto_aluno_educacao: number | null;
-  // TCE (SIPAC/empenho)
+  // TCE (SIPAC/empenho — Custo Total com Educação, função 12)
   ano_referencia_tce: number | null;
-  total_mde_tce: number | null;
   total_despesa_educacao_tce: number | null;
-  receita_base_mde_tce: number | null;
-  pct_aplicado_mde_tce: number | null;
-  gasto_aluno_mde_tce: number | null;
-  divergencia_mde_pct: number | null;
+  gasto_aluno_educacao_tce: number | null;
 };
 
 /** Dados de IDEB por município que vêm de fora (props). */
@@ -71,14 +67,10 @@ export interface DadosMunicipioIdeb {
   total_matriculas_censo?: number | null;
   gasto_aluno_mde?: number | null;
   gasto_aluno_educacao?: number | null;
-  // TCE (SIPAC/empenho)
+  // TCE (SIPAC/empenho — Custo Total com Educação, função 12)
   ano_referencia_tce?: number | null;
-  total_mde_tce?: number | null;
   total_despesa_educacao_tce?: number | null;
-  receita_base_mde_tce?: number | null;
-  pct_aplicado_mde_tce?: number | null;
-  gasto_aluno_mde_tce?: number | null;
-  divergencia_mde_pct?: number | null;
+  gasto_aluno_educacao_tce?: number | null;
 }
 
 interface Props {
@@ -210,12 +202,8 @@ export default function MapaAcreContent({ dados = {}, etapa = "composite", onSel
         gasto_aluno_mde:            d?.gasto_aluno_mde ?? null,
         gasto_aluno_educacao:       d?.gasto_aluno_educacao ?? null,
         ano_referencia_tce:         d?.ano_referencia_tce ?? null,
-        total_mde_tce:              d?.total_mde_tce ?? null,
         total_despesa_educacao_tce: d?.total_despesa_educacao_tce ?? null,
-        receita_base_mde_tce:       d?.receita_base_mde_tce ?? null,
-        pct_aplicado_mde_tce:       d?.pct_aplicado_mde_tce ?? null,
-        gasto_aluno_mde_tce:        d?.gasto_aluno_mde_tce ?? null,
-        divergencia_mde_pct:        d?.divergencia_mde_pct ?? null,
+        gasto_aluno_educacao_tce:   d?.gasto_aluno_educacao_tce ?? null,
       };
     });
   }, [dados, etapa]);
