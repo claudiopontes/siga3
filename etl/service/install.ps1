@@ -1,8 +1,8 @@
-# install.ps1 — Registra o scheduler ETL como tarefa do Windows Task Scheduler.
+# install.ps1 - Registra o scheduler ETL como tarefa do Windows Task Scheduler.
 #
 # Comportamento:
 #   - Roda no startup do sistema (sem precisar de logon).
-#   - Reinicia até 3 vezes em caso de falha (intervalo 60s).
+#   - Reinicia ate 3 vezes em caso de falha (intervalo 60s).
 #   - Loga em etl/service/scheduler.log (stdout + stderr).
 #   - Nome da tarefa: VaradouroEtlScheduler
 #
@@ -10,35 +10,36 @@
 #   cd etl
 #   npm run service:install
 #
-# Para personalizar o usuário da tarefa, defina $env:ETL_SERVICE_USER.
-# Default: SYSTEM (não exige senha, mas roda como conta de sistema).
+# Para personalizar o usuario da tarefa, defina $env:ETL_SERVICE_USER.
+# Default: SYSTEM (nao exige senha, roda como conta de sistema).
 
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = 'Stop'
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
-$ServiceName = "VaradouroEtlScheduler"
-$EtlPath     = (Resolve-Path "$PSScriptRoot\..").Path
-$LogPath     = Join-Path $EtlPath "service\scheduler.log"
-$User        = if ($env:ETL_SERVICE_USER) { $env:ETL_SERVICE_USER } else { "SYSTEM" }
+$ServiceName = 'VaradouroEtlScheduler'
+$EtlPath     = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+$LogPath     = Join-Path $EtlPath 'service\scheduler.log'
+$User        = if ($env:ETL_SERVICE_USER) { $env:ETL_SERVICE_USER } else { 'SYSTEM' }
 
-# Self-elevate se não estiver como admin
+# Self-elevate se nao estiver como admin
 $principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
 if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-  Write-Host "Necessário privilégio de Administrador. Re-executando elevado..." -ForegroundColor Yellow
+  Write-Host 'Necessario privilegio de Administrador. Re-executando elevado...' -ForegroundColor Yellow
   Start-Process powershell.exe -Verb RunAs -ArgumentList @(
-    "-NoProfile","-ExecutionPolicy","Bypass","-File","`"$PSCommandPath`""
+    '-NoProfile','-ExecutionPolicy','Bypass','-File',('"' + $PSCommandPath + '"')
   )
   exit
 }
 
-Write-Host "=== Varadouro ETL Scheduler — instalando tarefa ===" -ForegroundColor Cyan
-Write-Host "ETL path : $EtlPath"
-Write-Host "Log file : $LogPath"
-Write-Host "Run as   : $User"
+Write-Host '=== Varadouro ETL Scheduler - instalando tarefa ===' -ForegroundColor Cyan
+Write-Host ('ETL path : ' + $EtlPath)
+Write-Host ('Log file : ' + $LogPath)
+Write-Host ('Run as   : ' + $User)
 
-# Comando: cmd /c "cd /d <ETL_PATH> && npm run agendar > <LOG> 2>&1"
-$cmdArg = "cd /d `"$EtlPath`" && npm run agendar >> `"$LogPath`" 2>&1"
+# cmd: cd /d <ETL_PATH> + npm run agendar com redirecionamento append
+$cmdArg = 'cd /d "' + $EtlPath + '" & npm run agendar >> "' + $LogPath + '" 2>&1'
 
-$action  = New-ScheduledTaskAction -Execute "cmd.exe" -Argument "/c $cmdArg"
+$action  = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument ('/c ' + $cmdArg)
 $trigger = New-ScheduledTaskTrigger -AtStartup
 $settings = New-ScheduledTaskSettingsSet `
   -AllowStartIfOnBatteries `
@@ -46,11 +47,11 @@ $settings = New-ScheduledTaskSettingsSet `
   -StartWhenAvailable `
   -RestartCount 3 `
   -RestartInterval (New-TimeSpan -Minutes 1) `
-  -ExecutionTimeLimit (New-TimeSpan -Days 0) # 0 = ilimitado
+  -ExecutionTimeLimit (New-TimeSpan -Days 0)
 
 # Remove a tarefa antiga se existir (idempotente)
 if (Get-ScheduledTask -TaskName $ServiceName -ErrorAction SilentlyContinue) {
-  Write-Host "Tarefa $ServiceName já existe — removendo para recriar..." -ForegroundColor Yellow
+  Write-Host ('Tarefa ' + $ServiceName + ' ja existe - removendo para recriar...') -ForegroundColor Yellow
   Unregister-ScheduledTask -TaskName $ServiceName -Confirm:$false
 }
 
@@ -63,16 +64,16 @@ Register-ScheduledTask `
   -Settings $settings `
   -Principal $principal2 | Out-Null
 
-Write-Host "" -ForegroundColor Green
-Write-Host "✓ Tarefa $ServiceName registrada." -ForegroundColor Green
-Write-Host ""
-Write-Host "Para iniciar agora:"   -ForegroundColor Cyan
-Write-Host "  Start-ScheduledTask -TaskName $ServiceName"
-Write-Host "  (ou: npm run service:start)"
-Write-Host ""
-Write-Host "Para ver status:"
-Write-Host "  Get-ScheduledTask -TaskName $ServiceName | Get-ScheduledTaskInfo"
-Write-Host "  (ou: npm run service:status)"
-Write-Host ""
-Write-Host "Logs em tempo real:"
-Write-Host "  Get-Content '$LogPath' -Wait -Tail 30"
+Write-Host ''
+Write-Host ('[OK] Tarefa ' + $ServiceName + ' registrada.') -ForegroundColor Green
+Write-Host ''
+Write-Host 'Para iniciar agora:' -ForegroundColor Cyan
+Write-Host ('  Start-ScheduledTask -TaskName ' + $ServiceName)
+Write-Host '  (ou: npm run service:start)'
+Write-Host ''
+Write-Host 'Para ver status:'
+Write-Host ('  Get-ScheduledTask -TaskName ' + $ServiceName + ' | Get-ScheduledTaskInfo')
+Write-Host '  (ou: npm run service:status)'
+Write-Host ''
+Write-Host 'Logs em tempo real:'
+Write-Host ('  Get-Content "' + $LogPath + '" -Wait -Tail 30')

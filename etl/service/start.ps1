@@ -1,8 +1,9 @@
-$ErrorActionPreference = "Stop"
-$ServiceName = "VaradouroEtlScheduler"
+$ErrorActionPreference = 'Stop'
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$ServiceName = 'VaradouroEtlScheduler'
 
 if (-not (Get-ScheduledTask -TaskName $ServiceName -ErrorAction SilentlyContinue)) {
-  Write-Host "Tarefa $ServiceName não está instalada. Rode 'npm run service:install' primeiro." -ForegroundColor Red
+  Write-Host ('Tarefa ' + $ServiceName + ' nao esta instalada. Rode "npm run service:install" primeiro.') -ForegroundColor Red
   exit 1
 }
 
