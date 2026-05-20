@@ -20,6 +20,7 @@
 
 import "dotenv/config";
 import { pgQuery, withPgTransaction, closePgPool } from "../connectors/postgres";
+import { executarMartComAuditoria } from "../lib/auditoria";
 
 const MODULO = "mart_pni";
 
@@ -69,9 +70,15 @@ function nivelPrioridade(nivel: string): number {
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 export async function executarMartPni(): Promise<void> {
-  const inicio = Date.now();
   console.log(`[${MODULO}] Iniciando refresh mart PNI...`);
 
+  await executarMartComAuditoria(
+    {
+      modulo: MODULO,
+      origem: "dw.fato_pni_doses",
+      destino: "mart.pni_resumo_municipio + pni_resumo_vacina + pni_serie_mensal + pni_alertas + pni_alertas_home + pni_resumo_home",
+    },
+    async () => {
   // ── 1. Carrega dados do dw ──
   const dosesMunAno = await pgQuery<DoseMunAno>(`
     SELECT
@@ -359,15 +366,16 @@ export async function executarMartPni(): Promise<void> {
       anoRef || null, mesRef || null,
     ]);
     console.log(`[${MODULO}] ✓ pni_resumo_home`);
-  });
+      });
 
-  const duracao = Date.now() - inicio;
-  console.log(`[${MODULO}] Refresh concluído em ${duracao}ms`);
-
-  await pgQuery(`
-    INSERT INTO audit.etl_log (modulo, status, mensagem, registros, duracao_ms)
-    VALUES ($1, 'OK', 'Refresh mart PNI', $2, $3)
-  `, [MODULO, dosesMunAno.length, duracao]);
+      console.log(`[${MODULO}] Refresh concluído.`);
+      return {
+        mensagem: "Refresh mart PNI",
+        registrosLidos: dosesMunAno.length,
+        registrosGravados: dosesMunAno.length,
+      };
+    },
+  );
 }
 
 if (require.main === module) {

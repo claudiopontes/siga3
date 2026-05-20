@@ -22,6 +22,9 @@
 
 import "dotenv/config";
 import { pgQuery, withPgTransaction, closePgPool } from "../connectors/postgres";
+import { executarMartComAuditoria } from "../lib/auditoria";
+
+const MODULO = "mart_siconfi_rgf";
 
 // ---------------------------------------------------------------------------
 // Municípios do Acre
@@ -86,10 +89,16 @@ interface AlertaInsert {
 // ---------------------------------------------------------------------------
 
 export async function executarMartSiconfiRgf(): Promise<void> {
-  const inicio = Date.now();
   console.log("[mart:siconfi-rgf] Iniciando refresh das marts SICONFI/RGF...");
   console.log("[mart:siconfi-rgf] Fonte: dw.fato_siconfi_extrato_entregas (co_entregavel=RGF)");
 
+  await executarMartComAuditoria(
+    {
+      modulo: MODULO,
+      origem: "dw.fato_siconfi_extrato_entregas (co_entregavel=RGF)",
+      destino: "mart.siconfi_rgf_* (resumo + alertas + home)",
+    },
+    async () => {
   // ── 1. Carregar entregas RGF agrupadas por município/período ──
   // Agrega múltiplas entregas do mesmo ente/período (ex: prefeitura + câmara)
   const extratoRows = await pgQuery<ExtratoRgfRow>(`
@@ -232,27 +241,25 @@ export async function executarMartSiconfiRgf(): Promise<void> {
       `[mart:siconfi-rgf] ✓ siconfi_rgf_resumo_home ` +
       `(${comDado}/${TOTAL_MUNICIPIOS} com dado, ${criticos} críticos)`,
     );
-  });
+      });
 
-  const duracao = Date.now() - inicio;
-  console.log(`[mart:siconfi-rgf] Refresh concluído em ${duracao}ms.`);
+      console.log("[mart:siconfi-rgf] Refresh concluído.");
 
-  if (alertas.length > 0) {
-    console.log("[mart:siconfi-rgf] Municípios sem entrega RGF:");
-    for (const a of alertas.slice(0, 5)) {
-      console.log(`  [${a.nivel}] ${a.no_municipio}: ${a.descricao}`);
-    }
-    if (alertas.length > 5) console.log(`  ... e mais ${alertas.length - 5}`);
-  }
+      if (alertas.length > 0) {
+        console.log("[mart:siconfi-rgf] Municípios sem entrega RGF:");
+        for (const a of alertas.slice(0, 5)) {
+          console.log(`  [${a.nivel}] ${a.no_municipio}: ${a.descricao}`);
+        }
+        if (alertas.length > 5) console.log(`  ... e mais ${alertas.length - 5}`);
+      }
 
-  try {
-    await pgQuery(`
-      INSERT INTO audit.etl_log (modulo, status, mensagem, registros, duracao_ms)
-      VALUES ('mart_siconfi_rgf', 'OK', 'Refresh completo das marts SICONFI/RGF', $1, $2)
-    `, [extratoRows.length, duracao]);
-  } catch {
-    // audit.etl_log pode não existir em ambiente de desenvolvimento
-  }
+      return {
+        mensagem: "Refresh completo das marts SICONFI/RGF",
+        registrosLidos: extratoRows.length,
+        registrosGravados: extratoRows.length,
+      };
+    },
+  );
 }
 
 if (require.main === module) {

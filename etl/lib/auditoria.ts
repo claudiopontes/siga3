@@ -90,6 +90,76 @@ export async function registrarLogEtl(params: {
 }
 
 // ---------------------------------------------------------------------------
+// executarMartComAuditoria
+// Wrapper para jobs refresh-mart-*: garante que toda execução (sucesso ou erro)
+// deixe rastro estruturado em audit.etl_carga e audit.etl_log, sem repetir o
+// boilerplate de iniciarCarga/try/finalizar em cada job.
+// ---------------------------------------------------------------------------
+
+export interface MartAuditoriaParams {
+  modulo: string;
+  origem: string;
+  destino: string;
+  /** default: "full_truncate_insert" */
+  modoCarga?: string;
+}
+
+export interface MartAuditoriaResultado {
+  registrosLidos?: number;
+  registrosGravados?: number;
+  mensagem?: string;
+}
+
+export async function executarMartComAuditoria(
+  params: MartAuditoriaParams,
+  fn: () => Promise<MartAuditoriaResultado | void>,
+): Promise<void> {
+  const { modulo, origem, destino } = params;
+  const modoCarga = params.modoCarga ?? "full_truncate_insert";
+  const inicio = Date.now();
+
+  const idCarga = await iniciarCargaEtl({ modulo, modoCarga, origem, destino });
+
+  try {
+    const out = (await fn()) ?? {};
+    const duracaoMs = Date.now() - inicio;
+    const mensagem = out.mensagem ?? "Refresh concluído";
+    await registrarLogEtl({
+      modulo,
+      status: "ok",
+      registros: out.registrosGravados ?? 0,
+      duracaoMs,
+      mensagem,
+    });
+    await finalizarCargaEtl({
+      idCarga,
+      status: "ok",
+      registrosLidos: out.registrosLidos ?? 0,
+      registrosGravados: out.registrosGravados ?? 0,
+      mensagem,
+    });
+  } catch (error) {
+    const duracaoMs = Date.now() - inicio;
+    const mensagem = error instanceof Error ? error.message : String(error);
+    await registrarLogEtl({
+      modulo,
+      status: "erro",
+      registros: 0,
+      duracaoMs,
+      mensagem,
+    }).catch(() => void 0);
+    await finalizarCargaEtl({
+      idCarga,
+      status: "erro",
+      registrosLidos: 0,
+      registrosGravados: 0,
+      mensagem,
+    }).catch(() => void 0);
+    throw error;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // normalizarStatusAuditoria
 // Padroniza variantes de status recebidas dos jobs legados.
 // Criada para uso futuro na Fase 2B-2C+ — não altera comportamento atual.

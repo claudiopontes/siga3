@@ -28,6 +28,9 @@
 
 import "dotenv/config";
 import { pgQuery, withPgTransaction, closePgPool } from "../connectors/postgres";
+import { executarMartComAuditoria } from "../lib/auditoria";
+
+const MODULO = "mart_saude_consolidado";
 
 // ---------------------------------------------------------------------------
 // Tipos
@@ -229,9 +232,15 @@ function nivelPrioridade(nivel: string): number {
 // ---------------------------------------------------------------------------
 
 export async function executarMartSaudeConsolidado(): Promise<void> {
-  const inicio = Date.now();
   console.log("[mart:saude-consolidado] Iniciando refresh consolidado do Painel da Saúde...");
 
+  await executarMartComAuditoria(
+    {
+      modulo: MODULO,
+      origem: "mart.siops_* + mart.sisagua_* + mart.pni_* + mart.vigilancia_arboviroses_*",
+      destino: "mart.saude_* (resumo_municipio + alertas + alertas_home + resumo_home)",
+    },
+    async () => {
   // ── 1. Carrega fontes ──
   // Período mais recente por município (evita duplicatas de períodos anteriores)
   const siopsResumos = await pgQuery<SiopsResumoRow>(`
@@ -928,15 +937,16 @@ export async function executarMartSaudeConsolidado(): Promise<void> {
     ]);
     console.log(`[mart:saude-consolidado] ✓ saude_resumo_home`);
     console.log(`  ${municipios.length} municípios · ${riscoCritico} risco CRITICO · ${riscoAlto} ALTO · ${riscoMedio} MEDIO`);
-  });
+      });
 
-  const duracao = Date.now() - inicio;
-  console.log(`[mart:saude-consolidado] Refresh concluído em ${duracao}ms.`);
-
-  await pgQuery(`
-    INSERT INTO audit.etl_log (modulo, status, mensagem, registros, duracao_ms)
-    VALUES ('mart_saude_consolidado', 'OK', 'Refresh consolidado do Painel da Saúde', $1, $2)
-  `, [municipios.length, duracao]);
+      console.log("[mart:saude-consolidado] Refresh concluído.");
+      return {
+        mensagem: "Refresh consolidado do Painel da Saúde",
+        registrosLidos: municipios.length,
+        registrosGravados: municipios.length,
+      };
+    },
+  );
 }
 
 if (require.main === module) {

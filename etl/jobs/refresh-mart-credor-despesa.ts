@@ -15,7 +15,10 @@
  */
 
 import "dotenv/config";
-import { withPgTransaction, pgQuery, closePgPool } from "../connectors/postgres";
+import { withPgTransaction, closePgPool } from "../connectors/postgres";
+import { executarMartComAuditoria } from "../lib/auditoria";
+
+const MODULO = "mart_credor_despesa";
 
 // -------------------------------------------------------
 // SQL de suporte: expressão nome_exibicao
@@ -40,10 +43,16 @@ const NOME_EXIBICAO_EXPR = `
 // -------------------------------------------------------
 
 export async function executarMartCredorDespesa(): Promise<void> {
-  const inicio = Date.now();
   console.log("[mart:credor-despesa] Iniciando refresh das marts de credores...");
 
-  await withPgTransaction(async (client) => {
+  await executarMartComAuditoria(
+    {
+      modulo: MODULO,
+      origem: "public.fato_empenho + public.dim_credor + dw.dim_credor_enriquecido + public.dim_entidade + public.dim_ente",
+      destino: "mart.credor_resumo + credor_evolucao_mensal + credor_entidades + credor_empenhos_relevantes + credor_pesquisa",
+    },
+    async () => {
+      await withPgTransaction(async (client) => {
 
     // -------------------------------------------------------
     // 1. credor_resumo
@@ -292,15 +301,13 @@ export async function executarMartCredorDespesa(): Promise<void> {
         atualizado_em           = now()
     `);
     console.log("[mart:credor-despesa] ✓ credor_pesquisa");
-  });
+      });
 
-  const duracao = Date.now() - inicio;
-  console.log(`[mart:credor-despesa] Refresh concluído em ${duracao}ms.`);
+      return { mensagem: "Refresh completo das marts de credores" };
+    },
+  );
 
-  await pgQuery(`
-    INSERT INTO audit.etl_log (modulo, status, mensagem, registros, duracao_ms)
-    VALUES ('mart:credor-despesa', 'OK', 'Refresh completo das marts de credores', 0, $1)
-  `, [duracao]);
+  console.log("[mart:credor-despesa] Refresh concluído.");
 }
 
 if (require.main === module) {

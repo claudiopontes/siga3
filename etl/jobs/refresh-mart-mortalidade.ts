@@ -18,6 +18,7 @@
 
 import "dotenv/config";
 import { pgQuery, withPgTransaction, closePgPool } from "../connectors/postgres";
+import { executarMartComAuditoria } from "../lib/auditoria";
 
 const MODULO = "mart_mortalidade";
 
@@ -312,30 +313,23 @@ async function reconstruirMart(): Promise<void> {
 // ─── ETL principal ────────────────────────────────────────────────────────────
 
 export async function executarETL(): Promise<void> {
-  const inicio = Date.now();
   console.log("╔══════════════════════════════════════════════════════╗");
   console.log("║  Mart Mortalidade — Reconstrução                     ║");
   console.log("╚══════════════════════════════════════════════════════╝");
 
   try {
-    await reconstruirMart();
-
-    const duracao = Date.now() - inicio;
-    await pgQuery(
-      `INSERT INTO audit.etl_log (modulo, status, mensagem, duracao_ms)
-       VALUES ($1, 'OK', 'Mart mortalidade reconstruído', $2)`,
-      [MODULO, duracao]
+    await executarMartComAuditoria(
+      {
+        modulo: MODULO,
+        origem: "dw.fato_mortalidade",
+        destino: "mart.mortalidade_*",
+      },
+      async () => {
+        await reconstruirMart();
+        return { mensagem: "Mart mortalidade reconstruído" };
+      },
     );
-
-    console.log(`\n✓ Concluído em ${Math.round(duracao / 1000)}s`);
-  } catch (err) {
-    const duracao = Date.now() - inicio;
-    await pgQuery(
-      `INSERT INTO audit.etl_log (modulo, status, mensagem, duracao_ms)
-       VALUES ($1, 'ERRO', $2, $3)`,
-      [MODULO, (err as Error).message, duracao]
-    ).catch(() => { /* não bloquear em falha de log */ });
-    throw err;
+    console.log(`\n✓ Concluído.`);
   } finally {
     await closePgPool();
   }

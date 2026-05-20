@@ -200,20 +200,32 @@ cron.schedule(
       console.log("[CRON] Step 9/11: dimensoes empenho skipped by RUN_DIM_EMPENHO_SQLSERVER_NIGHTLY=false");
     }
 
+    // mart_despesa depende de fato_empenho — se fato falhar (ou for skipped),
+    // não faz sentido truncar/reconstruir as marts em cima de fato vazio.
+    let fatoEmpenhoOk = false;
     if (RUN_FATO_EMPENHO_NIGHTLY) {
       console.log("[CRON] Step 10/11: fato empenho (SQL Server -> PostgreSQL)");
-      await executarETLFatoEmpenho().catch((error) => {
+      try {
+        await executarETLFatoEmpenho();
+        fatoEmpenhoOk = true;
+      } catch (error) {
         console.error("[CRON] fato empenho failed:", error);
-      });
+      }
     } else {
       console.log("[CRON] Step 10/11: fato empenho skipped by RUN_FATO_EMPENHO_NIGHTLY=false");
     }
 
     if (RUN_MART_DESPESA_NIGHTLY) {
-      console.log("[CRON] Step 10b: mart despesa (reconstrução das mart tables de empenho)");
-      await executarMartDespesa().catch((error) => {
-        console.error("[CRON] mart despesa failed:", error);
-      });
+      if (!fatoEmpenhoOk) {
+        console.log(
+          "[CRON] Step 10b: mart despesa skipped — fato_empenho não executou com sucesso (dependência).",
+        );
+      } else {
+        console.log("[CRON] Step 10b: mart despesa (reconstrução das mart tables de empenho)");
+        await executarMartDespesa().catch((error) => {
+          console.error("[CRON] mart despesa failed:", error);
+        });
+      }
     } else {
       console.log("[CRON] Step 10b: mart despesa skipped by RUN_MART_DESPESA_NIGHTLY=false");
     }
@@ -224,25 +236,39 @@ cron.schedule(
     });
 
     if (RUN_CREDOR_ENRIQUECIMENTO_NIGHTLY) {
+      // mart_credor_despesa depende da cadeia preparar -> enriquecer interno -> enriquecer CNPJ.
+      // Se qualquer etapa falhar, pular o refresh do mart para não reconstruir em cima de dados parciais.
+      let cadeiaCredorOk = true;
+
       console.log("[CRON] Step 12/15: credor preparar (novos credores -> dim_credor_enriquecido)");
-      await executarCredorEnriquecimentoPreparar().catch((error) => {
+      try { await executarCredorEnriquecimentoPreparar(); }
+      catch (error) {
         console.error("[CRON] credor preparar failed:", error);
-      });
+        cadeiaCredorOk = false;
+      }
 
       console.log("[CRON] Step 13/15: credor enriquecer interno (SQL Server -> nomes CPF/CNPJ)");
-      await executarCredorEnriquecerInterno().catch((error) => {
+      try { await executarCredorEnriquecerInterno(); }
+      catch (error) {
         console.error("[CRON] credor enriquecer interno failed:", error);
-      });
+        cadeiaCredorOk = false;
+      }
 
       console.log("[CRON] Step 14/15: credor enriquecer CNPJ (BrasilAPI — somente PENDENTE_CNPJ)");
-      await executarCredorEnriquecerCnpj().catch((error) => {
+      try { await executarCredorEnriquecerCnpj(); }
+      catch (error) {
         console.error("[CRON] credor enriquecer cnpj failed:", error);
-      });
+        cadeiaCredorOk = false;
+      }
 
-      console.log("[CRON] Step 15/15: mart credor despesa (reconstrução das mart tables)");
-      await executarMartCredorDespesa().catch((error) => {
-        console.error("[CRON] mart credor despesa failed:", error);
-      });
+      if (!cadeiaCredorOk) {
+        console.log("[CRON] Step 15/15: mart credor despesa skipped — cadeia de enriquecimento falhou.");
+      } else {
+        console.log("[CRON] Step 15/15: mart credor despesa (reconstrução das mart tables)");
+        await executarMartCredorDespesa().catch((error) => {
+          console.error("[CRON] mart credor despesa failed:", error);
+        });
+      }
     } else {
       console.log("[CRON] Steps 12-15: credor enriquecimento skipped by RUN_CREDOR_ENRIQUECIMENTO_NIGHTLY=false");
     }
@@ -257,29 +283,45 @@ cron.schedule(
     }
 
     if (RUN_SICONFI_RREO_NIGHTLY) {
+      let rreoOk = false;
       console.log("[CRON] Step 17: SICONFI RREO incremental (SICONFI API -> dw.fato_siconfi_rreo)");
-      await executarSiconfiRreoIncremental().catch((error) => {
+      try {
+        await executarSiconfiRreoIncremental();
+        rreoOk = true;
+      } catch (error) {
         console.error("[CRON] siconfi rreo incremental failed:", error);
-      });
+      }
 
-      console.log("[CRON] Step 18: mart SICONFI RREO (alertas + resumo home)");
-      await executarMartSiconfiRreo().catch((error) => {
-        console.error("[CRON] mart siconfi rreo failed:", error);
-      });
+      if (!rreoOk) {
+        console.log("[CRON] Step 18: mart SICONFI RREO skipped — incremental falhou (dependência).");
+      } else {
+        console.log("[CRON] Step 18: mart SICONFI RREO (alertas + resumo home)");
+        await executarMartSiconfiRreo().catch((error) => {
+          console.error("[CRON] mart siconfi rreo failed:", error);
+        });
+      }
     } else {
       console.log("[CRON] Steps 17-18: SICONFI RREO skipped by RUN_SICONFI_RREO_NIGHTLY=false");
     }
 
     if (RUN_SICONFI_RGF_NIGHTLY) {
+      let rgfOk = false;
       console.log("[CRON] Step 19: SICONFI RGF full (SICONFI API -> dw.fato_siconfi_rgf)");
-      await executarSiconfiRgfFullPostgres().catch((error) => {
+      try {
+        await executarSiconfiRgfFullPostgres();
+        rgfOk = true;
+      } catch (error) {
         console.error("[CRON] siconfi rgf full failed:", error);
-      });
+      }
 
-      console.log("[CRON] Step 20: mart SICONFI RGF");
-      await executarMartSiconfiRgf().catch((error) => {
-        console.error("[CRON] mart siconfi rgf failed:", error);
-      });
+      if (!rgfOk) {
+        console.log("[CRON] Step 20: mart SICONFI RGF skipped — full falhou (dependência).");
+      } else {
+        console.log("[CRON] Step 20: mart SICONFI RGF");
+        await executarMartSiconfiRgf().catch((error) => {
+          console.error("[CRON] mart siconfi rgf failed:", error);
+        });
+      }
     } else {
       console.log("[CRON] Steps 19-20: SICONFI RGF skipped by RUN_SICONFI_RGF_NIGHTLY=false");
     }

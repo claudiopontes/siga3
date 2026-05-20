@@ -21,6 +21,9 @@
 
 import "dotenv/config";
 import { pgQuery, withPgTransaction, closePgPool } from "../connectors/postgres";
+import { executarMartComAuditoria } from "../lib/auditoria";
+
+const MODULO = "mart_sisagua";
 
 // ---------------------------------------------------------------------------
 // Municípios do Acre (22) — fallback quando sem dados na fonte
@@ -127,9 +130,15 @@ interface FatoAgregado {
 // ---------------------------------------------------------------------------
 
 export async function executarRefreshMartSisagua(): Promise<void> {
-  const inicio = Date.now();
   console.log("[mart:sisagua] Iniciando refresh das marts SISAGUA...");
 
+  await executarMartComAuditoria(
+    {
+      modulo: MODULO,
+      origem: "dw.fato_sisagua_parametro",
+      destino: "mart.sisagua_* (resumo + alertas + home)",
+    },
+    async () => {
   // ── 1. Verifica se há dados ──
   const [countRow] = await pgQuery<{ c: string }>(
     `SELECT count(*)::text AS c FROM dw.fato_sisagua_parametro`
@@ -477,16 +486,16 @@ export async function executarRefreshMartSisagua(): Promise<void> {
       totalAmostras, totalFora,
     ]);
     console.log(`[mart:sisagua] ✓ sisagua_resumo_home (${totalCriticos} críticos, ${totalAltos} altos, ${afetados} municípios afetados)`);
-  });
+      });
 
-  const duracao = Date.now() - inicio;
-  console.log(`[mart:sisagua] Refresh concluído em ${duracao}ms.`);
-
-  await pgQuery(
-    `INSERT INTO audit.etl_log (modulo, status, mensagem, registros, duracao_ms)
-     VALUES ('mart_sisagua', 'OK', 'Refresh marts SISAGUA', $1, $2)`,
-    [todosResumosMap.size, duracao]
-  ).catch(() => void 0);
+      console.log("[mart:sisagua] Refresh concluído.");
+      return {
+        mensagem: "Refresh marts SISAGUA",
+        registrosLidos: todosResumosMap.size,
+        registrosGravados: todosResumosMap.size,
+      };
+    },
+  );
 }
 
 if (require.main === module) {

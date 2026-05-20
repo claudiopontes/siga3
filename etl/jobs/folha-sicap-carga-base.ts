@@ -149,10 +149,12 @@ function competenciaStr(ano: number, mes: number): string {
 function listarCompetencias(): { ano: number; mes: number; competencia: string }[] {
   const compEspecifica = (process.env.FOLHA_COMPETENCIA || "").trim();
   if (compEspecifica) {
-    const m = compEspecifica.match(/^(\d{4})-(\d{1,2})$/);
-    if (!m) throw new Error(`FOLHA_COMPETENCIA inválida: "${compEspecifica}" (use YYYY-MM)`);
+    // Aceita "YYYY-MM" e "YYYYMM".
+    const m = compEspecifica.match(/^(\d{4})-?(\d{1,2})$/);
+    if (!m) throw new Error(`FOLHA_COMPETENCIA inválida: "${compEspecifica}" (use YYYY-MM ou YYYYMM)`);
     const ano = parseInt(m[1], 10);
     const mes = parseInt(m[2], 10);
+    if (mes < 1 || mes > 12) throw new Error(`FOLHA_COMPETENCIA com mês inválido: ${compEspecifica}`);
     return [{ ano, mes, competencia: competenciaStr(ano, mes) }];
   }
   const hoje = new Date();
@@ -291,15 +293,15 @@ async function carregarDimensoesDaCompetencia(ano: number, mes: number): Promise
     // dim_entidade
     const entidades = await sicapQuery<Record<string, unknown>>(`
       SELECT DISTINCT
-        e.idEntidadeCjur                       AS id_entidade_cjur,
-        e.nome                                 AS entidade_nome,
-        en.NOME_ENTE                           AS ente_nome,
-        e.poder                                AS entidade_poder,
-        e.classificacao_administrativa         AS entidade_classificacao_administrativa,
-        e.envio_sicap                          AS entidade_envio_sicap,
-        en.ID_ENTE                             AS id_ente,
-        en.CODIGO                              AS ente_codigo,
-        en.CODIGO_IBGE                         AS ente_codigo_ibge
+        e.idEntidadeCjur               AS id_entidade_cjur,
+        e.nome                         AS entidade_nome,
+        en.NOME                        AS ente_nome,
+        e.poder                        AS entidade_poder,
+        e.classificacaoAdministrativa  AS entidade_classificacao_administrativa,
+        e.envioSicap                   AS entidade_envio_sicap,
+        en.ID_ENTE                     AS id_ente,
+        en.CODIGO                      AS ente_codigo,
+        en.CODIGO_IBGE                 AS ente_codigo_ibge
       FROM dbo.ContraCheque cc
       INNER JOIN dbo.Entidade e ON e.idEntidadeCjur = cc.idEntidadeCjur
       LEFT JOIN dbo.Ente en     ON en.ID_ENTE = e.cod_ente
@@ -339,12 +341,12 @@ async function carregarDimensoesDaCompetencia(ano: number, mes: number): Promise
     // dim_servidor (via CadastroUnico + PessoaFisica)
     const servidores = await sicapQuery<Record<string, unknown>>(`
       SELECT DISTINCT
-        cu.id                AS id_cadastro_unico_sicap,
-        pf.cpf               AS cpf,
-        pf.nome              AS nome_servidor,
-        pf.data_nascimento   AS data_nascimento,
-        pf.sexo              AS sexo,
-        pf.nit_pis_pasep     AS nit_pis_pasep
+        cu.id              AS id_cadastro_unico_sicap,
+        cu.cpf             AS cpf,
+        pf.nome            AS nome_servidor,
+        pf.dataNascimento  AS data_nascimento,
+        pf.sexo            AS sexo,
+        pf.nitPisPasep     AS nit_pis_pasep
       FROM dbo.ContraCheque cc
       INNER JOIN dbo.CadastroUnico cu ON cu.id = cc.idCadastroUnico
       LEFT JOIN dbo.PessoaFisica pf   ON pf.idCadastroUnico = cu.id
@@ -380,14 +382,14 @@ async function carregarDimensoesDaCompetencia(ano: number, mes: number): Promise
     // dim_cargo
     const cargos = await sicapQuery<Record<string, unknown>>(`
       SELECT DISTINCT
-        c.id                                   AS id_cargo_sicap,
-        c.codigo                               AS cargo_codigo,
-        c.nome                                 AS cargo_nome,
-        c.carga_horaria_mensal                 AS carga_horaria_mensal,
-        c.tipo                                 AS cargo_tipo,
-        c.tipo_acumulavel                      AS cargo_tipo_acumulavel,
-        c.classificado_sistema                 AS cargo_classificado_sistema,
-        c.subgrupo_classificacao_funcional     AS cargo_subgrupo_classificacao_funcional
+        c.id                              AS id_cargo_sicap,
+        c.codigo                          AS cargo_codigo,
+        c.nome                            AS cargo_nome,
+        c.cargaHorariaMensal              AS carga_horaria_mensal,
+        c.tipo                            AS cargo_tipo,
+        c.tipoAcumulavel                  AS cargo_tipo_acumulavel,
+        c.classificadoSistema             AS cargo_classificado_sistema,
+        c.subGrupoClassificacaoFuncional  AS cargo_subgrupo_classificacao_funcional
       FROM dbo.ContraCheque cc
       INNER JOIN dbo.Cargo c ON c.id = cc.idCargo
       WHERE cc.ano = ${ano} AND cc.mes = ${mes}
@@ -424,13 +426,13 @@ async function carregarDimensoesDaCompetencia(ano: number, mes: number): Promise
     // dim_lotacao
     const lotacoes = await sicapQuery<Record<string, unknown>>(`
       SELECT DISTINCT
-        ul.id                AS id_unidade_lotacao_sicap,
-        ul.codigo            AS unidade_lotacao_codigo,
-        ul.nome              AS unidade_lotacao_nome,
-        ul.idMunicipio       AS id_municipio_lotacao,
-        mu.nome              AS municipio_lotacao_nome,
-        mu.codigo_ibge       AS municipio_lotacao_codigo_ibge,
-        uf.sigla             AS uf_lotacao_sigla
+        ul.id           AS id_unidade_lotacao_sicap,
+        ul.codigo       AS unidade_lotacao_codigo,
+        ul.nome         AS unidade_lotacao_nome,
+        ul.idMunicipio  AS id_municipio_lotacao,
+        mu.nome         AS municipio_lotacao_nome,
+        mu.codigoIbge   AS municipio_lotacao_codigo_ibge,
+        uf.sigla        AS uf_lotacao_sigla
       FROM dbo.ContraCheque cc
       INNER JOIN dbo.UnidadeLotacao ul ON ul.id = cc.idUnidadeLotacao
       LEFT JOIN dbo.Municipio mu       ON mu.id = ul.idMunicipio
@@ -490,20 +492,20 @@ async function carregarDimensoesDaCompetencia(ano: number, mes: number): Promise
     // dim_verba
     const verbas = await sicapQuery<Record<string, unknown>>(`
       SELECT DISTINCT
-        v.id                              AS id_verba_sicap,
-        v.codigo                          AS verba_codigo,
-        v.descricao                       AS verba_descricao,
-        v.natureza                        AS verba_natureza,
-        v.tipo_referencia                 AS verba_tipo_referencia,
-        v.categoria_economica             AS verba_categoria_economica,
-        v.grupo_natureza_despesa          AS verba_grupo_natureza_despesa,
-        v.modalidade_aplicacao            AS verba_modalidade_aplicacao,
-        v.elemento_despesa                AS verba_elemento_despesa,
-        v.compoe_vencimento_padrao        AS verba_compoe_vencimento_padrao,
-        v.base_fgts                       AS verba_base_fgts,
-        v.base_irpf                       AS verba_base_irpf,
-        v.base_previdencia                AS verba_base_previdencia,
-        v.subgrupo_classificacao          AS verba_subgrupo_classificacao
+        v.id                          AS id_verba_sicap,
+        v.codigo                      AS verba_codigo,
+        v.descricao                   AS verba_descricao,
+        v.natureza                    AS verba_natureza,
+        v.tipoReferencia              AS verba_tipo_referencia,
+        v.categoriaEconomica          AS verba_categoria_economica,
+        v.grupoNaturezaDespesa        AS verba_grupo_natureza_despesa,
+        v.modalidadeAplicacao         AS verba_modalidade_aplicacao,
+        v.elementoDespesa             AS verba_elemento_despesa,
+        v.compoeVencimentoPadrao      AS verba_compoe_vencimento_padrao,
+        v.baseFGTS                    AS verba_base_fgts,
+        v.baseIRPF                    AS verba_base_irpf,
+        v.basePrevidencia             AS verba_base_previdencia,
+        v.subGrupoClassificacaoVerba  AS verba_subgrupo_classificacao
       FROM dbo.VerbasContraCheque vcc
       INNER JOIN dbo.Verba v        ON v.id = vcc.idVerba
       INNER JOIN dbo.ContraCheque cc ON cc.id = vcc.idContraCheque
@@ -555,17 +557,17 @@ async function carregarDimensoesDaCompetencia(ano: number, mes: number): Promise
     // dim_remessa
     const remessas = await sicapQuery<Record<string, unknown>>(`
       SELECT DISTINCT
-        r.id                              AS id_remessa_sicap,
-        r.ano                             AS ano,
-        r.mes                             AS mes,
-        r.idEntidadeCjur                  AS id_entidade_cjur,
-        r.data_envio                      AS data_envio,
-        r.data_confirmacao                AS data_confirmacao,
-        r.prazo_envio                     AS prazo_envio,
-        r.situacao                        AS situacao,
-        r.sem_movimento                   AS sem_movimento,
-        r.situacao_tempestividade         AS situacao_tempestividade,
-        r.tempo_atraso                    AS tempo_atraso
+        r.id                       AS id_remessa_sicap,
+        r.ano                      AS ano,
+        r.mes                      AS mes,
+        r.idEntidadeCjur           AS id_entidade_cjur,
+        r.dataEnvio                AS data_envio,
+        r.dataConfirmacao          AS data_confirmacao,
+        r.prazoEnvio               AS prazo_envio,
+        r.situacao                 AS situacao,
+        r.semMovimento             AS sem_movimento,
+        r.situacaoTempestividade   AS situacao_tempestividade,
+        r.tempoAtraso              AS tempo_atraso
       FROM dbo.ContraCheque cc
       INNER JOIN remessa.Remessa r ON r.id = cc.idRemessa
       WHERE cc.ano = ${ano} AND cc.mes = ${mes}
@@ -671,95 +673,116 @@ async function carregarFatoContracheque(ano: number, mes: number): Promise<{ lid
   while (true) {
     const rows = await sicapQuery<ContraChequeRow>(`
       SELECT
-        id_contracheque_sicap, ano, mes, id_entidade_cjur,
-        id_cadastro_unico_sicap, id_beneficiario_sicap,
-        cpf, nome_servidor, matricula,
-        id_cargo_sicap, id_tipo_folha_sicap, id_unidade_lotacao_sicap, id_remessa_sicap,
-        total_vencimentos, total_descontos, total_liquido,
-        base_fgts, base_irpf,
-        base_previdenciaria_patronal, base_previdenciaria_segurado,
-        situacao_beneficiario, situacao_atual_servidor
+        id_contracheque                     AS id_contracheque_sicap,
+        ano, mes,
+        id_entidade_cjur,
+        id_cadastro_unico                   AS id_cadastro_unico_sicap,
+        id_beneficiario                     AS id_beneficiario_sicap,
+        cpf,
+        servidor_nome                       AS nome_servidor,
+        matricula,
+        id_cargo_contracheque               AS id_cargo_sicap,
+        id_tipo_folha                       AS id_tipo_folha_sicap,
+        id_unidade_lotacao                  AS id_unidade_lotacao_sicap,
+        id_remessa                          AS id_remessa_sicap,
+        totalVencimentos                    AS total_vencimentos,
+        totalDescontos                      AS total_descontos,
+        total_liquido,
+        baseFgts                            AS base_fgts,
+        baseIrpf                            AS base_irpf,
+        basePrevidenciariaPatronal          AS base_previdenciaria_patronal,
+        basePrevidenciariaSegurado          AS base_previdenciaria_segurado,
+        situacao_beneficiario_contracheque  AS situacao_beneficiario,
+        situacao_atual_servidor
       FROM dbo.vw_folha_contracheque_base
       WHERE ano = ${ano} AND mes = ${mes}
-      ORDER BY id_contracheque_sicap
+      ORDER BY id_contracheque
       OFFSET ${offset} ROWS FETCH NEXT ${BATCH_SIZE} ROWS ONLY
     `);
     if (rows.length === 0) break;
     lidos += rows.length;
 
+    // Postgres limita 65.535 parâmetros por query (int16). Com 30 colunas o
+    // teto seguro é ~2.100 linhas/INSERT; mantemos 1.500 para uniformidade
+    // com fato_verba_contracheque.
+    const PG_CHUNK = 1500;
+
     const pool = getPgPool();
     const client = await pool.connect();
     try {
-      const placeholders: string[] = [];
-      const valores: unknown[] = [];
-      let p = 1;
-      for (const r of rows) {
-        const cpfStr = r.cpf ?? null;
-        const totalV = num(r.total_vencimentos);
-        const totalD = num(r.total_descontos);
-        const alertaVencNeg = totalV !== null && totalV < 0;
-        const alertaDescNeg = totalD !== null && totalD < 0;
-        const alertaDescMaior = totalV !== null && totalD !== null && totalD > totalV;
-        const alertaSemDesc = totalD !== null && totalD === 0;
-        const alertaCpfInv = !cpfValido(cpfStr);
-        const alertaCargoAusente = r.id_cargo_sicap === null || r.id_cargo_sicap === undefined;
-        const alertaLotacaoAusente = r.id_unidade_lotacao_sicap === null || r.id_unidade_lotacao_sicap === undefined;
+      for (let chunkStart = 0; chunkStart < rows.length; chunkStart += PG_CHUNK) {
+        const chunk = rows.slice(chunkStart, chunkStart + PG_CHUNK);
+        const placeholders: string[] = [];
+        const valores: unknown[] = [];
+        let p = 1;
+        for (const r of chunk) {
+          const cpfStr = r.cpf ?? null;
+          const totalV = num(r.total_vencimentos);
+          const totalD = num(r.total_descontos);
+          const alertaVencNeg = totalV !== null && totalV < 0;
+          const alertaDescNeg = totalD !== null && totalD < 0;
+          const alertaDescMaior = totalV !== null && totalD !== null && totalD > totalV;
+          const alertaSemDesc = totalD !== null && totalD === 0;
+          const alertaCpfInv = !cpfValido(cpfStr);
+          const alertaCargoAusente = r.id_cargo_sicap === null || r.id_cargo_sicap === undefined;
+          const alertaLotacaoAusente = r.id_unidade_lotacao_sicap === null || r.id_unidade_lotacao_sicap === undefined;
 
-        placeholders.push(
-          `($${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++})`,
+          placeholders.push(
+            `($${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++})`,
+          );
+          valores.push(
+            r.id_contracheque_sicap,
+            competenciaStr(ano, mes),
+            ano,
+            mes,
+            r.id_entidade_cjur ?? null,
+            r.id_cadastro_unico_sicap ?? null,
+            r.id_beneficiario_sicap ?? null,
+            hashCpf(cpfStr),
+            mascararCpf(cpfStr),
+            r.matricula ?? null,
+            r.id_cargo_sicap ?? null,
+            r.id_tipo_folha_sicap ?? null,
+            r.id_unidade_lotacao_sicap ?? null,
+            r.id_remessa_sicap ?? null,
+            totalV,
+            totalD,
+            num(r.total_liquido),
+            num(r.base_fgts),
+            num(r.base_irpf),
+            num(r.base_previdenciaria_patronal),
+            num(r.base_previdenciaria_segurado),
+            r.situacao_beneficiario ?? null,
+            r.situacao_atual_servidor ?? null,
+            alertaVencNeg,
+            alertaDescNeg,
+            alertaDescMaior,
+            alertaSemDesc,
+            alertaCpfInv,
+            alertaCargoAusente,
+            alertaLotacaoAusente,
+          );
+        }
+
+        const res = await client.query(
+          `INSERT INTO folha.fato_contracheque (
+             id_contracheque_sicap, competencia, ano, mes,
+             id_entidade_cjur, id_cadastro_unico_sicap, id_beneficiario_sicap,
+             cpf_hash, cpf_mascarado, matricula,
+             id_cargo_sicap, id_tipo_folha_sicap, id_unidade_lotacao_sicap, id_remessa_sicap,
+             total_vencimentos, total_descontos, total_liquido,
+             base_fgts, base_irpf,
+             base_previdenciaria_patronal, base_previdenciaria_segurado,
+             situacao_beneficiario, situacao_atual_servidor,
+             alerta_vencimento_negativo, alerta_desconto_negativo,
+             alerta_desconto_maior_vencimento, alerta_sem_desconto,
+             alerta_cpf_invalido, alerta_cargo_ausente, alerta_lotacao_ausente
+           ) VALUES ${placeholders.join(",")}
+           ON CONFLICT (id_contracheque_sicap) DO NOTHING`,
+          valores,
         );
-        valores.push(
-          r.id_contracheque_sicap,
-          competenciaStr(ano, mes),
-          ano,
-          mes,
-          r.id_entidade_cjur ?? null,
-          r.id_cadastro_unico_sicap ?? null,
-          r.id_beneficiario_sicap ?? null,
-          hashCpf(cpfStr),
-          mascararCpf(cpfStr),
-          r.matricula ?? null,
-          r.id_cargo_sicap ?? null,
-          r.id_tipo_folha_sicap ?? null,
-          r.id_unidade_lotacao_sicap ?? null,
-          r.id_remessa_sicap ?? null,
-          totalV,
-          totalD,
-          num(r.total_liquido),
-          num(r.base_fgts),
-          num(r.base_irpf),
-          num(r.base_previdenciaria_patronal),
-          num(r.base_previdenciaria_segurado),
-          r.situacao_beneficiario ?? null,
-          r.situacao_atual_servidor ?? null,
-          alertaVencNeg,
-          alertaDescNeg,
-          alertaDescMaior,
-          alertaSemDesc,
-          alertaCpfInv,
-          alertaCargoAusente,
-          alertaLotacaoAusente,
-        );
+        gravados += res.rowCount ?? 0;
       }
-
-      const res = await client.query(
-        `INSERT INTO folha.fato_contracheque (
-           id_contracheque_sicap, competencia, ano, mes,
-           id_entidade_cjur, id_cadastro_unico_sicap, id_beneficiario_sicap,
-           cpf_hash, cpf_mascarado, matricula,
-           id_cargo_sicap, id_tipo_folha_sicap, id_unidade_lotacao_sicap, id_remessa_sicap,
-           total_vencimentos, total_descontos, total_liquido,
-           base_fgts, base_irpf,
-           base_previdenciaria_patronal, base_previdenciaria_segurado,
-           situacao_beneficiario, situacao_atual_servidor,
-           alerta_vencimento_negativo, alerta_desconto_negativo,
-           alerta_desconto_maior_vencimento, alerta_sem_desconto,
-           alerta_cpf_invalido, alerta_cargo_ausente, alerta_lotacao_ausente
-         ) VALUES ${placeholders.join(",")}
-         ON CONFLICT (id_contracheque_sicap) DO NOTHING`,
-        valores,
-      );
-      gravados += res.rowCount ?? 0;
     } finally {
       client.release();
     }
@@ -788,95 +811,109 @@ async function carregarFatoVerbaContracheque(ano: number, mes: number): Promise<
   while (true) {
     const rows = await sicapQuery<VerbaContraChequeRow>(`
       SELECT
-        id_verba_contracheque_sicap, id_contracheque_sicap, ano, mes,
-        id_entidade_cjur, id_cadastro_unico_sicap, id_beneficiario_sicap,
+        id_verba_contracheque  AS id_verba_contracheque_sicap,
+        id_contracheque        AS id_contracheque_sicap,
+        ano, mes,
+        id_entidade_cjur,
+        id_cadastro_unico      AS id_cadastro_unico_sicap,
+        id_beneficiario        AS id_beneficiario_sicap,
         cpf, matricula,
-        id_verba_sicap, verba_codigo, verba_descricao, verba_natureza, verba_tipo_referencia,
+        id_verba               AS id_verba_sicap,
+        verba_codigo, verba_descricao, verba_natureza, verba_tipo_referencia,
         verba_categoria_economica, verba_grupo_natureza_despesa, verba_modalidade_aplicacao,
         verba_elemento_despesa, verba_compoe_vencimento_padrao,
         verba_base_fgts, verba_base_irpf, verba_base_previdencia,
         verba_subgrupo_classificacao, verba_referencia, verba_valor,
-        id_tipo_folha_sicap, id_remessa_sicap
+        id_tipo_folha          AS id_tipo_folha_sicap,
+        id_remessa             AS id_remessa_sicap
       FROM dbo.vw_folha_verbas_detalhada
       WHERE ano = ${ano} AND mes = ${mes}
-      ORDER BY id_verba_contracheque_sicap
+      ORDER BY id_verba_contracheque
       OFFSET ${offset} ROWS FETCH NEXT ${BATCH_SIZE} ROWS ONLY
     `);
     if (rows.length === 0) break;
     lidos += rows.length;
 
+    // Postgres limita 65.535 parâmetros por query (int16). Com 33 colunas,
+    // o teto seguro é ~1.800 linhas/INSERT. Mantemos a leitura SQL Server em
+    // BATCH_SIZE e flushamos em sub-lotes para o Postgres.
+    const PG_CHUNK = 1500;
+
     const pool = getPgPool();
     const client = await pool.connect();
     try {
-      const placeholders: string[] = [];
-      const valores: unknown[] = [];
-      let p = 1;
-      for (const r of rows) {
-        const valor = num(r.verba_valor);
-        const alertaValorNeg = valor !== null && valor < 0;
-        const alertaSemCodigo = !r.verba_codigo;
-        const alertaSemDescricao = !r.verba_descricao;
-        const alertaSemSubgrupo = !r.verba_subgrupo_classificacao;
-        const alertaSemNatureza = !r.verba_natureza;
+      for (let chunkStart = 0; chunkStart < rows.length; chunkStart += PG_CHUNK) {
+        const chunk = rows.slice(chunkStart, chunkStart + PG_CHUNK);
+        const placeholders: string[] = [];
+        const valores: unknown[] = [];
+        let p = 1;
+        for (const r of chunk) {
+          const valor = num(r.verba_valor);
+          const alertaValorNeg = valor !== null && valor < 0;
+          const alertaSemCodigo = !r.verba_codigo;
+          const alertaSemDescricao = !r.verba_descricao;
+          const alertaSemSubgrupo = !r.verba_subgrupo_classificacao;
+          const alertaSemNatureza = !r.verba_natureza;
 
-        placeholders.push(
-          `($${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++})`,
+          placeholders.push(
+            `($${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++})`,
+          );
+          valores.push(
+            r.id_verba_contracheque_sicap,
+            r.id_contracheque_sicap,
+            competenciaStr(ano, mes),
+            ano,
+            mes,
+            r.id_entidade_cjur ?? null,
+            r.id_cadastro_unico_sicap ?? null,
+            r.id_beneficiario_sicap ?? null,
+            hashCpf(r.cpf ?? null),
+            r.matricula ?? null,
+            r.id_verba_sicap ?? null,
+            r.verba_codigo ?? null,
+            r.verba_descricao ?? null,
+            r.verba_natureza ?? null,
+            r.verba_tipo_referencia ?? null,
+            r.verba_categoria_economica ?? null,
+            r.verba_grupo_natureza_despesa ?? null,
+            r.verba_modalidade_aplicacao ?? null,
+            r.verba_elemento_despesa ?? null,
+            toBoolOrNull(r.verba_compoe_vencimento_padrao),
+            toBoolOrNull(r.verba_base_fgts),
+            toBoolOrNull(r.verba_base_irpf),
+            toBoolOrNull(r.verba_base_previdencia),
+            r.verba_subgrupo_classificacao ?? null,
+            num(r.verba_referencia),
+            valor,
+            r.id_tipo_folha_sicap ?? null,
+            r.id_remessa_sicap ?? null,
+            alertaValorNeg,
+            alertaSemCodigo,
+            alertaSemDescricao,
+            alertaSemSubgrupo,
+            alertaSemNatureza,
+          );
+        }
+
+        const res = await client.query(
+          `INSERT INTO folha.fato_verba_contracheque (
+             id_verba_contracheque_sicap, id_contracheque_sicap, competencia, ano, mes,
+             id_entidade_cjur, id_cadastro_unico_sicap, id_beneficiario_sicap,
+             cpf_hash, matricula,
+             id_verba_sicap, verba_codigo, verba_descricao, verba_natureza, verba_tipo_referencia,
+             verba_categoria_economica, verba_grupo_natureza_despesa, verba_modalidade_aplicacao,
+             verba_elemento_despesa, verba_compoe_vencimento_padrao,
+             verba_base_fgts, verba_base_irpf, verba_base_previdencia,
+             verba_subgrupo_classificacao, verba_referencia, verba_valor,
+             id_tipo_folha_sicap, id_remessa_sicap,
+             alerta_verba_valor_negativo, alerta_verba_sem_codigo, alerta_verba_sem_descricao,
+             alerta_verba_sem_subgrupo_classificacao, alerta_verba_sem_natureza
+           ) VALUES ${placeholders.join(",")}
+           ON CONFLICT (id_verba_contracheque_sicap) DO NOTHING`,
+          valores,
         );
-        valores.push(
-          r.id_verba_contracheque_sicap,
-          r.id_contracheque_sicap,
-          competenciaStr(ano, mes),
-          ano,
-          mes,
-          r.id_entidade_cjur ?? null,
-          r.id_cadastro_unico_sicap ?? null,
-          r.id_beneficiario_sicap ?? null,
-          hashCpf(r.cpf ?? null),
-          r.matricula ?? null,
-          r.id_verba_sicap ?? null,
-          r.verba_codigo ?? null,
-          r.verba_descricao ?? null,
-          r.verba_natureza ?? null,
-          r.verba_tipo_referencia ?? null,
-          r.verba_categoria_economica ?? null,
-          r.verba_grupo_natureza_despesa ?? null,
-          r.verba_modalidade_aplicacao ?? null,
-          r.verba_elemento_despesa ?? null,
-          toBoolOrNull(r.verba_compoe_vencimento_padrao),
-          toBoolOrNull(r.verba_base_fgts),
-          toBoolOrNull(r.verba_base_irpf),
-          toBoolOrNull(r.verba_base_previdencia),
-          r.verba_subgrupo_classificacao ?? null,
-          num(r.verba_referencia),
-          valor,
-          r.id_tipo_folha_sicap ?? null,
-          r.id_remessa_sicap ?? null,
-          alertaValorNeg,
-          alertaSemCodigo,
-          alertaSemDescricao,
-          alertaSemSubgrupo,
-          alertaSemNatureza,
-        );
+        gravados += res.rowCount ?? 0;
       }
-
-      const res = await client.query(
-        `INSERT INTO folha.fato_verba_contracheque (
-           id_verba_contracheque_sicap, id_contracheque_sicap, competencia, ano, mes,
-           id_entidade_cjur, id_cadastro_unico_sicap, id_beneficiario_sicap,
-           cpf_hash, matricula,
-           id_verba_sicap, verba_codigo, verba_descricao, verba_natureza, verba_tipo_referencia,
-           verba_categoria_economica, verba_grupo_natureza_despesa, verba_modalidade_aplicacao,
-           verba_elemento_despesa, verba_compoe_vencimento_padrao,
-           verba_base_fgts, verba_base_irpf, verba_base_previdencia,
-           verba_subgrupo_classificacao, verba_referencia, verba_valor,
-           id_tipo_folha_sicap, id_remessa_sicap,
-           alerta_verba_valor_negativo, alerta_verba_sem_codigo, alerta_verba_sem_descricao,
-           alerta_verba_sem_subgrupo_classificacao, alerta_verba_sem_natureza
-         ) VALUES ${placeholders.join(",")}
-         ON CONFLICT (id_verba_contracheque_sicap) DO NOTHING`,
-        valores,
-      );
-      gravados += res.rowCount ?? 0;
     } finally {
       client.release();
     }

@@ -14,15 +14,23 @@
 
 import "dotenv/config";
 import { pgQuery, withPgTransaction, closePgPool } from "../connectors/postgres";
+import { executarMartComAuditoria } from "../lib/auditoria";
 
+const MODULO = "mart_painel_educacao";
 const REDE_PUBLICO = "Pública";   // rede agregada que a planilha INEP costuma trazer
 const LOCALIZACAO_TOTAL = "Total";
 const DEPENDENCIA_TOTAL = "Total";
 
 async function executar() {
-  const inicio = Date.now();
   console.log("[mart-painel-educacao] Reconstruindo mart.painel_educacao_municipio…");
 
+  await executarMartComAuditoria(
+    {
+      modulo: MODULO,
+      origem: "dw.fato_inep_ideb_municipal + dw.fato_inep_rendimento_municipal",
+      destino: "mart.painel_educacao_municipio",
+    },
+    async () => {
   // Última edição IDEB e último ano de rendimento — globais
   const [maxIdebRow] = await pgQuery<{ edicao: number | null }>(
     `SELECT MAX(edicao) AS edicao FROM dw.fato_inep_ideb_municipal`,
@@ -37,7 +45,7 @@ async function executar() {
 
   if (!edicaoIdeb && !anoRend) {
     console.log("  Nada a fazer — fato_inep_ideb_municipal e fato_inep_rendimento_municipal vazias.");
-    return;
+    return { mensagem: "fato_inep_ideb_municipal e fato_inep_rendimento_municipal vazias", registrosLidos: 0, registrosGravados: 0 };
   }
 
   await withPgTransaction(async (client) => {
@@ -129,21 +137,14 @@ async function executar() {
   console.log(`     com IDEB       : ${comIdeb?.n ?? 0}`);
   console.log(`     com Rendimento : ${comRend?.n ?? 0}`);
 
-  const total = parseInt(linhas?.n ?? "0", 10);
-  try {
-    await pgQuery(
-      `INSERT INTO audit.etl_log (modulo, status, mensagem, registros, duracao_ms)
-       VALUES ('mart_painel_educacao', $1, $2, $3, $4)`,
-      [
-        total > 0 ? "OK" : "PARCIAL",
-        `${total} municípios consolidados · com IDEB=${comIdeb?.n ?? 0} · com Rendimento=${comRend?.n ?? 0}`,
-        total,
-        Date.now() - inicio,
-      ],
-    );
-  } catch {
-    /* audit.etl_log pode não existir — silencioso */
-  }
+      const total = parseInt(linhas?.n ?? "0", 10);
+      return {
+        mensagem: `${total} municípios consolidados · com IDEB=${comIdeb?.n ?? 0} · com Rendimento=${comRend?.n ?? 0}`,
+        registrosLidos: total,
+        registrosGravados: total,
+      };
+    },
+  );
 }
 
 if (require.main === module) {

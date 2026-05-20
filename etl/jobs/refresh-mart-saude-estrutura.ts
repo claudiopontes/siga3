@@ -22,6 +22,9 @@
 
 import "dotenv/config";
 import { pgQuery, withPgTransaction, closePgPool } from "../connectors/postgres";
+import { executarMartComAuditoria } from "../lib/auditoria";
+
+const MODULO = "mart_saude_estrutura";
 
 const DIAS_SEM_ATUALIZACAO = 180;
 
@@ -98,9 +101,15 @@ interface ResumoMunicipio {
 }
 
 export async function executarMartSaudeEstrutura(): Promise<void> {
-  const inicio = Date.now();
   console.log("[mart:saude-estrutura] Iniciando refresh das marts de saúde...");
 
+  await executarMartComAuditoria(
+    {
+      modulo: MODULO,
+      origem: "dw.dim_estabelecimento_saude + dw.dim_ubs",
+      destino: "mart.saude_estrutura_* (resumo + alertas + home)",
+    },
+    async () => {
   // ── 1. Verifica se há dados ──
   const [cnesCount] = await pgQuery<{ c: string }>(`SELECT count(*)::text AS c FROM dw.dim_estabelecimento_saude`);
   const [ubsCount]  = await pgQuery<{ c: string }>(`SELECT count(*)::text AS c FROM dw.dim_ubs`);
@@ -351,15 +360,16 @@ export async function executarMartSaudeEstrutura(): Promise<void> {
       VALUES ($1,$2,$3,$4,$5)
     `, [alertas.length, criticos, altos, medios, afetados]);
     console.log(`[mart:saude-estrutura] ✓ saude_estrutura_resumo_home (${criticos} críticos, ${altos} altos, ${afetados} municípios afetados)`);
-  });
+      });
 
-  const duracao = Date.now() - inicio;
-  console.log(`[mart:saude-estrutura] Refresh concluído em ${duracao}ms.`);
-
-  await pgQuery(`
-    INSERT INTO audit.etl_log (modulo, status, mensagem, registros, duracao_ms)
-    VALUES ('mart_saude_estrutura', 'OK', 'Refresh completo das marts de estrutura de saúde', $1, $2)
-  `, [resumos.length, duracao]);
+      console.log("[mart:saude-estrutura] Refresh concluído.");
+      return {
+        mensagem: "Refresh completo das marts de estrutura de saúde",
+        registrosLidos: resumos.length,
+        registrosGravados: resumos.length,
+      };
+    },
+  );
 }
 
 if (require.main === module) {

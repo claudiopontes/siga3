@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { queryInDatabase, closePool } from "../connectors/sqlserver";
 import { pgQuery, closePgPool } from "../connectors/postgres";
+import { iniciarCargaEtl, finalizarCargaEtl, registrarLogEtl, type StatusCarga } from "../lib/auditoria";
 
 const MODULO = "processos_eprocess";
 const EPROCESS_DATABASE = process.env.EPROCESS_SQLSERVER_DATABASE ?? "EPROCESS";
@@ -132,11 +133,14 @@ ORDER BY fi.cod_processo, fi.dt_mov;
 // --- Controle de carga ---
 
 async function gravarLog(status: "sucesso" | "erro", registros: number, duracao: number, mensagem?: string): Promise<void> {
-  await pgQuery(
-    `INSERT INTO audit.etl_log (modulo, status, registros, duracao_ms, mensagem)
-     VALUES ($1, $2, $3, $4, $5)`,
-    [MODULO, status, registros, duracao, mensagem ?? null],
-  );
+  const statusAudit: StatusCarga = status === "sucesso" ? "ok" : "erro";
+  await registrarLogEtl({
+    modulo: MODULO,
+    status: statusAudit,
+    registros,
+    duracaoMs: duracao,
+    mensagem: mensagem ?? null,
+  });
 }
 
 async function criarCarga(): Promise<number> {
@@ -248,6 +252,15 @@ export async function executarCargaProcessos(): Promise<void> {
   console.log(`[${new Date().toISOString()}] Iniciando ETL: ${MODULO}`);
   if (DRY_RUN) console.log("  -> Modo dry-run ativo. Nenhum dado será gravado no PostgreSQL.");
 
+  // Audit centralizado (painel /seguranca/etl). Mantemos paralelamente o
+  // public.pauta_julgamento_carga para o histórico operacional do módulo.
+  const idCargaAudit = await iniciarCargaEtl({
+    modulo: MODULO,
+    modoCarga: "incremental_upsert",
+    origem: `${EPROCESS_DATABASE}.processo.vwArquivoProcesso + vwMovimentacoes`,
+    destino: "public.pauta_julgamento_arquivo + public.pauta_julgamento_movimentacao",
+  });
+
   let cargaId: number | null = null;
   let totalProcessados = 0;
 
@@ -262,6 +275,7 @@ export async function executarCargaProcessos(): Promise<void> {
     if (todosProcessoIds.length === 0) {
       console.log("  -> Nenhum processo encontrado. Execute primeiro o ETL processos-ce.");
       await gravarLog("sucesso", 0, Date.now() - inicio, "Nenhum processo em public.processo.");
+      await finalizarCargaEtl({ idCarga: idCargaAudit, status: "ok", registrosLidos: 0, registrosGravados: 0, mensagem: "Nenhum processo em public.processo." });
       return;
     }
 

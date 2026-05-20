@@ -14,11 +14,20 @@
 
 import "dotenv/config";
 import { pgQuery, withPgTransaction, closePgPool } from "../connectors/postgres";
+import { executarMartComAuditoria } from "../lib/auditoria";
+
+const MODULO = "mart_gasto_aluno";
 
 async function executar() {
-  const inicio = Date.now();
   console.log("[mart-gasto-aluno] Reconstruindo mart.gasto_aluno_municipio…");
 
+  await executarMartComAuditoria(
+    {
+      modulo: MODULO,
+      origem: "public.dim_escola_inep + mart.siope_risco_educacao_basico + public.fato_empenho",
+      destino: "mart.gasto_aluno_municipio",
+    },
+    async () => {
   // Última fotografia Censo
   const [maxCenso] = await pgQuery<{ ano_censo: number | null }>(`
     SELECT MAX(ano_censo) AS ano_censo FROM public.dim_escola_inep
@@ -30,8 +39,7 @@ async function executar() {
   if (!anoCenso) {
     console.log("  ⚠ Censo vazio — mart não pode ser calculado ainda.");
     console.log("    Rode `npm run inep-censo-geo:ingest`");
-    await registrarAuditoria("PARCIAL", "Censo vazio", 0, Date.now() - inicio);
-    return;
+    return { mensagem: "Censo vazio — mart não recalculado", registrosLidos: 0, registrosGravados: 0 };
   }
 
   // Existe alguma carga SICONFI?
@@ -44,8 +52,7 @@ async function executar() {
 
   if (!temSiconfi) {
     console.log("  ⚠ SICONFI vazio. Rode siope-rreo-anexo8-incremental-postgres.ts antes.");
-    await registrarAuditoria("PARCIAL", "SICONFI vazio", 0, Date.now() - inicio);
-    return;
+    return { mensagem: "SICONFI vazio — mart não recalculado", registrosLidos: 0, registrosGravados: 0 };
   }
 
   // Foco: 2 últimos exercícios (atual + anterior)
@@ -195,22 +202,15 @@ async function executar() {
   console.log(`     com gasto MDE/aluno SICONFI : ${comGastoSiconfi?.n ?? 0}`);
   console.log(`     com gasto Educ/aluno TCE    : ${comGastoTce?.n ?? 0}`);
 
-  await registrarAuditoria(
-    parseInt(comGastoTce?.n ?? "0", 10) > 0 ? "OK" : "PARCIAL",
-    `${linhas?.n ?? 0} linhas (${linhasPorAno?.n ?? "—"}) · SICONFI=${comGastoSiconfi?.n ?? 0} · TCE=${comGastoTce?.n ?? 0} · Censo ${anoCenso} · TCE ${anoAnterior}-${anoAtual}`,
-    parseInt(comGastoTce?.n ?? "0", 10),
-    Date.now() - inicio,
+      const totalLinhas = parseInt(linhas?.n ?? "0", 10);
+      const tce = parseInt(comGastoTce?.n ?? "0", 10);
+      return {
+        mensagem: `${linhas?.n ?? 0} linhas (${linhasPorAno?.n ?? "—"}) · SICONFI=${comGastoSiconfi?.n ?? 0} · TCE=${tce} · Censo ${anoCenso} · TCE ${anoAnterior}-${anoAtual}`,
+        registrosLidos: totalLinhas,
+        registrosGravados: totalLinhas,
+      };
+    },
   );
-}
-
-async function registrarAuditoria(status: string, mensagem: string, registros: number, duracaoMs: number) {
-  try {
-    await pgQuery(
-      `INSERT INTO audit.etl_log (modulo, status, mensagem, registros, duracao_ms)
-       VALUES ('mart_gasto_aluno', $1, $2, $3, $4)`,
-      [status, mensagem, registros, duracaoMs],
-    );
-  } catch { /* audit.etl_log pode não existir */ }
 }
 
 if (require.main === module) {

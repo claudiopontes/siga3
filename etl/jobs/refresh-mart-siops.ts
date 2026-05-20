@@ -20,6 +20,7 @@
 
 import "dotenv/config";
 import { withPgTransaction, pgQuery, closePgPool } from "../connectors/postgres";
+import { executarMartComAuditoria } from "../lib/auditoria";
 
 const MODULO = "mart_siops";
 // Percentual mínimo de aplicação em saúde para municípios (EC 29/2000, LC 141/2012)
@@ -36,25 +37,27 @@ const INDICADOR_ASPS_PREFIXO = "3.2";
 const INDICADOR_DESPESA_TOTAL_PREFIXO = "2.1";
 
 export async function executarMartSiops(): Promise<void> {
-  const inicio = Date.now();
   console.log(`[${MODULO}] Iniciando refresh das marts SIOPS...`);
 
-  // Verifica se há dados no DW
-  const contagem = await pgQuery<{ total: string }>(`SELECT COUNT(*) as total FROM dw.fato_siops_indicador`);
-  const totalFatos = parseInt(contagem[0]?.total ?? "0", 10);
+  await executarMartComAuditoria(
+    {
+      modulo: MODULO,
+      origem: "dw.fato_siops_indicador",
+      destino: "mart.siops_resumo_municipio + siops_alertas + siops_alertas_home + siops_resumo_home",
+    },
+    async () => {
+      // Verifica se há dados no DW
+      const contagem = await pgQuery<{ total: string }>(`SELECT COUNT(*) as total FROM dw.fato_siops_indicador`);
+      const totalFatos = parseInt(contagem[0]?.total ?? "0", 10);
 
-  if (totalFatos === 0) {
-    console.warn(`[${MODULO}] ⚠ Nenhum dado em dw.fato_siops_indicador. Execute npm run siops:full:postgres primeiro.`);
-    await pgQuery(`
-      INSERT INTO audit.etl_log (modulo, status, mensagem, registros, duracao_ms)
-      VALUES ($1, 'AVISO', 'Sem dados no DW — marts não geradas', 0, $2)
-    `, [MODULO, Date.now() - inicio]);
-    return;
-  }
+      if (totalFatos === 0) {
+        console.warn(`[${MODULO}] ⚠ Nenhum dado em dw.fato_siops_indicador. Execute npm run siops:full:postgres primeiro.`);
+        return { mensagem: "Sem dados no DW — marts não geradas", registrosLidos: 0, registrosGravados: 0 };
+      }
 
-  console.log(`[${MODULO}] ${totalFatos} fatos encontrados no DW.`);
+      console.log(`[${MODULO}] ${totalFatos} fatos encontrados no DW.`);
 
-  await withPgTransaction(async (client) => {
+      await withPgTransaction(async (client) => {
 
     // -----------------------------------------------------------------
     // 1. Identifica período mais recente carregado
@@ -338,15 +341,16 @@ export async function executarMartSiops(): Promise<void> {
     ]);
 
     console.log(`[${MODULO}] ✓ siops_resumo_home`);
-  });
+      });
 
-  const duracao = Date.now() - inicio;
-  console.log(`[${MODULO}] Refresh concluído em ${duracao}ms.`);
-
-  await pgQuery(`
-    INSERT INTO audit.etl_log (modulo, status, mensagem, registros, duracao_ms)
-    VALUES ($1, 'OK', 'Refresh mart SIOPS concluído', $2, $3)
-  `, [MODULO, totalFatos, duracao]);
+      console.log(`[${MODULO}] Refresh concluído.`);
+      return {
+        mensagem: "Refresh mart SIOPS concluído",
+        registrosLidos: totalFatos,
+        registrosGravados: totalFatos,
+      };
+    },
+  );
 }
 
 if (require.main === module) {

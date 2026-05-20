@@ -4,7 +4,7 @@
  * da view EPROCESS.processo.vwProc_Eletronico para public.processo.
  *
  * Estratégia:
- *   - Carga inicial: todos os 21.422 CE
+ *   - Carga inicial: todos os ~21.000 CE
  *   - Incremental: atualiza campos que mudam (situacao, relator, orgao, partes)
  *     via ON CONFLICT DO UPDATE
  *
@@ -15,6 +15,7 @@
 import "dotenv/config";
 import { queryInDatabase, closePool } from "../connectors/sqlserver";
 import { pgQuery, closePgPool } from "../connectors/postgres";
+import { iniciarCargaEtl, finalizarCargaEtl, registrarLogEtl } from "../lib/auditoria";
 
 const MODULO    = "processos_ce";
 const DB        = process.env.EPROCESS_SQLSERVER_DATABASE ?? "EPROCESS";
@@ -60,116 +61,143 @@ function toDate(v: unknown): string | null {
 }
 
 export async function executarCargaProcessosCe(): Promise<void> {
-  return main();
-}
-
-async function main() {
   const inicio = Date.now();
   console.log(`[${MODULO}] inicio — dry_run=${DRY_RUN}`);
 
-  // 1. Busca todos os processos CE no SQL Server
-  console.log("  -> Consultando vwProc_Eletronico (Id_Tipo_Proc = 2)...");
-  const rows = await queryInDatabase<SqlProcessoRow>(DB, `
-    SELECT
-      p.Cod_Processo,
-      p.Num_proc_ano,
-      p.Ano_Processo,
-      p.Objeto,
-      p.nome_classe,
-      p.NM_ASSUN,
-      p.cod_classe,
-      p.Cod_Orgao,
-      p.RELATOR,
-      p.nome_1_parte,
-      p.Partes,
-      p.NM_STATUS,
-      p.Situacao_Funcional,
-      p.Processos_Apensados,
-      p.Nm_Tipo_Proc,
-      p.Dt_Processo
-    FROM processo.vwProc_Eletronico p
-    WHERE p.Id_Tipo_Proc = 2
-    ORDER BY p.Cod_Processo
-  `);
-  console.log(`  -> Processos encontrados: ${rows.length}`);
+  const idCarga = await iniciarCargaEtl({
+    modulo: MODULO,
+    modoCarga: "incremental_upsert",
+    origem: `${DB}.processo.vwProc_Eletronico (Id_Tipo_Proc=2)`,
+    destino: "public.processo",
+  });
 
-  if (!rows.length) {
-    console.log("  Nada a processar.");
-    return;
-  }
-
-  if (DRY_RUN) {
-    console.log("  [dry-run] Exemplo:", JSON.stringify(rows[0], null, 2));
-    return;
-  }
-
-  // 2. Upsert em lotes
   let inseridos = 0;
   let atualizados = 0;
+  let totalLidos = 0;
 
-  for (let i = 0; i < rows.length; i += BATCH) {
-    const lote = rows.slice(i, i + BATCH);
+  try {
+    // 1. Busca todos os processos CE no SQL Server
+    console.log("  -> Consultando vwProc_Eletronico (Id_Tipo_Proc = 2)...");
+    const rows = await queryInDatabase<SqlProcessoRow>(DB, `
+      SELECT
+        p.Cod_Processo,
+        p.Num_proc_ano,
+        p.Ano_Processo,
+        p.Objeto,
+        p.nome_classe,
+        p.NM_ASSUN,
+        p.cod_classe,
+        p.Cod_Orgao,
+        p.RELATOR,
+        p.nome_1_parte,
+        p.Partes,
+        p.NM_STATUS,
+        p.Situacao_Funcional,
+        p.Processos_Apensados,
+        p.Nm_Tipo_Proc,
+        p.Dt_Processo
+      FROM processo.vwProc_Eletronico p
+      WHERE p.Id_Tipo_Proc = 2
+      ORDER BY p.Cod_Processo
+    `);
+    totalLidos = rows.length;
+    console.log(`  -> Processos encontrados: ${rows.length}`);
 
-    for (const r of lote) {
-      const result = await pgQuery<{ xmax: string }>(
-        `INSERT INTO public.processo
-           (processo_id, numero_fmt, ano, objeto, nome_classe, assunto,
-            cod_classe, nome_orgao, nome_relator, nome_1_parte, partes,
-            nm_status, situacao, processos_apensados, tipo_processo,
-            dt_criacao, coletado_em, atualizado_em)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,now(),now())
-         ON CONFLICT (processo_id) DO UPDATE SET
-           numero_fmt          = EXCLUDED.numero_fmt,
-           nome_orgao          = EXCLUDED.nome_orgao,
-           nome_relator        = EXCLUDED.nome_relator,
-           nome_1_parte        = EXCLUDED.nome_1_parte,
-           partes              = EXCLUDED.partes,
-           nm_status           = EXCLUDED.nm_status,
-           situacao            = EXCLUDED.situacao,
-           processos_apensados = EXCLUDED.processos_apensados,
-           atualizado_em       = now()
-         RETURNING xmax::text`,
-        [
-          r.Cod_Processo,
-          toText(r.Num_proc_ano),
-          toInt(r.Ano_Processo),
-          toText(r.Objeto),
-          toText(r.nome_classe),
-          toText(r.NM_ASSUN),
-          toInt(r.cod_classe),
-          toText(r.Cod_Orgao),
-          toText(r.RELATOR),
-          toText(r.nome_1_parte),
-          toText(r.Partes),
-          toInt(r.NM_STATUS),
-          toText(r.Situacao_Funcional),
-          toText(r.Processos_Apensados),
-          toText(r.Nm_Tipo_Proc),
-          toDate(r.Dt_Processo),
-        ]
-      );
-      // xmax = 0 → INSERT novo; xmax > 0 → UPDATE de existente
-      if (result[0]?.xmax === "0") inseridos++;
-      else atualizados++;
+    if (!rows.length) {
+      const duracao = Date.now() - inicio;
+      console.log("  Nada a processar.");
+      await registrarLogEtl({ modulo: MODULO, status: "ok", registros: 0, duracaoMs: duracao, mensagem: "Nenhum processo encontrado" });
+      await finalizarCargaEtl({ idCarga, status: "ok", registrosLidos: 0, registrosGravados: 0, mensagem: "Nenhum processo encontrado" });
+      return;
     }
 
-    const progresso = Math.min(i + BATCH, rows.length);
-    if (progresso % 2000 === 0 || progresso === rows.length) {
-      console.log(`  -> Progresso: ${progresso}/${rows.length} (${inseridos} novos, ${atualizados} atualizados)`);
+    if (DRY_RUN) {
+      const duracao = Date.now() - inicio;
+      console.log("  [dry-run] Exemplo:", JSON.stringify(rows[0], null, 2));
+      await registrarLogEtl({ modulo: MODULO, status: "ok", registros: 0, duracaoMs: duracao, mensagem: `dry-run — ${rows.length} candidatos` });
+      await finalizarCargaEtl({ idCarga, status: "ok", registrosLidos: rows.length, registrosGravados: 0, mensagem: `dry-run — ${rows.length} candidatos` });
+      return;
     }
+
+    // 2. Upsert em lotes
+    for (let i = 0; i < rows.length; i += BATCH) {
+      const lote = rows.slice(i, i + BATCH);
+
+      for (const r of lote) {
+        const result = await pgQuery<{ xmax: string }>(
+          `INSERT INTO public.processo
+             (processo_id, numero_fmt, ano, objeto, nome_classe, assunto,
+              cod_classe, nome_orgao, nome_relator, nome_1_parte, partes,
+              nm_status, situacao, processos_apensados, tipo_processo,
+              dt_criacao, coletado_em, atualizado_em)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,now(),now())
+           ON CONFLICT (processo_id) DO UPDATE SET
+             numero_fmt          = EXCLUDED.numero_fmt,
+             nome_orgao          = EXCLUDED.nome_orgao,
+             nome_relator        = EXCLUDED.nome_relator,
+             nome_1_parte        = EXCLUDED.nome_1_parte,
+             partes              = EXCLUDED.partes,
+             nm_status           = EXCLUDED.nm_status,
+             situacao            = EXCLUDED.situacao,
+             processos_apensados = EXCLUDED.processos_apensados,
+             atualizado_em       = now()
+           RETURNING xmax::text`,
+          [
+            r.Cod_Processo,
+            toText(r.Num_proc_ano),
+            toInt(r.Ano_Processo),
+            toText(r.Objeto),
+            toText(r.nome_classe),
+            toText(r.NM_ASSUN),
+            toInt(r.cod_classe),
+            toText(r.Cod_Orgao),
+            toText(r.RELATOR),
+            toText(r.nome_1_parte),
+            toText(r.Partes),
+            toInt(r.NM_STATUS),
+            toText(r.Situacao_Funcional),
+            toText(r.Processos_Apensados),
+            toText(r.Nm_Tipo_Proc),
+            toDate(r.Dt_Processo),
+          ]
+        );
+        // xmax = 0 → INSERT novo; xmax > 0 → UPDATE de existente
+        if (result[0]?.xmax === "0") inseridos++;
+        else atualizados++;
+      }
+
+      const progresso = Math.min(i + BATCH, rows.length);
+      if (progresso % 2000 === 0 || progresso === rows.length) {
+        console.log(`  -> Progresso: ${progresso}/${rows.length} (${inseridos} novos, ${atualizados} atualizados)`);
+      }
+    }
+
+    const gravados = inseridos + atualizados;
+    const duracao = Date.now() - inicio;
+    const mensagem = `${inseridos} inseridos, ${atualizados} atualizados`;
+    console.log(`  OK — ${MODULO} em ${duracao} ms (${mensagem})`);
+
+    await registrarLogEtl({ modulo: MODULO, status: "ok", registros: gravados, duracaoMs: duracao, mensagem });
+    await finalizarCargaEtl({ idCarga, status: "ok", registrosLidos: totalLidos, registrosGravados: gravados, mensagem });
+  } catch (error) {
+    const duracao = Date.now() - inicio;
+    const mensagem = error instanceof Error ? error.message : String(error);
+    console.error(`  ERRO — ${mensagem}`);
+    await registrarLogEtl({ modulo: MODULO, status: "erro", registros: inseridos + atualizados, duracaoMs: duracao, mensagem }).catch(() => void 0);
+    await finalizarCargaEtl({ idCarga, status: "erro", registrosLidos: totalLidos, registrosGravados: inseridos + atualizados, mensagem }).catch(() => void 0);
+    throw error;
   }
-
-  const duracao = Date.now() - inicio;
-  console.log(`  OK — ${MODULO} em ${duracao} ms (${inseridos} inseridos, ${atualizados} atualizados)`);
-
-  await pgQuery(
-    `INSERT INTO audit.etl_log (modulo, status, registros, duracao_ms)
-     VALUES ($1, 'sucesso', $2, $3)
-     ON CONFLICT DO NOTHING`,
-    [MODULO, inseridos + atualizados, duracao]
-  ).catch(() => undefined); // log é best-effort
 }
 
-main()
-  .catch(e => { console.error("ERRO FATAL:", e instanceof Error ? e.message : e); process.exit(1); })
-  .finally(async () => { await closePool(); await closePgPool(); });
+// Execução direta apenas via CLI; importação como módulo NÃO dispara nada.
+if (require.main === module) {
+  executarCargaProcessosCe()
+    .catch(e => {
+      console.error("ERRO FATAL:", e instanceof Error ? e.message : e);
+      process.exitCode = 1;
+    })
+    .finally(async () => {
+      await closePool().catch(() => void 0);
+      await closePgPool().catch(() => void 0);
+    });
+}

@@ -17,6 +17,9 @@
 
 import "dotenv/config";
 import { pgQuery, withPgTransaction, closePgPool } from "../connectors/postgres";
+import { executarMartComAuditoria } from "../lib/auditoria";
+
+const MODULO = "mart_siconfi_rreo";
 
 // Municípios do Acre — espelhado do job de carga para validação de cobertura
 const MUNICIPIOS_ACRE: Array<{ id_municipio: number; no_municipio: string }> = [
@@ -87,9 +90,15 @@ interface AlertaInsert {
 }
 
 export async function executarMartSiconfiRreo(): Promise<void> {
-  const inicio = Date.now();
   console.log("[mart:siconfi-rreo] Iniciando refresh das marts SICONFI/RREO...");
 
+  await executarMartComAuditoria(
+    {
+      modulo: MODULO,
+      origem: "dw.fato_siconfi_rreo",
+      destino: "mart.siconfi_rreo_* (resumo + alertas + home)",
+    },
+    async () => {
   // ── 1. Descobrir período mais recente ──
   const periodoRows = await pgQuery<{ an_exercicio: number; nr_periodo: number }>(`
     SELECT an_exercicio, nr_periodo
@@ -624,15 +633,16 @@ export async function executarMartSiconfiRreo(): Promise<void> {
       altos,
     ]);
     console.log(`[mart:siconfi-rreo] ✓ siconfi_rreo_resumo_home (${comDado}/${TOTAL_MUNICIPIOS} com dado, ${criticos} críticos, ${altos} altos)`);
-  });
+      });
 
-  const duracao = Date.now() - inicio;
-  console.log(`[mart:siconfi-rreo] Refresh concluído em ${duracao}ms.`);
-
-  await pgQuery(`
-    INSERT INTO audit.etl_log (modulo, status, mensagem, registros, duracao_ms)
-    VALUES ('mart_siconfi_rreo', 'OK', 'Refresh completo das marts SICONFI/RREO', $1, $2)
-  `, [resumos.length, duracao]);
+      console.log("[mart:siconfi-rreo] Refresh concluído.");
+      return {
+        mensagem: "Refresh completo das marts SICONFI/RREO",
+        registrosLidos: resumos.length,
+        registrosGravados: resumos.length,
+      };
+    },
+  );
 }
 
 if (require.main === module) {

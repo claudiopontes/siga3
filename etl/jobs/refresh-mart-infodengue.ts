@@ -22,6 +22,9 @@
 
 import "dotenv/config";
 import { pgQuery, withPgTransaction, closePgPool } from "../connectors/postgres";
+import { executarMartComAuditoria } from "../lib/auditoria";
+
+const MODULO = "mart_infodengue";
 
 // ─── Tipos ───────────────────────────────────────────────────────────────────
 
@@ -179,9 +182,15 @@ function gerarAlertas(semana: FatoSemana): AlertaInsert[] {
 // ─── Ponto de entrada ─────────────────────────────────────────────────────────
 
 export async function executarMartInfoDengue(): Promise<void> {
-  const inicio = Date.now();
   console.log("[mart:infodengue] Iniciando refresh mart de Vigilância Epidemiológica...");
 
+  await executarMartComAuditoria(
+    {
+      modulo: MODULO,
+      origem: "dw.fato_infodengue_semana",
+      destino: "mart.vigilancia_arboviroses_* (semana + alertas + home)",
+    },
+    async () => {
   // ── 1. Carrega semana mais recente por município/doença ──────────────────
   const semanasMaisRecentes = await pgQuery<FatoSemana>(`
     SELECT DISTINCT ON (codigo_municipio_ibge, doenca)
@@ -344,15 +353,16 @@ export async function executarMartInfoDengue(): Promise<void> {
     console.log(`[mart:infodengue] ✓ vigilancia_arboviroses_resumo_home`);
     console.log(`  ${municipiosAfetados} municípios afetados · ${doencasMonitoradas} doenças monitoradas`);
     console.log(`  ${totalCriticos} CRITICO · ${totalAltos} ALTO · ${totalMedios} MEDIO`);
-  });
+      });
 
-  const duracao = Date.now() - inicio;
-  console.log(`[mart:infodengue] Refresh concluído em ${duracao}ms`);
-
-  await pgQuery(`
-    INSERT INTO audit.etl_log (modulo, status, mensagem, registros, duracao_ms)
-    VALUES ('mart_infodengue', 'OK', 'Refresh mart InfoDengue', $1, $2)
-  `, [semanasMaisRecentes.length, duracao]).catch(() => void 0);
+      console.log("[mart:infodengue] Refresh concluído.");
+      return {
+        mensagem: "Refresh mart InfoDengue",
+        registrosLidos: semanasMaisRecentes.length,
+        registrosGravados: semanasMaisRecentes.length,
+      };
+    },
+  );
 }
 
 if (require.main === module) {

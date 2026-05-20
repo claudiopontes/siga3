@@ -20,7 +20,8 @@
  */
 
 import "dotenv/config";
-import { withPgTransaction, pgQuery, closePgPool } from "../connectors/postgres";
+import { withPgTransaction, closePgPool } from "../connectors/postgres";
+import { executarMartComAuditoria } from "../lib/auditoria";
 
 const MODULO = "mart_remessas";
 
@@ -52,10 +53,16 @@ const EXPR_NOME_ENTE = `
 // ---------------------------------------------------------------------------
 
 export async function executarMartRemessas(): Promise<void> {
-  const inicio = Date.now();
   console.log(`[${new Date().toISOString()}] [mart-remessas] Iniciando refresh das tabelas mart...`);
 
-  await withPgTransaction(async (client) => {
+  await executarMartComAuditoria(
+    {
+      modulo: MODULO,
+      origem: "public.fato_remessa + public.dim_remessa_entidade + public.dim_entidade + public.dim_ente",
+      destino: "mart.remessa_alertas + mart.remessa_resumo",
+    },
+    async () => {
+      await withPgTransaction(async (client) => {
     // -----------------------------------------------------------------------
     // TRUNCATE alertas
     // -----------------------------------------------------------------------
@@ -193,15 +200,11 @@ export async function executarMartRemessas(): Promise<void> {
         atualizado_em            = EXCLUDED.atualizado_em
     `);
     console.log("[mart-remessas] -> mart.remessa_resumo atualizado");
-  });
-
-  const duracao = Date.now() - inicio;
-  await pgQuery(
-    `INSERT INTO audit.etl_log (modulo, status, mensagem, duracao_ms)
-     VALUES ($1, $2, $3, $4)`,
-    [MODULO, "ok", "Refresh das tabelas mart de remessas concluído", duracao],
+      });
+      return { mensagem: "Refresh das tabelas mart de remessas concluído" };
+    },
   );
-  console.log(`[mart-remessas] Refresh concluído em ${duracao}ms.`);
+  console.log("[mart-remessas] Refresh concluído.");
 }
 
 // Execução direta: ts-node jobs/refresh-mart-remessas.ts
