@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { UsePosicaoBotaoAquiryRetorno } from "./usePosicaoBotaoAquiry";
 
-const MENSAGENS = [
+const MENSAGENS_PADRAO = [
   "Posso ajudar com algo?",
   "Tem dúvidas sobre esta tela?",
   "Estou disponível!",
@@ -14,16 +14,22 @@ const MENSAGENS = [
 
 const BALAO_DURACAO_MS = 4500;
 const BALAO_FADE_MS = 380;
-const INTERVALO_MIN_MS = 25000;
-const INTERVALO_JITTER_MS = 15000;
+// Cadência mais frequente: 12–22 s entre balões na sessão.
+const INTERVALO_MIN_MS = 12000;
+const INTERVALO_JITTER_MS = 10000;
+// Primeira aparição mais cedo após o carregamento: 8–12 s.
+const PRIMEIRA_APARICAO_MIN_MS = 8000;
+const PRIMEIRA_APARICAO_JITTER_MS = 4000;
 
 interface AssistenteAquiryButtonProps {
   aberto: boolean;
   onClick: () => void;
   posicao: UsePosicaoBotaoAquiryRetorno;
+  /** Mensagens contextuais para a tela atual; quando ausente, usa o pool padrão. */
+  mensagens?: string[];
 }
 
-export default function AssistenteAquiryButton({ aberto, onClick, posicao }: AssistenteAquiryButtonProps) {
+export default function AssistenteAquiryButton({ aberto, onClick, posicao, mensagens }: AssistenteAquiryButtonProps) {
   const { estiloBotao, mobile, arrastando, onPointerDown, onKeyDown, consumiuArrasto } = posicao;
 
   const [balao, setBalao] = useState<string | null>(null);
@@ -31,20 +37,38 @@ export default function AssistenteAquiryButton({ aberto, onClick, posicao }: Ass
   const idxRef = useRef(0);
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
-  // Suprime balão enquanto o botão está sendo arrastado para evitar bolha
-  // "fantasma" longe do cursor durante o reposicionamento.
+  // Pool de mensagens resolvido: prefere o pool contextual da tela; cai no padrão.
+  const poolMensagens = useMemo(() => {
+    return mensagens && mensagens.length > 0 ? mensagens : MENSAGENS_PADRAO;
+  }, [mensagens]);
+  // Mantém o pool atual num ref para o setInterval/timeout não recriar timers
+  // quando a tela mudar — apenas o conteúdo do balão seguinte muda.
+  const poolRef = useRef(poolMensagens);
   useEffect(() => {
+    poolRef.current = poolMensagens;
+    // Ao mudar de tela, reinicia o índice para começar pelas mensagens novas.
+    idxRef.current = 0;
+  }, [poolMensagens]);
+
+  // Suprime balão enquanto o botão está sendo arrastado para evitar bolha
+  // "fantasma" longe do cursor durante o reposicionamento. Usa o padrão React
+  // de reset de estado durante o render (em vez de setState num effect).
+  // Veja https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes
+  const [arrastandoAnterior, setArrastandoAnterior] = useState(arrastando);
+  if (arrastando !== arrastandoAnterior) {
+    setArrastandoAnterior(arrastando);
     if (arrastando) {
       setBalao(null);
       setSaindo(false);
     }
-  }, [arrastando]);
+  }
 
   useEffect(() => {
-    // Respeita prefers-reduced-motion: não dispara balão automático.
-    if (typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
-      return;
-    }
+    // Observação: anteriormente o efeito retornava cedo quando o SO tinha
+    // "reduzir movimento" ativo, o que desligava o balão por completo. Como
+    // a mensagem é uma alerta intencional (texto estático com fade leve), o
+    // respeito ao reduced-motion fica no CSS dos anéis pulsantes (classes
+    // motion-reduce:hidden no <span animate-ping>). O texto sempre aparece.
 
     const timers = timersRef.current;
     const addTimer = (t: ReturnType<typeof setTimeout>) => {
@@ -58,8 +82,15 @@ export default function AssistenteAquiryButton({ aberto, onClick, posicao }: Ass
     function mostrar() {
       clearAll();
       setSaindo(false);
-      setBalao(MENSAGENS[idxRef.current % MENSAGENS.length]);
+      const pool = poolRef.current;
+      const msg = pool[idxRef.current % pool.length];
+      setBalao(msg);
       idxRef.current++;
+      // Log diagnóstico — visível no Console do navegador. Pode ser removido
+      // após confirmação de funcionamento.
+      if (typeof window !== "undefined") {
+        console.info("[Aquiry] balão exibido:", msg);
+      }
       addTimer(
         setTimeout(() => {
           setSaindo(true);
@@ -68,17 +99,25 @@ export default function AssistenteAquiryButton({ aberto, onClick, posicao }: Ass
       );
     }
 
-    function agendar() {
-      const delay = INTERVALO_MIN_MS + Math.random() * INTERVALO_JITTER_MS;
+    function agendar(delay: number) {
       addTimer(
         setTimeout(() => {
           mostrar();
-          agendar();
+          // Próximas aparições usam a cadência periódica regular.
+          agendar(INTERVALO_MIN_MS + Math.random() * INTERVALO_JITTER_MS);
         }, delay),
       );
     }
 
-    agendar();
+    // Primeira aparição: 8–12 s; ciclo regular: 12–22 s.
+    const delayInicial =
+      PRIMEIRA_APARICAO_MIN_MS + Math.random() * PRIMEIRA_APARICAO_JITTER_MS;
+    if (typeof window !== "undefined") {
+      console.info(
+        `[Aquiry] balão automático agendado — primeira aparição em ~${Math.round(delayInicial / 1000)}s.`,
+      );
+    }
+    agendar(delayInicial);
     return clearAll;
   }, []);
 

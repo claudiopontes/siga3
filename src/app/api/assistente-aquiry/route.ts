@@ -94,6 +94,12 @@ Tom e tamanho da resposta:
 - Quando a limitação for clara (sem dado na tela, dado externo necessário), seja sucinto: declare a limitação, indique a base correta, dê o roteiro de análise — sem alongar.
 - Não encerre com "se quiser, posso..." quando o próximo passo correto for consultar painel, base ou fonte oficial: apenas aponte o caminho.
 
+Formato da resposta (texto plano — o painel NÃO renderiza Markdown):
+- Não use Markdown. Nada de asteriscos (** ou *), nada de # para títulos, nada de _ para itálico, nada de crases para código.
+- Para destacar uma palavra, escreva-a em CAIXA ALTA com moderação ou apenas reescreva a frase de forma clara.
+- Para listas, use o caractere "•" no início (ex.: "• Item ..."). Não use "*", "-" ou "1)" como marcadores Markdown.
+- Use parágrafos separados por linha em branco; subtítulos opcionais terminam com ":" (ex.: "Prioridade:", "Roteiro:", "Limite:").
+
 Prioridades ao responder:
 1. Onde o gabinete deve olhar primeiro? (risco, materialidade, urgência)
 2. Qualidade e confiabilidade dos dados apresentados.
@@ -188,6 +194,32 @@ function validarContextoTela(raw: unknown): ContextoTelaRequisicao | null {
   if (!titulo && !descricao && !dados && !observacoes) return null;
 
   return { titulo, descricao, dados, observacoes, fontes };
+}
+
+// Remove marcações Markdown que o modelo eventualmente emite — o painel
+// renderiza texto plano, então asteriscos/sublinhados/cercas vazariam à vista.
+// Mantém o conteúdo, retira apenas a sintaxe de formatação.
+function removerMarkdown(texto: string): string {
+  if (!texto) return texto;
+  let s = texto;
+  // ```bloco``` ou ```linguagem\nbloco```
+  s = s.replace(/```[a-z]*\n?([\s\S]*?)```/gi, "$1");
+  // **negrito** / __negrito__
+  s = s.replace(/\*\*([^*]+)\*\*/g, "$1");
+  s = s.replace(/__([^_]+)__/g, "$1");
+  // *itálico* / _itálico_  (cuidado: não engolir asteriscos isolados em frases)
+  s = s.replace(/(^|[\s(])\*([^*\n]+?)\*(?=[\s).,;:!?]|$)/g, "$1$2");
+  s = s.replace(/(^|[\s(])_([^_\n]+?)_(?=[\s).,;:!?]|$)/g, "$1$2");
+  // `código inline`
+  s = s.replace(/`([^`\n]+)`/g, "$1");
+  // Cabeçalhos: "# Título" → "Título"
+  s = s.replace(/^\s{0,3}#{1,6}\s+/gm, "");
+  // Marcadores de lista no início da linha: "*", "-" ou "+" → "•"
+  s = s.replace(/^(\s*)[*\-+]\s+/gm, "$1• ");
+  // Marcadores numerados "1) " mantemos como estão.
+  // Espaços excedentes ao final de linha.
+  s = s.replace(/[ \t]+$/gm, "");
+  return s;
 }
 
 function montarBlocoContextoPagina(
@@ -529,11 +561,14 @@ export async function POST(req: NextRequest) {
     // o tamanho da resposta visível desejada. Quando há bloco de fontes
     // externas, o input também cresce — convém folgar mais.
     const maxTokens = buscaRealizadaComSucesso ? 8192 : 4096;
-    const resposta = await chamarAzureOpenAI({
+    const respostaBruta = await chamarAzureOpenAI({
       messages,
       temperature: 0.4,
       maxCompletionTokens: maxTokens,
     });
+    // Saneamento defensivo: o painel renderiza texto plano, então qualquer
+    // Markdown residual do modelo (** **, ##, ` `, * listas) seria exibido cru.
+    const resposta = removerMarkdown(respostaBruta);
 
     // Presença vs. uso efetivo:
     // - `temContextoTela` indica que o frontend enviou contexto da tela.

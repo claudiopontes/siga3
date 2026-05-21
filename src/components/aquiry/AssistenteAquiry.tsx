@@ -10,11 +10,61 @@ import { usePosicaoBotaoAquiry } from "./usePosicaoBotaoAquiry";
 import {
   identificarContextoPaginaAquiry,
   type ContextoPaginaPayload,
+  type TipoPaginaAquiry,
 } from "@/lib/aquiry/identificarContextoPaginaAquiry";
 import type { ContextoTelaAquiry, OrigemRespostaAquiry } from "@/lib/aquiry/tiposContextoAquiry";
 
 const HISTORICO_MAX_LOCAL = 10;
 const CHAVE_DIALOGO_INICIAL = "aquiry:dialogo-inicial-visto";
+
+// Mensagens do balão flutuante por tipo de tela. Caem no pool padrão do botão
+// quando o tipo não está mapeado aqui.
+const MENSAGENS_POR_TIPO_PAGINA: Partial<Record<TipoPaginaAquiry, string[]>> = {
+  home: [
+    "Quer ajuda na triagem dos alertas?",
+    "Onde olhar primeiro hoje?",
+    "Posso resumir os pontos críticos.",
+    "Há algo urgente para o gabinete?",
+  ],
+  painel: [
+    "Posso interpretar estes indicadores?",
+    "Quer destacar os principais riscos?",
+    "Quais pontos merecem atenção aqui?",
+    "Resumo executivo deste painel?",
+  ],
+  pauta: [
+    "Quer ajuda a analisar esta pauta?",
+    "Posso indicar processos sensíveis.",
+    "Como preparar a sessão?",
+    "Roteiro de triagem da pauta?",
+  ],
+  processo: [
+    "Pontos de atenção deste processo?",
+    "Posso sintetizar o que está na tela.",
+    "Há algo que impeça conclusão segura?",
+    "Quer um roteiro de leitura?",
+  ],
+  fornecedor: [
+    "Quer destacar riscos deste credor?",
+    "Materialidade chama atenção aqui?",
+    "Posso ajudar a comparar fornecedores.",
+  ],
+  mapa: [
+    "Quer leitura por município?",
+    "Posso indicar onde os indicadores se destacam.",
+  ],
+  calendario: [
+    "Quer ver prazos próximos?",
+    "Posso ajudar a priorizar entregas.",
+  ],
+  seguranca: [
+    "Dúvidas sobre o ETL ou perfis?",
+    "Posso explicar a tela.",
+  ],
+  perfil: [
+    "Posso ajudar com algo do seu perfil?",
+  ],
+};
 
 export default function AssistenteAquiry() {
   const pathname = usePathname();
@@ -174,7 +224,12 @@ export default function AssistenteAquiry() {
         onResetarPosicaoBotao={posicaoBotao.mobile ? undefined : posicaoBotao.resetarPosicao}
         onAbrirDialogoInicial={reabrirDialogoInicial}
       />
-      <AssistenteAquiryButton aberto={aberto} onClick={abrirPainel} posicao={posicaoBotao} />
+      <AssistenteAquiryButton
+        aberto={aberto}
+        onClick={abrirPainel}
+        posicao={posicaoBotao}
+        mensagens={MENSAGENS_POR_TIPO_PAGINA[contexto.tipoPagina]}
+      />
       <AssistenteAquiryDialogoInicial
         aberto={dialogoInicialAberto}
         onFechar={fecharDialogoInicial}

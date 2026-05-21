@@ -28,6 +28,8 @@ const AppHeader: React.FC = () => {
   const isPautasDetalhePage    = pathname.startsWith("/pautas-julgamento/");
   const isProcessosPage        = pathname === "/eprocessos-ce/processos";
   const isProcessoDetalhePage  = pathname.startsWith("/eprocessos-ce/processos/");
+  const isFolhaPage            = pathname === "/painel-folha";
+  const isFolhaServidorPage    = pathname.startsWith("/painel-folha/servidor/");
   const isCredoresPage         = pathname === "/pesquisa-credores";
   const isFlorestalPage        = pathname === "/painel-cobertura-florestal";
   const isCaucPage             = pathname === "/painel-cauc";
@@ -55,6 +57,10 @@ const AppHeader: React.FC = () => {
     "/painel-combustivel-empenhos": { crumbs: [{ label: "Home", href: "/" }, { label: "Fiscal & Orçamento" }, { label: "Combustível Empenhos" }] },
     "/painel-receita-publica":      { crumbs: [{ label: "Home", href: "/" }, { label: "Fiscal & Orçamento" }, { label: "Receita Pública" }] },
     "/painel-despesa":              { crumbs: [{ label: "Home", href: "/" }, { label: "Fiscal & Orçamento" }, { label: "Despesa Pública" }] },
+    "/painel-folha":                { crumbs: [{ label: "Home", href: "/" }, { label: "Fiscal & Orçamento" }, { label: "Folha de Pessoal" }] },
+    ...(pathname.startsWith("/painel-folha/servidor/") ? {
+      [pathname]: { crumbs: [{ label: "Home", href: "/" }, { label: "Fiscal & Orçamento" }, { label: "Folha de Pessoal", href: "/painel-folha" }, { label: "Servidor" }] }
+    } : {}),
     "/pesquisa-credores":           { crumbs: [{ label: "Home", href: "/" }, { label: "Fiscal & Orçamento" }, { label: "Pesquisa de Credores" }] },
     "/painel-siconfi":              { crumbs: [{ label: "Home", href: "/" }, { label: "Fiscal & Orçamento" }, { label: "Execução Orçamentária" }] },
     "/painel-siconfi/rreo":         { crumbs: [{ label: "Home", href: "/" }, { label: "Fiscal & Orçamento" }, { label: "Execução Orçamentária", href: "/painel-siconfi" }, { label: "RREO" }] },
@@ -319,6 +325,17 @@ const AppHeader: React.FC = () => {
               <div className="flex flex-col">
                 <span className="truncate text-sm text-gray-600 dark:text-gray-300">
                   Configuração dos módulos de monitoramento e execução dos jobs ETL.
+                </span>
+              </div>
+            )}
+            {(isFolhaPage || isFolhaServidorPage) && (
+              <div className="flex flex-col">
+                <span className="truncate text-sm text-gray-600 dark:text-gray-300">
+                  Gasto com pessoal: contracheques, verbas, acúmulo de cargos e teto constitucional por entidade.
+                </span>
+                <span className="text-xs text-gray-400 dark:text-gray-500">
+                  <span className="font-medium text-amber-600 dark:text-amber-400">SICAP</span>
+                  {" · "}Folha de Pessoal · TCE-AC
                 </span>
               </div>
             )}

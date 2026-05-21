@@ -30,6 +30,7 @@ const baseNavItems: NavItem[] = [
       { name: "Receita Pública",       path: "/painel-receita-publica", pro: false },
       { name: "Execução Orçamentária", path: "/painel-siconfi" },
       { name: "Despesa Pública",       path: "/painel-despesa" },
+      { name: "Folha de Pessoal",      path: "/painel-folha" },
       { name: "Combustível",           path: "/painel-combustivel" },
       { name: "Pesquisa de Credores",  path: "/pesquisa-credores" },
     ],

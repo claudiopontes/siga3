@@ -34,13 +34,30 @@
  *     SICAP_SQLSERVER_ENCRYPT   — "true"/"false" (default: false)
  *
  *   Seleção de competências:
- *     FOLHA_COMPETENCIA           — "YYYY-MM" específico (precedência máxima)
- *     FOLHA_ANO_INICIAL           — ano inicial (default: ano atual - 1)
- *     FOLHA_ANO_FINAL             — ano final   (default: ano atual)
- *     FOLHA_MES_INICIAL           — mês inicial (default: 1)
- *     FOLHA_MES_FINAL             — mês final   (default: 12)
+ *     FOLHA_COMPETENCIA           — "YYYY-MM" ou "YYYYMM" específico (precedência máxima)
+ *     FOLHA_ANO_INICIAL           — ano inicial (intervalo explícito)
+ *     FOLHA_ANO_FINAL             — ano final   (intervalo explícito)
+ *     FOLHA_MES_INICIAL           — mês inicial (intervalo explícito)
+ *     FOLHA_MES_FINAL             — mês final   (intervalo explícito)
  *     FOLHA_MAX_ANOS_RETROATIVOS  — guardrail: limite de anos retroativos (default: 1)
  *     FOLHA_PERMITIR_HISTORICO    — "1" libera carga histórica acima do guardrail
+ *
+ *   Padrão (sem nenhuma variável de período definida):
+ *     Modo INCREMENTAL: janela rolante de N competências (FOLHA_JANELA_COMPETENCIAS,
+ *     default 3) terminando no mês anterior ao corrente. Para cada (entidade, ano, mes)
+ *     da janela, compara hash de assinatura da remessa (Remessa.id + dataEnvio +
+ *     dataConfirmacao + tempoAtraso) com audit.folha_sicap_remessa_sync. Só reprocessa
+ *     chaves novas, com hash mudado, ou que sumiram da origem (retificação). Todas as
+ *     entidades disponíveis são consideradas — não há filtro por entidade.
+ *
+ *   Modos forçados:
+ *     - FOLHA_COMPETENCIA: força reprocesso total daquela competência (ignora audit).
+ *     - FOLHA_ANO_INI/FIM ou FOLHA_MES_INI/FIM: força reprocesso total do intervalo (ignora audit).
+ *     - FOLHA_FORCAR_RECARGA=1: ignora audit também no modo incremental (recarga total da janela).
+ *
+ *   Variáveis incrementais:
+ *     FOLHA_JANELA_COMPETENCIAS  — tamanho da janela rolante (default: 3 competências)
+ *     FOLHA_FORCAR_RECARGA       — "1" recarrega tudo dentro da janela ignorando audit
  *
  *   Execução:
  *     FOLHA_BATCH_SIZE   — tamanho do lote de insert no Postgres (default: 2000)
@@ -55,7 +72,10 @@
 
 import "dotenv/config";
 import * as crypto from "crypto";
+import { Readable } from "stream";
+import { pipeline } from "stream/promises";
 import sql from "mssql/msnodesqlv8";
+import { from as copyFrom } from "pg-copy-streams";
 import { pgQuery, getPgPool, closePgPool } from "../connectors/postgres";
 import { iniciarCargaEtl, finalizarCargaEtl, registrarLogEtl } from "../lib/auditoria";
 
@@ -72,8 +92,12 @@ const SICAP_USER = process.env.SICAP_SQLSERVER_USER || "";
 const SICAP_PASSWORD = process.env.SICAP_SQLSERVER_PASSWORD || "";
 const SICAP_ENCRYPT = (process.env.SICAP_SQLSERVER_ENCRYPT || "false").toLowerCase() === "true";
 
-const BATCH_SIZE = toPositiveInt(Number(process.env.FOLHA_BATCH_SIZE || "2000"), 2000);
+const BATCH_SIZE = toPositiveInt(Number(process.env.FOLHA_BATCH_SIZE || "10000"), 10000);
 const DRY_RUN = ["1", "true", "yes"].includes(String(process.env.FOLHA_DRY_RUN || "").toLowerCase());
+const JANELA_COMPETENCIAS = toPositiveInt(Number(process.env.FOLHA_JANELA_COMPETENCIAS || "3"), 3);
+const FORCAR_RECARGA = ["1", "true", "yes"].includes(
+  String(process.env.FOLHA_FORCAR_RECARGA || "").toLowerCase(),
+);
 
 function toPositiveInt(input: number, fallback: number): number {
   if (!Number.isFinite(input) || input < 1) return fallback;
@@ -152,7 +176,19 @@ function competenciaStr(ano: number, mes: number): string {
   return `${ano.toString().padStart(4, "0")}-${mes.toString().padStart(2, "0")}`;
 }
 
-function listarCompetencias(): { ano: number; mes: number; competencia: string }[] {
+type SelecaoCompetencias = {
+  competencias: { ano: number; mes: number; competencia: string }[];
+  origem: "FOLHA_COMPETENCIA" | "INTERVALO_EXPLICITO" | "DEFAULT_INCREMENTAL";
+};
+
+function mesAnteriorAoCorrente(hoje: Date): { ano: number; mes: number } {
+  // Janeiro recua para dezembro do ano anterior.
+  const ano = hoje.getMonth() === 0 ? hoje.getFullYear() - 1 : hoje.getFullYear();
+  const mes = hoje.getMonth() === 0 ? 12 : hoje.getMonth(); // getMonth() é 0..11; mes anterior em base 1 = getMonth().
+  return { ano, mes };
+}
+
+function listarCompetenciasComOrigem(): SelecaoCompetencias {
   const compEspecifica = (process.env.FOLHA_COMPETENCIA || "").trim();
   if (compEspecifica) {
     // Aceita "YYYY-MM" e "YYYYMM".
@@ -161,12 +197,44 @@ function listarCompetencias(): { ano: number; mes: number; competencia: string }
     const ano = parseInt(m[1], 10);
     const mes = parseInt(m[2], 10);
     if (mes < 1 || mes > 12) throw new Error(`FOLHA_COMPETENCIA com mês inválido: ${compEspecifica}`);
-    return [{ ano, mes, competencia: competenciaStr(ano, mes) }];
+    return {
+      competencias: [{ ano, mes, competencia: competenciaStr(ano, mes) }],
+      origem: "FOLHA_COMPETENCIA",
+    };
   }
+
   const hoje = new Date();
-  // Default: ano atual e ano anterior (janela analítica de 24 meses).
-  // Para histórico maior, defina FOLHA_ANO_INICIAL e FOLHA_PERMITIR_HISTORICO=1.
-  const anoIni = parseInt(process.env.FOLHA_ANO_INICIAL || String(hoje.getFullYear() - 1), 10);
+
+  // Se QUALQUER variável de intervalo for definida, entramos no modo intervalo
+  // explícito. Caso contrário, padrão = apenas mês anterior ao corrente.
+  const temIntervaloExplicito =
+    !!process.env.FOLHA_ANO_INICIAL ||
+    !!process.env.FOLHA_ANO_FINAL ||
+    !!process.env.FOLHA_MES_INICIAL ||
+    !!process.env.FOLHA_MES_FINAL;
+
+  if (!temIntervaloExplicito) {
+    // Modo incremental: janela rolante de JANELA_COMPETENCIAS terminando no
+    // mês anterior ao corrente. Ex: maio/2026 + janela 3 = [2026-02, 2026-03, 2026-04].
+    // O job vai diff contra audit.folha_sicap_remessa_sync e só reprocessar
+    // chaves novas / mudadas / sumidas.
+    const { ano: anoBase, mes: mesBase } = mesAnteriorAoCorrente(hoje);
+    const comps: { ano: number; mes: number; competencia: string }[] = [];
+    for (let k = JANELA_COMPETENCIAS - 1; k >= 0; k--) {
+      // Recua k meses a partir de (anoBase, mesBase).
+      let m = mesBase - k;
+      let a = anoBase;
+      while (m <= 0) {
+        m += 12;
+        a -= 1;
+      }
+      comps.push({ ano: a, mes: m, competencia: competenciaStr(a, m) });
+    }
+    return { competencias: comps, origem: "DEFAULT_INCREMENTAL" };
+  }
+
+  // Modo intervalo explícito: usa valores informados, com fallbacks conservadores.
+  const anoIni = parseInt(process.env.FOLHA_ANO_INICIAL || String(hoje.getFullYear()), 10);
   const anoFim = parseInt(process.env.FOLHA_ANO_FINAL || String(hoje.getFullYear()), 10);
   const mesIni = parseInt(process.env.FOLHA_MES_INICIAL || "1", 10);
   const mesFim = parseInt(process.env.FOLHA_MES_FINAL || "12", 10);
@@ -194,7 +262,11 @@ function listarCompetencias(): { ano: number; mes: number; competencia: string }
       out.push({ ano: a, mes: m, competencia: competenciaStr(a, m) });
     }
   }
-  return out;
+  return { competencias: out, origem: "INTERVALO_EXPLICITO" };
+}
+
+function listarCompetencias(): { ano: number; mes: number; competencia: string }[] {
+  return listarCompetenciasComOrigem().competencias;
 }
 
 // ---------------------------------------------------------------------------
@@ -401,7 +473,8 @@ async function carregarDimensoesDaCompetencia(ano: number, mes: number): Promise
         c.classificadoSistema             AS cargo_classificado_sistema,
         c.subGrupoClassificacaoFuncional  AS cargo_subgrupo_classificacao_funcional
       FROM dbo.ContraCheque cc
-      INNER JOIN dbo.Cargo c ON c.id = cc.idCargo
+      INNER JOIN dbo.Cargo c
+        ON c.id = COALESCE(cc.idCargoEfetivo, cc.idCargoAtual, cc.idCargo)
       WHERE cc.ano = ${ano} AND cc.mes = ${mes}
     `);
     for (const r of cargos) {
@@ -635,6 +708,61 @@ async function carregarDimensoesDaCompetencia(ano: number, mes: number): Promise
   }
 }
 
+// ---------------------------------------------------------------------------
+// COPY helpers — formato text (PostgreSQL COPY FROM STDIN default)
+// ---------------------------------------------------------------------------
+// Bulk-load via COPY é tipicamente 5–10× mais rápido que INSERT em lote
+// porque elimina re-parse de SQL, limite de 65k parâmetros, e reduz fsyncs
+// do WAL para 1 por stream em vez de 1 por chunk.
+//
+// Formato text:
+//   - separador de colunas: TAB
+//   - separador de linhas: \n
+//   - NULL: \N
+//   - escapes necessários em cada string: \ → \\, TAB → \t, LF → \n, CR → \r
+//   - booleans: 't' / 'f'
+//   - numéricos: serialização padrão JS (ponto decimal).
+//
+// Não há suporte a ON CONFLICT no COPY. O job garante unicidade via
+// DELETE prévio escopado a (entidade, ano, mes) ou (ano, mes). Se houver
+// violação de UNIQUE, será erro explícito — sinal de bug real, não silenciado.
+
+function copyEscape(v: unknown): string {
+  if (v === null || v === undefined) return "\\N";
+  if (typeof v === "boolean") return v ? "t" : "f";
+  if (typeof v === "number") {
+    if (!Number.isFinite(v)) return "\\N";
+    return String(v);
+  }
+  if (v instanceof Date) return v.toISOString();
+  const s = String(v);
+  // Ordem importa: escapar barra invertida primeiro.
+  return s
+    .replace(/\\/g, "\\\\")
+    .replace(/\t/g, "\\t")
+    .replace(/\n/g, "\\n")
+    .replace(/\r/g, "\\r");
+}
+
+function copyRow(values: unknown[]): string {
+  return values.map(copyEscape).join("\t") + "\n";
+}
+
+async function executarCopy(
+  copyCommand: string,
+  linhas: Iterable<string>,
+): Promise<void> {
+  const pool = getPgPool();
+  const client = await pool.connect();
+  try {
+    const copyStream = client.query(copyFrom(copyCommand));
+    const dataStream = Readable.from(linhas);
+    await pipeline(dataStream, copyStream);
+  } finally {
+    client.release();
+  }
+}
+
 function toBoolOrNull(v: unknown): boolean | null {
   if (v === null || v === undefined) return null;
   if (typeof v === "boolean") return v;
@@ -669,313 +797,335 @@ async function garantirDimTempo(ano: number, mes: number): Promise<void> {
 // Carga de fato_contracheque (por competência, paginada)
 // ---------------------------------------------------------------------------
 
-async function carregarFatoContracheque(ano: number, mes: number): Promise<{ lidos: number; gravados: number }> {
-  // DELETE por competência (truncate/reload mais seguro do que UPSERT em massa)
-  await pgQuery(
-    `DELETE FROM folha.fato_contracheque WHERE ano = $1 AND mes = $2`,
-    [ano, mes],
-  );
+async function carregarFatoContracheque(
+  ano: number,
+  mes: number,
+  idEntidadeCjur?: number | null,
+): Promise<{ lidos: number; gravados: number }> {
+  if (idEntidadeCjur != null) {
+    await pgQuery(
+      `DELETE FROM folha.fato_contracheque WHERE ano = $1 AND mes = $2 AND id_entidade_cjur = $3`,
+      [ano, mes, idEntidadeCjur],
+    );
+  } else {
+    await pgQuery(
+      `DELETE FROM folha.fato_contracheque WHERE ano = $1 AND mes = $2`,
+      [ano, mes],
+    );
+  }
+
+  const pool = await getSicapPool();
+  const transaction = new sql.Transaction(pool);
+  await transaction.begin();
+
+  const pgPool = getPgPool();
+  const pgClient = await pgPool.connect();
 
   let lidos = 0;
   let gravados = 0;
-  // Paginação keyset: usar id_contracheque > lastId em vez de OFFSET, que degrada
-  // dramaticamente na view de 12M linhas. Com keyset cada batch usa o índice.
-  let lastId = 0;
 
-  while (true) {
-    // Query direta nas tabelas base — evita a materialização da view
-    // vw_folha_contracheque_base que faz dedup de PessoaFisica.
-    // OUTER APPLY TOP 1 garante 1 nome de servidor por contracheque sem
-    // exigir DISTINCT/ROW_NUMBER caro.
-    // Aproveita índices: ContraCheque_ano_IDX (ano, mes) + PK em id.
-    const rows = await sicapQuery<ContraChequeRow>(`
-      SELECT TOP ${BATCH_SIZE}
-        cc.id                                       AS id_contracheque_sicap,
-        cc.ano                                      AS ano,
-        cc.mes                                      AS mes,
-        cc.idEntidadeCjur                           AS id_entidade_cjur,
-        cc.idCadastroUnico                          AS id_cadastro_unico_sicap,
-        cc.idBeneficiario                           AS id_beneficiario_sicap,
-        cu.cpf                                      AS cpf,
-        pf.nome                                     AS nome_servidor,
-        CAST(b.matricula AS VARCHAR(32))            AS matricula,
-        cc.idCargo                                  AS id_cargo_sicap,
-        cc.idTipoFolha                              AS id_tipo_folha_sicap,
-        cc.idUnidadeLotacao                         AS id_unidade_lotacao_sicap,
-        cc.idRemessa                                AS id_remessa_sicap,
-        cc.totalVencimentos                         AS total_vencimentos,
-        cc.totalDescontos                           AS total_descontos,
-        (COALESCE(cc.totalVencimentos,0) - COALESCE(cc.totalDescontos,0)) AS total_liquido,
-        cc.baseFgts                                 AS base_fgts,
-        cc.baseIrpf                                 AS base_irpf,
-        cc.basePrevidenciariaPatronal               AS base_previdenciaria_patronal,
-        cc.basePrevidenciariaSegurado               AS base_previdenciaria_segurado,
-        cc.situacaoBeneficiario                     AS situacao_beneficiario,
-        CAST(cc.situacaoAtualServidor AS VARCHAR(10)) AS situacao_atual_servidor
-      FROM dbo.ContraCheque cc
-      LEFT JOIN dbo.CadastroUnico cu ON cu.id = cc.idCadastroUnico
-      OUTER APPLY (
-        SELECT TOP 1 pf_x.nome
-        FROM dbo.PessoaFisica pf_x
-        WHERE pf_x.idCadastroUnico = cc.idCadastroUnico
-        ORDER BY pf_x.id DESC
-      ) pf
-      LEFT JOIN dbo.Beneficiario b ON b.id = cc.idBeneficiario
-      WHERE cc.ano = ${ano} AND cc.mes = ${mes}
-        AND cc.id > ${lastId}
-      ORDER BY cc.id
+  try {
+    // 1) Staging de ContraCheque da competência. Materializa filtro caro
+    //    em uma única vez; clustered em id deixa o JOIN seguinte trivial.
+    const filtroEntidade = idEntidadeCjur != null ? `AND idEntidadeCjur = ${idEntidadeCjur}` : "";
+    const reqStaging = new sql.Request(transaction);
+    await reqStaging.query(`
+      IF OBJECT_ID('tempdb..#cc_periodo') IS NOT NULL DROP TABLE #cc_periodo;
+      SELECT id, idEntidadeCjur, idCadastroUnico, idBeneficiario,
+             COALESCE(idCargoEfetivo, idCargoAtual, idCargo) AS idCargoFinal,
+             idTipoFolha, idUnidadeLotacao, idRemessa,
+             totalVencimentos, totalDescontos,
+             baseFgts, baseIrpf,
+             basePrevidenciariaPatronal, basePrevidenciariaSegurado,
+             situacaoBeneficiario,
+             CAST(situacaoAtualServidor AS VARCHAR(10)) AS situacaoAtualServidor
+        INTO #cc_periodo
+        FROM dbo.ContraCheque
+       WHERE ano = ${ano} AND mes = ${mes} ${filtroEntidade};
+      CREATE CLUSTERED INDEX IX_cc_periodo ON #cc_periodo(id);
     `);
-    if (rows.length === 0) break;
-    lidos += rows.length;
-    // Avança o cursor keyset para o maior id retornado neste batch.
-    lastId = Number(rows[rows.length - 1].id_contracheque_sicap);
 
-    // Postgres limita 65.535 parâmetros por query (int16). Com 30 colunas o
-    // teto seguro é ~2.100 linhas/INSERT; mantemos 1.500 para uniformidade
-    // com fato_verba_contracheque.
-    const PG_CHUNK = 1500;
+    // 2) Abre COPY stream no Postgres.
+    //    nome_servidor não é coluna de fato_contracheque — só vai em dim_servidor
+    //    (carregado uma vez por competência em carregarDimensoesDaCompetencia).
+    //    O OUTER APPLY antigo era trabalho descartado por linha.
+    const copyStream = pgClient.query(copyFrom(
+      `COPY folha.fato_contracheque (
+         id_contracheque_sicap, competencia, ano, mes,
+         id_entidade_cjur, id_cadastro_unico_sicap, id_beneficiario_sicap,
+         cpf_hash, cpf_mascarado, matricula,
+         id_cargo_sicap, id_tipo_folha_sicap, id_unidade_lotacao_sicap, id_remessa_sicap,
+         total_vencimentos, total_descontos, total_liquido,
+         base_fgts, base_irpf,
+         base_previdenciaria_patronal, base_previdenciaria_segurado,
+         situacao_beneficiario, situacao_atual_servidor,
+         alerta_vencimento_negativo, alerta_desconto_negativo,
+         alerta_desconto_maior_vencimento, alerta_sem_desconto,
+         alerta_cpf_invalido, alerta_cargo_ausente, alerta_lotacao_ausente
+       ) FROM STDIN WITH (FORMAT text)`
+    ));
 
-    const pool = getPgPool();
-    const client = await pool.connect();
-    try {
-      for (let chunkStart = 0; chunkStart < rows.length; chunkStart += PG_CHUNK) {
-        const chunk = rows.slice(chunkStart, chunkStart + PG_CHUNK);
-        const placeholders: string[] = [];
-        const valores: unknown[] = [];
-        let p = 1;
-        for (const r of chunk) {
-          const cpfStr = r.cpf ?? null;
-          const totalV = num(r.total_vencimentos);
-          const totalD = num(r.total_descontos);
-          const alertaVencNeg = totalV !== null && totalV < 0;
-          const alertaDescNeg = totalD !== null && totalD < 0;
-          const alertaDescMaior = totalV !== null && totalD !== null && totalD > totalV;
-          const alertaSemDesc = totalD !== null && totalD === 0;
-          const alertaCpfInv = !cpfValido(cpfStr);
-          const alertaCargoAusente = r.id_cargo_sicap === null || r.id_cargo_sicap === undefined;
-          const alertaLotacaoAusente = r.id_unidade_lotacao_sicap === null || r.id_unidade_lotacao_sicap === undefined;
+    const competencia = competenciaStr(ano, mes);
 
-          placeholders.push(
-            `($${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++})`,
-          );
-          valores.push(
-            r.id_contracheque_sicap,
-            competenciaStr(ano, mes),
-            ano,
-            mes,
-            r.id_entidade_cjur ?? null,
-            r.id_cadastro_unico_sicap ?? null,
-            r.id_beneficiario_sicap ?? null,
-            hashCpf(cpfStr),
-            mascararCpf(cpfStr),
-            r.matricula ?? null,
-            r.id_cargo_sicap ?? null,
-            r.id_tipo_folha_sicap ?? null,
-            r.id_unidade_lotacao_sicap ?? null,
-            r.id_remessa_sicap ?? null,
-            totalV,
-            totalD,
-            num(r.total_liquido),
-            num(r.base_fgts),
-            num(r.base_irpf),
-            num(r.base_previdenciaria_patronal),
-            num(r.base_previdenciaria_segurado),
-            r.situacao_beneficiario ?? null,
-            r.situacao_atual_servidor ?? null,
-            alertaVencNeg,
-            alertaDescNeg,
-            alertaDescMaior,
-            alertaSemDesc,
-            alertaCpfInv,
-            alertaCargoAusente,
-            alertaLotacaoAusente,
-          );
+    // 4) Stream do SQL Server. Sem TOP, sem ORDER BY — uma execução só.
+    const reqStream = new sql.Request(transaction);
+    reqStream.stream = true;
+
+    const streamDone = new Promise<void>((resolve, reject) => {
+      reqStream.on("row", (r: Record<string, unknown>) => {
+        lidos += 1;
+        const idCu = r.idCadastroUnico != null ? Number(r.idCadastroUnico) : null;
+        const cpfStr = (r.cpf as string | null) ?? null;
+        const totalV = num(r.totalVencimentos);
+        const totalD = num(r.totalDescontos);
+        const linha = copyRow([
+          r.id,
+          competencia,
+          ano,
+          mes,
+          r.idEntidadeCjur ?? null,
+          idCu,
+          r.idBeneficiario ?? null,
+          hashCpf(cpfStr),
+          mascararCpf(cpfStr),
+          (r.matricula as string | null) ?? null,
+          r.idCargoFinal ?? null,
+          r.idTipoFolha ?? null,
+          r.idUnidadeLotacao ?? null,
+          r.idRemessa ?? null,
+          totalV,
+          totalD,
+          totalV !== null || totalD !== null
+            ? (totalV ?? 0) - (totalD ?? 0)
+            : null,
+          num(r.baseFgts),
+          num(r.baseIrpf),
+          num(r.basePrevidenciariaPatronal),
+          num(r.basePrevidenciariaSegurado),
+          (r.situacaoBeneficiario as string | null) ?? null,
+          (r.situacaoAtualServidor as string | null) ?? null,
+          totalV !== null && totalV < 0,
+          totalD !== null && totalD < 0,
+          totalV !== null && totalD !== null && totalD > totalV,
+          totalD !== null && totalD === 0,
+          !cpfValido(cpfStr),
+          r.idCargoFinal === null || r.idCargoFinal === undefined,
+          r.idUnidadeLotacao === null || r.idUnidadeLotacao === undefined,
+        ]);
+        // Backpressure: pausa o stream do mssql se o COPY não consegue absorver.
+        if (!copyStream.write(linha)) {
+          reqStream.pause();
+          copyStream.once("drain", () => reqStream.resume());
         }
+        gravados += 1;
+        if (lidos % 50000 === 0) {
+          process.stdout.write(`        … fato_contracheque: ${lidos.toLocaleString("pt-BR")} streamados\n`);
+        }
+      });
+      reqStream.on("error", reject);
+      reqStream.on("done", () => resolve());
+    });
 
-        const res = await client.query(
-          `INSERT INTO folha.fato_contracheque (
-             id_contracheque_sicap, competencia, ano, mes,
-             id_entidade_cjur, id_cadastro_unico_sicap, id_beneficiario_sicap,
-             cpf_hash, cpf_mascarado, matricula,
-             id_cargo_sicap, id_tipo_folha_sicap, id_unidade_lotacao_sicap, id_remessa_sicap,
-             total_vencimentos, total_descontos, total_liquido,
-             base_fgts, base_irpf,
-             base_previdenciaria_patronal, base_previdenciaria_segurado,
-             situacao_beneficiario, situacao_atual_servidor,
-             alerta_vencimento_negativo, alerta_desconto_negativo,
-             alerta_desconto_maior_vencimento, alerta_sem_desconto,
-             alerta_cpf_invalido, alerta_cargo_ausente, alerta_lotacao_ausente
-           ) VALUES ${placeholders.join(",")}
-           ON CONFLICT (id_contracheque_sicap) DO NOTHING`,
-          valores,
-        );
-        gravados += res.rowCount ?? 0;
-      }
-    } finally {
-      client.release();
-    }
+    const copyDone = new Promise<void>((resolve, reject) => {
+      copyStream.on("finish", resolve);
+      copyStream.on("error", reject);
+    });
 
-    if (rows.length < BATCH_SIZE) break;
+    // CPF é o único campo fora da staging — pega de CadastroUnico via JOIN simples.
+    // Matrícula vem de Beneficiario (LEFT JOIN; pode ser null).
+    reqStream.query(`
+      SELECT cc.id, cc.idEntidadeCjur, cc.idCadastroUnico, cc.idBeneficiario,
+             cu.cpf,
+             CAST(b.matricula AS VARCHAR(32)) AS matricula,
+             cc.idCargoFinal, cc.idTipoFolha, cc.idUnidadeLotacao, cc.idRemessa,
+             cc.totalVencimentos, cc.totalDescontos,
+             cc.baseFgts, cc.baseIrpf,
+             cc.basePrevidenciariaPatronal, cc.basePrevidenciariaSegurado,
+             cc.situacaoBeneficiario, cc.situacaoAtualServidor
+        FROM #cc_periodo cc
+        LEFT JOIN dbo.CadastroUnico cu ON cu.id = cc.idCadastroUnico
+        LEFT JOIN dbo.Beneficiario  b  ON b.id  = cc.idBeneficiario
+    `);
+
+    await streamDone;
+    copyStream.end();
+    await copyDone;
+
+    await transaction.commit();
+    return { lidos, gravados };
+  } catch (error) {
+    try { await transaction.rollback(); } catch { /* ignora */ }
+    throw error;
+  } finally {
+    pgClient.release();
   }
-
-  return { lidos, gravados };
 }
 
 // ---------------------------------------------------------------------------
 // Carga de fato_verba_contracheque (por competência, paginada por keyset)
 // ---------------------------------------------------------------------------
 
-async function carregarFatoVerbaContracheque(ano: number, mes: number): Promise<{ lidos: number; gravados: number }> {
-  await pgQuery(
-    `DELETE FROM folha.fato_verba_contracheque WHERE ano = $1 AND mes = $2`,
-    [ano, mes],
-  );
+async function carregarFatoVerbaContracheque(
+  ano: number,
+  mes: number,
+  idEntidadeCjur?: number | null,
+): Promise<{ lidos: number; gravados: number }> {
+  if (idEntidadeCjur != null) {
+    await pgQuery(
+      `DELETE FROM folha.fato_verba_contracheque WHERE ano = $1 AND mes = $2 AND id_entidade_cjur = $3`,
+      [ano, mes, idEntidadeCjur],
+    );
+  } else {
+    await pgQuery(
+      `DELETE FROM folha.fato_verba_contracheque WHERE ano = $1 AND mes = $2`,
+      [ano, mes],
+    );
+  }
+
+  const pool = await getSicapPool();
+  const transaction = new sql.Transaction(pool);
+  await transaction.begin();
+
+  const pgPool = getPgPool();
+  const pgClient = await pgPool.connect();
 
   let lidos = 0;
   let gravados = 0;
-  // Paginação keyset: id_verba_contracheque > lastId. Sem OFFSET, cada batch
-  // usa o índice direto, evitando degradação na view de 63M linhas.
-  let lastId = 0;
 
-  while (true) {
-    // Query direta nas tabelas base. Filtro ano/mes mora em ContraCheque
-    // (índice ContraCheque_ano_IDX). VerbasContraCheque não tem ano/mes,
-    // então faz INNER JOIN. ORDER BY vcc.id usa a PK; keyset >.
-    const rows = await sicapQuery<VerbaContraChequeRow>(`
-      SELECT TOP ${BATCH_SIZE}
-        vcc.id                            AS id_verba_contracheque_sicap,
-        vcc.idContraCheque                AS id_contracheque_sicap,
-        cc.ano                            AS ano,
-        cc.mes                            AS mes,
-        vcc.idEntidadeCjur                AS id_entidade_cjur,
-        cc.idCadastroUnico                AS id_cadastro_unico_sicap,
-        cc.idBeneficiario                 AS id_beneficiario_sicap,
-        cu.cpf                            AS cpf,
-        CAST(b.matricula AS VARCHAR(32))  AS matricula,
-        vcc.idVerba                       AS id_verba_sicap,
-        v.codigo                          AS verba_codigo,
-        v.descricao                       AS verba_descricao,
-        v.natureza                        AS verba_natureza,
-        v.tipoReferencia                  AS verba_tipo_referencia,
-        v.categoriaEconomica              AS verba_categoria_economica,
-        v.grupoNaturezaDespesa            AS verba_grupo_natureza_despesa,
-        v.modalidadeAplicacao             AS verba_modalidade_aplicacao,
-        v.elementoDespesa                 AS verba_elemento_despesa,
-        v.compoeVencimentoPadrao          AS verba_compoe_vencimento_padrao,
-        v.baseFGTS                        AS verba_base_fgts,
-        v.baseIRPF                        AS verba_base_irpf,
-        v.basePrevidencia                 AS verba_base_previdencia,
-        v.subGrupoClassificacaoVerba      AS verba_subgrupo_classificacao,
-        vcc.referencia                    AS verba_referencia,
-        vcc.valor                         AS verba_valor,
-        vcc.idTipoFolha                   AS id_tipo_folha_sicap,
-        vcc.idRemessa                     AS id_remessa_sicap
-      FROM dbo.VerbasContraCheque vcc
-      INNER JOIN dbo.ContraCheque cc ON cc.id = vcc.idContraCheque
-      LEFT  JOIN dbo.CadastroUnico cu ON cu.id = cc.idCadastroUnico
-      LEFT  JOIN dbo.Beneficiario  b  ON b.id  = cc.idBeneficiario
-      LEFT  JOIN dbo.Verba         v  ON v.id  = vcc.idVerba
-      WHERE cc.ano = ${ano} AND cc.mes = ${mes}
-        AND vcc.id > ${lastId}
-      ORDER BY vcc.id
+  try {
+    // Staging de ContraCheque da competência (somente as colunas que o JOIN final usa).
+    // Clustered em id deixa o hash join com vcc trivial.
+    const filtroEntidade = idEntidadeCjur != null ? `AND idEntidadeCjur = ${idEntidadeCjur}` : "";
+    const reqStaging = new sql.Request(transaction);
+    await reqStaging.query(`
+      IF OBJECT_ID('tempdb..#cc_periodo') IS NOT NULL DROP TABLE #cc_periodo;
+      SELECT id, idCadastroUnico, idBeneficiario
+        INTO #cc_periodo
+        FROM dbo.ContraCheque
+       WHERE ano = ${ano} AND mes = ${mes} ${filtroEntidade};
+      CREATE CLUSTERED INDEX IX_cc_periodo ON #cc_periodo(id);
     `);
-    if (rows.length === 0) break;
-    lidos += rows.length;
-    lastId = Number(rows[rows.length - 1].id_verba_contracheque_sicap);
-    // Progresso a cada 50 mil verbas lidas (~25 batches) — janela longa demais
-    // para ficar em silêncio.
-    if (Math.floor(lidos / 50000) > Math.floor((lidos - rows.length) / 50000)) {
-      process.stdout.write(`        … fato_verba: ${lidos.toLocaleString("pt-BR")} lidos\n`);
-    }
 
-    // Postgres limita 65.535 parâmetros por query (int16). Com 33 colunas,
-    // o teto seguro é ~1.800 linhas/INSERT. Mantemos a leitura SQL Server em
-    // BATCH_SIZE e flushamos em sub-lotes para o Postgres.
-    const PG_CHUNK = 1500;
+    const copyStream = pgClient.query(copyFrom(
+      `COPY folha.fato_verba_contracheque (
+         id_verba_contracheque_sicap, id_contracheque_sicap, competencia, ano, mes,
+         id_entidade_cjur, id_cadastro_unico_sicap, id_beneficiario_sicap,
+         cpf_hash, matricula,
+         id_verba_sicap, verba_codigo, verba_descricao, verba_natureza, verba_tipo_referencia,
+         verba_categoria_economica, verba_grupo_natureza_despesa, verba_modalidade_aplicacao,
+         verba_elemento_despesa, verba_compoe_vencimento_padrao,
+         verba_base_fgts, verba_base_irpf, verba_base_previdencia,
+         verba_subgrupo_classificacao, verba_referencia, verba_valor,
+         id_tipo_folha_sicap, id_remessa_sicap,
+         alerta_verba_valor_negativo, alerta_verba_sem_codigo, alerta_verba_sem_descricao,
+         alerta_verba_sem_subgrupo_classificacao, alerta_verba_sem_natureza
+       ) FROM STDIN WITH (FORMAT text)`
+    ));
 
-    const pool = getPgPool();
-    const client = await pool.connect();
-    try {
-      for (let chunkStart = 0; chunkStart < rows.length; chunkStart += PG_CHUNK) {
-        const chunk = rows.slice(chunkStart, chunkStart + PG_CHUNK);
-        const placeholders: string[] = [];
-        const valores: unknown[] = [];
-        let p = 1;
-        for (const r of chunk) {
-          const valor = num(r.verba_valor);
-          const alertaValorNeg = valor !== null && valor < 0;
-          const alertaSemCodigo = !r.verba_codigo;
-          const alertaSemDescricao = !r.verba_descricao;
-          const alertaSemSubgrupo = !r.verba_subgrupo_classificacao;
-          const alertaSemNatureza = !r.verba_natureza;
+    const competencia = competenciaStr(ano, mes);
 
-          placeholders.push(
-            `($${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++},$${p++})`,
-          );
-          valores.push(
-            r.id_verba_contracheque_sicap,
-            r.id_contracheque_sicap,
-            competenciaStr(ano, mes),
-            ano,
-            mes,
-            r.id_entidade_cjur ?? null,
-            r.id_cadastro_unico_sicap ?? null,
-            r.id_beneficiario_sicap ?? null,
-            hashCpf(r.cpf ?? null),
-            r.matricula ?? null,
-            r.id_verba_sicap ?? null,
-            r.verba_codigo ?? null,
-            r.verba_descricao ?? null,
-            r.verba_natureza ?? null,
-            r.verba_tipo_referencia ?? null,
-            r.verba_categoria_economica ?? null,
-            r.verba_grupo_natureza_despesa ?? null,
-            r.verba_modalidade_aplicacao ?? null,
-            r.verba_elemento_despesa ?? null,
-            toBoolOrNull(r.verba_compoe_vencimento_padrao),
-            toBoolOrNull(r.verba_base_fgts),
-            toBoolOrNull(r.verba_base_irpf),
-            toBoolOrNull(r.verba_base_previdencia),
-            r.verba_subgrupo_classificacao ?? null,
-            num(r.verba_referencia),
-            valor,
-            r.id_tipo_folha_sicap ?? null,
-            r.id_remessa_sicap ?? null,
-            alertaValorNeg,
-            alertaSemCodigo,
-            alertaSemDescricao,
-            alertaSemSubgrupo,
-            alertaSemNatureza,
-          );
+    const reqStream = new sql.Request(transaction);
+    reqStream.stream = true;
+
+    const streamDone = new Promise<void>((resolve, reject) => {
+      reqStream.on("row", (r: Record<string, unknown>) => {
+        lidos += 1;
+        const valor = num(r.valor);
+        const verbaCodigo = (r.verba_codigo as string | null) ?? null;
+        const verbaDescricao = (r.verba_descricao as string | null) ?? null;
+        const verbaNatureza = (r.verba_natureza as string | null) ?? null;
+        const verbaSubgrupo = (r.verba_subgrupo as string | null) ?? null;
+        const linha = copyRow([
+          r.id,
+          r.idContraCheque,
+          competencia,
+          ano,
+          mes,
+          r.idEntidadeCjur ?? null,
+          r.idCadastroUnico ?? null,
+          r.idBeneficiario ?? null,
+          hashCpf((r.cpf as string | null) ?? null),
+          (r.matricula as string | null) ?? null,
+          r.idVerba ?? null,
+          verbaCodigo,
+          verbaDescricao,
+          verbaNatureza,
+          (r.verba_tipoReferencia as string | null) ?? null,
+          (r.verba_categoriaEconomica as string | null) ?? null,
+          (r.verba_grupoNaturezaDespesa as string | null) ?? null,
+          (r.verba_modalidadeAplicacao as string | null) ?? null,
+          (r.verba_elementoDespesa as string | null) ?? null,
+          toBoolOrNull(r.verba_compoeVencimentoPadrao),
+          toBoolOrNull(r.verba_baseFGTS),
+          toBoolOrNull(r.verba_baseIRPF),
+          toBoolOrNull(r.verba_basePrevidencia),
+          verbaSubgrupo,
+          num(r.referencia),
+          valor,
+          r.idTipoFolha ?? null,
+          r.idRemessa ?? null,
+          valor !== null && valor < 0,
+          !verbaCodigo,
+          !verbaDescricao,
+          !verbaSubgrupo,
+          !verbaNatureza,
+        ]);
+        if (!copyStream.write(linha)) {
+          reqStream.pause();
+          copyStream.once("drain", () => reqStream.resume());
         }
+        gravados += 1;
+        if (lidos % 100000 === 0) {
+          process.stdout.write(`        … fato_verba: ${lidos.toLocaleString("pt-BR")} streamados\n`);
+        }
+      });
+      reqStream.on("error", reject);
+      reqStream.on("done", () => resolve());
+    });
 
-        const res = await client.query(
-          `INSERT INTO folha.fato_verba_contracheque (
-             id_verba_contracheque_sicap, id_contracheque_sicap, competencia, ano, mes,
-             id_entidade_cjur, id_cadastro_unico_sicap, id_beneficiario_sicap,
-             cpf_hash, matricula,
-             id_verba_sicap, verba_codigo, verba_descricao, verba_natureza, verba_tipo_referencia,
-             verba_categoria_economica, verba_grupo_natureza_despesa, verba_modalidade_aplicacao,
-             verba_elemento_despesa, verba_compoe_vencimento_padrao,
-             verba_base_fgts, verba_base_irpf, verba_base_previdencia,
-             verba_subgrupo_classificacao, verba_referencia, verba_valor,
-             id_tipo_folha_sicap, id_remessa_sicap,
-             alerta_verba_valor_negativo, alerta_verba_sem_codigo, alerta_verba_sem_descricao,
-             alerta_verba_sem_subgrupo_classificacao, alerta_verba_sem_natureza
-           ) VALUES ${placeholders.join(",")}
-           ON CONFLICT (id_verba_contracheque_sicap) DO NOTHING`,
-          valores,
-        );
-        gravados += res.rowCount ?? 0;
-      }
-    } finally {
-      client.release();
-    }
+    const copyDone = new Promise<void>((resolve, reject) => {
+      copyStream.on("finish", resolve);
+      copyStream.on("error", reject);
+    });
 
-    if (rows.length < BATCH_SIZE) break;
+    reqStream.query(`
+      SELECT vcc.id, vcc.idContraCheque, vcc.idVerba, vcc.valor, vcc.referencia,
+             vcc.idEntidadeCjur, vcc.idTipoFolha, vcc.idRemessa,
+             cc.idCadastroUnico, cc.idBeneficiario,
+             cu.cpf,
+             CAST(b.matricula AS VARCHAR(32)) AS matricula,
+             v.codigo                      AS verba_codigo,
+             v.descricao                    AS verba_descricao,
+             v.natureza                     AS verba_natureza,
+             v.tipoReferencia               AS verba_tipoReferencia,
+             v.categoriaEconomica           AS verba_categoriaEconomica,
+             v.grupoNaturezaDespesa         AS verba_grupoNaturezaDespesa,
+             v.modalidadeAplicacao          AS verba_modalidadeAplicacao,
+             v.elementoDespesa              AS verba_elementoDespesa,
+             v.compoeVencimentoPadrao       AS verba_compoeVencimentoPadrao,
+             v.baseFGTS                     AS verba_baseFGTS,
+             v.baseIRPF                     AS verba_baseIRPF,
+             v.basePrevidencia              AS verba_basePrevidencia,
+             v.subGrupoClassificacaoVerba   AS verba_subgrupo
+        FROM dbo.VerbasContraCheque vcc
+        INNER JOIN #cc_periodo cc ON cc.id = vcc.idContraCheque
+        LEFT  JOIN dbo.CadastroUnico cu ON cu.id = cc.idCadastroUnico
+        LEFT  JOIN dbo.Beneficiario  b  ON b.id  = cc.idBeneficiario
+        LEFT  JOIN dbo.Verba         v  ON v.id  = vcc.idVerba
+    `);
+
+    await streamDone;
+    copyStream.end();
+    await copyDone;
+
+    await transaction.commit();
+    return { lidos, gravados };
+  } catch (error) {
+    try { await transaction.rollback(); } catch { /* ignora */ }
+    throw error;
+  } finally {
+    pgClient.release();
   }
-
-  return { lidos, gravados };
 }
 
 function num(v: unknown): number | null {
@@ -985,19 +1135,262 @@ function num(v: unknown): number | null {
 }
 
 // ---------------------------------------------------------------------------
+// Incremental por (entidade × ano × mês) — Fase 17B.1
+// ---------------------------------------------------------------------------
+
+type ChaveRemessa = {
+  id_entidade_cjur: number;
+  ano: number;
+  mes: number;
+  id_remessa_sicap: number;
+  data_envio: string | null;
+  data_confirmacao: string | null;
+  tempo_atraso: number | null;
+  hash: string;
+};
+
+type DiffSync = {
+  novas: ChaveRemessa[];        // existe na origem, ausente no audit
+  mudadas: ChaveRemessa[];      // existe em ambos, hash diferente
+  iguais: ChaveRemessa[];       // existe em ambos, hash igual
+  sumidas: { id_entidade_cjur: number; ano: number; mes: number; id_remessa_sicap: number }[];
+};
+
+function calcularHashAssinatura(
+  idRemessa: number | string | null | undefined,
+  dataEnvio: unknown,
+  dataConfirmacao: unknown,
+  tempoAtraso: unknown,
+): string {
+  const norm = (v: unknown): string => {
+    if (v === null || v === undefined) return "";
+    if (v instanceof Date) return v.toISOString();
+    return String(v);
+  };
+  const assinatura = [norm(idRemessa), norm(dataEnvio), norm(dataConfirmacao), norm(tempoAtraso)].join("|");
+  return crypto.createHash("sha256").update(assinatura).digest("hex");
+}
+
+async function listarRemessasSicapNaJanela(
+  competencias: { ano: number; mes: number }[],
+): Promise<ChaveRemessa[]> {
+  if (competencias.length === 0) return [];
+  // Whitelist do par (ano, mes). SQL Server: OR-chain explícito.
+  const filtros = competencias.map((c) => `(r.ano = ${c.ano} AND r.mes = ${c.mes})`).join(" OR ");
+  const rows = await sicapQuery<{
+    id_entidade_cjur: number;
+    ano: number;
+    mes: number;
+    id_remessa_sicap: number | string;
+    data_envio: Date | string | null;
+    data_confirmacao: Date | string | null;
+    tempo_atraso: number | null;
+  }>(`
+    SELECT
+      r.idEntidadeCjur     AS id_entidade_cjur,
+      r.ano                AS ano,
+      r.mes                AS mes,
+      r.id                 AS id_remessa_sicap,
+      r.dataEnvio          AS data_envio,
+      r.dataConfirmacao    AS data_confirmacao,
+      r.tempoAtraso        AS tempo_atraso
+    FROM remessa.Remessa r
+    WHERE ${filtros}
+  `);
+  return rows.map((r) => ({
+    id_entidade_cjur: Number(r.id_entidade_cjur),
+    ano: Number(r.ano),
+    mes: Number(r.mes),
+    id_remessa_sicap: Number(r.id_remessa_sicap),
+    data_envio: r.data_envio ? new Date(r.data_envio as never).toISOString() : null,
+    data_confirmacao: r.data_confirmacao ? new Date(r.data_confirmacao as never).toISOString() : null,
+    tempo_atraso: r.tempo_atraso ?? null,
+    hash: calcularHashAssinatura(r.id_remessa_sicap, r.data_envio, r.data_confirmacao, r.tempo_atraso),
+  }));
+}
+
+async function listarAuditNaJanela(
+  competencias: { ano: number; mes: number }[],
+): Promise<Map<string, { id_remessa_sicap: number; hash: string }>> {
+  if (competencias.length === 0) return new Map();
+  const filtros = competencias.map((_, i) => `($${i * 2 + 1}::int, $${i * 2 + 2}::int)`).join(",");
+  const params: unknown[] = [];
+  for (const c of competencias) {
+    params.push(c.ano, c.mes);
+  }
+  const rows = await pgQuery<{
+    id_entidade_cjur: number;
+    ano: number;
+    mes: number;
+    id_remessa_sicap: string;
+    hash_assinatura: string;
+  }>(
+    `SELECT id_entidade_cjur, ano, mes, id_remessa_sicap, hash_assinatura
+       FROM audit.folha_sicap_remessa_sync
+      WHERE (ano, mes) IN (${filtros})`,
+    params,
+  );
+  const map = new Map<string, { id_remessa_sicap: number; hash: string }>();
+  for (const r of rows) {
+    const k = `${r.id_entidade_cjur}|${r.ano}|${r.mes}`;
+    map.set(k, { id_remessa_sicap: Number(r.id_remessa_sicap), hash: r.hash_assinatura });
+  }
+  return map;
+}
+
+function diffSync(
+  origem: ChaveRemessa[],
+  audit: Map<string, { id_remessa_sicap: number; hash: string }>,
+): DiffSync {
+  const novas: ChaveRemessa[] = [];
+  const mudadas: ChaveRemessa[] = [];
+  const iguais: ChaveRemessa[] = [];
+  const vistas = new Set<string>();
+
+  for (const r of origem) {
+    const k = `${r.id_entidade_cjur}|${r.ano}|${r.mes}`;
+    vistas.add(k);
+    const a = audit.get(k);
+    if (!a) novas.push(r);
+    else if (a.hash !== r.hash) mudadas.push(r);
+    else iguais.push(r);
+  }
+
+  const sumidas: DiffSync["sumidas"] = [];
+  for (const [k, a] of audit.entries()) {
+    if (vistas.has(k)) continue;
+    const [eId, ano, mes] = k.split("|").map((x) => Number(x));
+    sumidas.push({ id_entidade_cjur: eId, ano, mes, id_remessa_sicap: a.id_remessa_sicap });
+  }
+
+  return { novas, mudadas, iguais, sumidas };
+}
+
+async function processarChave(
+  chave: ChaveRemessa,
+  idCargaEtl: number,
+): Promise<{ contracheques: number; verbas: number }> {
+  const cc = await carregarFatoContracheque(chave.ano, chave.mes, chave.id_entidade_cjur);
+  const vv = await carregarFatoVerbaContracheque(chave.ano, chave.mes, chave.id_entidade_cjur);
+
+  await pgQuery(
+    `INSERT INTO audit.folha_sicap_remessa_sync
+       (id_entidade_cjur, ano, mes, id_remessa_sicap, hash_assinatura,
+        qtd_contracheques, qtd_verbas, sincronizado_em, id_carga_etl)
+     VALUES ($1,$2,$3,$4,$5,$6,$7, now(), $8)
+     ON CONFLICT (id_entidade_cjur, ano, mes) DO UPDATE SET
+       id_remessa_sicap = EXCLUDED.id_remessa_sicap,
+       hash_assinatura  = EXCLUDED.hash_assinatura,
+       qtd_contracheques = EXCLUDED.qtd_contracheques,
+       qtd_verbas        = EXCLUDED.qtd_verbas,
+       sincronizado_em   = now(),
+       id_carga_etl      = EXCLUDED.id_carga_etl`,
+    [chave.id_entidade_cjur, chave.ano, chave.mes, chave.id_remessa_sicap, chave.hash, cc.gravados, vv.gravados, idCargaEtl],
+  );
+  return { contracheques: cc.gravados, verbas: vv.gravados };
+}
+
+async function limparChaveSumida(chave: {
+  id_entidade_cjur: number;
+  ano: number;
+  mes: number;
+}): Promise<{ contracheques: number; verbas: number }> {
+  const v = await pgQuery<{ count: number }>(
+    `WITH del AS (
+       DELETE FROM folha.fato_verba_contracheque
+        WHERE ano = $1 AND mes = $2 AND id_entidade_cjur = $3
+        RETURNING 1
+     ) SELECT COUNT(*)::int AS count FROM del`,
+    [chave.ano, chave.mes, chave.id_entidade_cjur],
+  );
+  const c = await pgQuery<{ count: number }>(
+    `WITH del AS (
+       DELETE FROM folha.fato_contracheque
+        WHERE ano = $1 AND mes = $2 AND id_entidade_cjur = $3
+        RETURNING 1
+     ) SELECT COUNT(*)::int AS count FROM del`,
+    [chave.ano, chave.mes, chave.id_entidade_cjur],
+  );
+  await pgQuery(
+    `DELETE FROM audit.folha_sicap_remessa_sync
+      WHERE id_entidade_cjur = $1 AND ano = $2 AND mes = $3`,
+    [chave.id_entidade_cjur, chave.ano, chave.mes],
+  );
+  return { contracheques: c[0]?.count ?? 0, verbas: v[0]?.count ?? 0 };
+}
+
+async function sincronizarAuditCompetencia(ano: number, mes: number, idCarga: number): Promise<void> {
+  // Após recarga total da competência, espelha audit com o estado real.
+  const remessas = await listarRemessasSicapNaJanela([{ ano, mes }]);
+  if (remessas.length === 0) return;
+
+  const contagensCC = await pgQuery<{ id_entidade_cjur: number; qtd: number }>(
+    `SELECT id_entidade_cjur, COUNT(*)::int AS qtd
+       FROM folha.fato_contracheque
+      WHERE ano = $1 AND mes = $2
+      GROUP BY id_entidade_cjur`,
+    [ano, mes],
+  );
+  const contagensVV = await pgQuery<{ id_entidade_cjur: number; qtd: number }>(
+    `SELECT id_entidade_cjur, COUNT(*)::int AS qtd
+       FROM folha.fato_verba_contracheque
+      WHERE ano = $1 AND mes = $2
+      GROUP BY id_entidade_cjur`,
+    [ano, mes],
+  );
+  const mapaCC = new Map(contagensCC.map((r) => [Number(r.id_entidade_cjur), r.qtd]));
+  const mapaVV = new Map(contagensVV.map((r) => [Number(r.id_entidade_cjur), r.qtd]));
+
+  for (const r of remessas) {
+    await pgQuery(
+      `INSERT INTO audit.folha_sicap_remessa_sync
+         (id_entidade_cjur, ano, mes, id_remessa_sicap, hash_assinatura,
+          qtd_contracheques, qtd_verbas, sincronizado_em, id_carga_etl)
+       VALUES ($1,$2,$3,$4,$5,$6,$7, now(), $8)
+       ON CONFLICT (id_entidade_cjur, ano, mes) DO UPDATE SET
+         id_remessa_sicap = EXCLUDED.id_remessa_sicap,
+         hash_assinatura  = EXCLUDED.hash_assinatura,
+         qtd_contracheques = EXCLUDED.qtd_contracheques,
+         qtd_verbas        = EXCLUDED.qtd_verbas,
+         sincronizado_em   = now(),
+         id_carga_etl      = EXCLUDED.id_carga_etl`,
+      [
+        r.id_entidade_cjur, r.ano, r.mes, r.id_remessa_sicap, r.hash,
+        mapaCC.get(r.id_entidade_cjur) ?? 0,
+        mapaVV.get(r.id_entidade_cjur) ?? 0,
+        idCarga,
+      ],
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 
 export async function executarFolhaSicapBase(): Promise<void> {
   const inicio = Date.now();
-  const competencias = listarCompetencias();
+  const selecao = listarCompetenciasComOrigem();
+  const competencias = selecao.competencias;
+
+  const descricaoOrigem: Record<typeof selecao.origem, string> = {
+    FOLHA_COMPETENCIA: "FOLHA_COMPETENCIA (competência explícita, recarga total)",
+    INTERVALO_EXPLICITO: "FOLHA_ANO_*/FOLHA_MES_* (intervalo explícito, recarga total)",
+    DEFAULT_INCREMENTAL: `DEFAULT (janela rolante de ${JANELA_COMPETENCIAS} competências, incremental por remessa)`,
+  };
+
+  const modoIncremental = selecao.origem === "DEFAULT_INCREMENTAL" && !FORCAR_RECARGA;
 
   console.log(`[${new Date().toISOString()}] Iniciando ETL: ${MODULO}`);
   console.log(`  -> Fonte SQL Server: ${SICAP_HOST || "(SQLSERVER_HOST global)"} / ${SICAP_DATABASE}`);
   console.log(`  -> Destino PostgreSQL: schema folha.*`);
   console.log(`  -> Batch size: ${BATCH_SIZE}`);
   console.log(`  -> Dry-run: ${DRY_RUN ? "SIM" : "não"}`);
+  console.log(`  -> Origem do período: ${descricaoOrigem[selecao.origem]}`);
+  console.log(`  -> Modo de carga: ${modoIncremental ? "INCREMENTAL (diff por remessa)" : "RECARGA TOTAL por competência"}`);
+  if (FORCAR_RECARGA) console.log(`  -> FOLHA_FORCAR_RECARGA=1: audit será ignorado e janela será recarregada por inteiro.`);
   console.log(`  -> Competências (${competencias.length}): ${competencias.map((c) => c.competencia).join(", ")}`);
+  console.log(`  -> Escopo de entidades: TODAS as entidades presentes na(s) competência(s) — sem filtro de entidade/ente/poder.`);
 
   if (DRY_RUN) {
     console.log("\n=== PLANO DE EXECUÇÃO (dry-run) ===");
@@ -1036,36 +1429,109 @@ export async function executarFolhaSicapBase(): Promise<void> {
     tiposFolha: 0, verbas: 0, remessas: 0,
   };
 
+  let chavesProcessadas = 0;
+  let chavesPuladas = 0;
+  let chavesLimpas = 0;
+
   try {
-    for (const c of competencias) {
-      console.log(`\n--- Competência ${c.competencia} ---`);
-      const tIni = Date.now();
+    if (modoIncremental) {
+      // =========================================================
+      // FLUXO INCREMENTAL — diff por (entidade × ano × mês)
+      // =========================================================
+      console.log(`\n[Incremental] Listando remessas no SICAP na janela...`);
+      const remessasSicap = await listarRemessasSicapNaJanela(competencias);
+      console.log(`  -> ${remessasSicap.length} remessas na origem (todas situação=CO).`);
 
-      await garantirDimTempo(c.ano, c.mes);
+      console.log(`[Incremental] Consultando audit.folha_sicap_remessa_sync...`);
+      const audit = await listarAuditNaJanela(competencias);
+      console.log(`  -> ${audit.size} chaves já sincronizadas anteriormente.`);
 
-      console.log("  [1/3] Carregando dimensões...");
-      const dims = await carregarDimensoesDaCompetencia(c.ano, c.mes);
-      console.log(`        entidades=${dims.entidades} servidores=${dims.servidores} cargos=${dims.cargos} lotacoes=${dims.lotacoes} tipos_folha=${dims.tiposFolha} verbas=${dims.verbas} remessas=${dims.remessas}`);
-      dimsAcum.entidades += dims.entidades;
-      dimsAcum.servidores += dims.servidores;
-      dimsAcum.cargos += dims.cargos;
-      dimsAcum.lotacoes += dims.lotacoes;
-      dimsAcum.tiposFolha += dims.tiposFolha;
-      dimsAcum.verbas += dims.verbas;
-      dimsAcum.remessas += dims.remessas;
+      const diff = diffSync(remessasSicap, audit);
+      console.log(`\n[Incremental] Diff:`);
+      console.log(`  -> novas:   ${diff.novas.length}   (chaves novas a processar)`);
+      console.log(`  -> mudadas: ${diff.mudadas.length}   (hash diferente — retificação)`);
+      console.log(`  -> iguais:  ${diff.iguais.length}   (skip — sem mudança)`);
+      console.log(`  -> sumidas: ${diff.sumidas.length}   (no audit, ausentes na origem — limpar)`);
+      chavesPuladas = diff.iguais.length;
 
-      console.log("  [2/3] Carregando fato_contracheque...");
-      const cc = await carregarFatoContracheque(c.ano, c.mes);
-      console.log(`        lidos=${cc.lidos} gravados=${cc.gravados}`);
-      totalContracheques += cc.gravados;
+      // Dimensões: carrega apenas das competências realmente afetadas.
+      const compsAfetadas = new Map<string, { ano: number; mes: number }>();
+      for (const c of [...diff.novas, ...diff.mudadas]) {
+        compsAfetadas.set(`${c.ano}-${c.mes}`, { ano: c.ano, mes: c.mes });
+      }
+      if (compsAfetadas.size > 0) {
+        console.log(`\n[Incremental] Carregando dimensões das ${compsAfetadas.size} competência(s) afetada(s)...`);
+        for (const c of compsAfetadas.values()) {
+          await garantirDimTempo(c.ano, c.mes);
+          const dims = await carregarDimensoesDaCompetencia(c.ano, c.mes);
+          console.log(`  [dims ${competenciaStr(c.ano, c.mes)}] entidades=${dims.entidades} servidores=${dims.servidores} cargos=${dims.cargos} lotacoes=${dims.lotacoes} verbas=${dims.verbas} remessas=${dims.remessas}`);
+          dimsAcum.entidades += dims.entidades;
+          dimsAcum.servidores += dims.servidores;
+          dimsAcum.cargos += dims.cargos;
+          dimsAcum.lotacoes += dims.lotacoes;
+          dimsAcum.tiposFolha += dims.tiposFolha;
+          dimsAcum.verbas += dims.verbas;
+          dimsAcum.remessas += dims.remessas;
+        }
+      }
 
-      console.log("  [3/3] Carregando fato_verba_contracheque...");
-      const vv = await carregarFatoVerbaContracheque(c.ano, c.mes);
-      console.log(`        lidos=${vv.lidos} gravados=${vv.gravados}`);
-      totalVerbas += vv.gravados;
+      // Processa novas + mudadas.
+      const aProcessar = [...diff.novas, ...diff.mudadas];
+      if (aProcessar.length > 0) console.log(`\n[Incremental] Processando ${aProcessar.length} chave(s)...`);
+      for (const k of aProcessar) {
+        const tIni = Date.now();
+        const tipo = audit.has(`${k.id_entidade_cjur}|${k.ano}|${k.mes}`) ? "MUDADA " : "NOVA   ";
+        const r = await processarChave(k, idCarga);
+        totalContracheques += r.contracheques;
+        totalVerbas += r.verbas;
+        chavesProcessadas += 1;
+        console.log(`  ${tipo} entidade=${k.id_entidade_cjur} ${competenciaStr(k.ano, k.mes)} remessa=${k.id_remessa_sicap} -> cc=${r.contracheques} verbas=${r.verbas} (${Date.now() - tIni} ms)`);
+      }
 
-      const dt = Date.now() - tIni;
-      console.log(`  OK ${c.competencia} em ${dt} ms`);
+      // Limpa sumidas.
+      if (diff.sumidas.length > 0) console.log(`\n[Incremental] Limpando ${diff.sumidas.length} chave(s) sumida(s) da origem...`);
+      for (const s of diff.sumidas) {
+        const r = await limparChaveSumida(s);
+        chavesLimpas += 1;
+        console.log(`  SUMIDA entidade=${s.id_entidade_cjur} ${competenciaStr(s.ano, s.mes)} (antes apontava remessa ${s.id_remessa_sicap}) -> removeu cc=${r.contracheques} verbas=${r.verbas}`);
+      }
+    } else {
+      // =========================================================
+      // FLUXO RECARGA TOTAL — FOLHA_COMPETENCIA / INTERVALO / FORCAR_RECARGA
+      // =========================================================
+      for (const c of competencias) {
+        console.log(`\n--- Competência ${c.competencia} ---`);
+        const tIni = Date.now();
+
+        await garantirDimTempo(c.ano, c.mes);
+
+        console.log("  [1/4] Carregando dimensões...");
+        const dims = await carregarDimensoesDaCompetencia(c.ano, c.mes);
+        console.log(`        entidades=${dims.entidades} servidores=${dims.servidores} cargos=${dims.cargos} lotacoes=${dims.lotacoes} tipos_folha=${dims.tiposFolha} verbas=${dims.verbas} remessas=${dims.remessas}`);
+        dimsAcum.entidades += dims.entidades;
+        dimsAcum.servidores += dims.servidores;
+        dimsAcum.cargos += dims.cargos;
+        dimsAcum.lotacoes += dims.lotacoes;
+        dimsAcum.tiposFolha += dims.tiposFolha;
+        dimsAcum.verbas += dims.verbas;
+        dimsAcum.remessas += dims.remessas;
+
+        console.log("  [2/4] Carregando fato_contracheque (recarga total)...");
+        const cc = await carregarFatoContracheque(c.ano, c.mes);
+        console.log(`        lidos=${cc.lidos} gravados=${cc.gravados}`);
+        totalContracheques += cc.gravados;
+
+        console.log("  [3/4] Carregando fato_verba_contracheque (recarga total)...");
+        const vv = await carregarFatoVerbaContracheque(c.ano, c.mes);
+        console.log(`        lidos=${vv.lidos} gravados=${vv.gravados}`);
+        totalVerbas += vv.gravados;
+
+        console.log("  [4/4] Sincronizando audit.folha_sicap_remessa_sync...");
+        await sincronizarAuditCompetencia(c.ano, c.mes, idCarga);
+
+        const dt = Date.now() - tIni;
+        console.log(`  OK ${c.competencia} em ${dt} ms`);
+      }
     }
 
     const duracao = Date.now() - inicio;
@@ -1073,7 +1539,13 @@ export async function executarFolhaSicapBase(): Promise<void> {
     const totalGravado = totalContracheques + totalVerbas;
 
     console.log(`\n=== RESUMO ETL ${MODULO} ===`);
-    console.log(`  Competências processadas: ${competencias.length} (${competencias.map((c) => c.competencia).join(", ")})`);
+    console.log(`  Modo: ${modoIncremental ? "INCREMENTAL" : "RECARGA TOTAL"}`);
+    console.log(`  Competências na janela: ${competencias.length} (${competencias.map((c) => c.competencia).join(", ")})`);
+    if (modoIncremental) {
+      console.log(`  Chaves processadas: ${chavesProcessadas}`);
+      console.log(`  Chaves puladas (sem mudança): ${chavesPuladas}`);
+      console.log(`  Chaves limpas (sumidas): ${chavesLimpas}`);
+    }
     console.log(`  Dimensões carregadas (acumulado):`);
     console.log(`    - entidades:    ${dimsAcum.entidades}`);
     console.log(`    - servidores:   ${dimsAcum.servidores}`);
@@ -1082,7 +1554,7 @@ export async function executarFolhaSicapBase(): Promise<void> {
     console.log(`    - tipos folha:  ${dimsAcum.tiposFolha}`);
     console.log(`    - verbas:       ${dimsAcum.verbas}`);
     console.log(`    - remessas:     ${dimsAcum.remessas}`);
-    console.log(`  Fatos carregados:`);
+    console.log(`  Fatos gravados:`);
     console.log(`    - contracheques: ${totalContracheques.toLocaleString("pt-BR")}`);
     console.log(`    - verbas:        ${totalVerbas.toLocaleString("pt-BR")}`);
     console.log(`  Tempo total: ${duracao} ms`);

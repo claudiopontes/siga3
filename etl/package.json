@@ -115,7 +115,8 @@
     "carga-gasto-aluno:postgres": "npm run mart:gasto-aluno",
     "inep-base-dos-dados-geo:ingest": "ts-node jobs/ingest-base-dos-dados-escolas-geo.ts",
     "carga-inep-base-dos-dados-geo:postgres": "npm run inep-base-dos-dados-geo:ingest",
-    "folha:sicap:base": "ts-node jobs/folha-sicap-carga-base.ts"
+    "folha:sicap:base": "ts-node jobs/folha-sicap-carga-base.ts",
+    "folha:sicap:bootstrap-audit": "ts-node jobs/folha-sicap-bootstrap-audit.ts"
   },
   "dependencies": {
     "dotenv": "^16.5.0",
@@ -123,6 +124,7 @@
     "mssql": "^11.0.1",
     "node-cron": "^3.0.3",
     "pg": "^8.13.3",
+    "pg-copy-streams": "^7.0.0",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
@@ -130,6 +132,7 @@
     "@types/node": "^20.19.25",
     "@types/node-cron": "^3.0.11",
     "@types/pg": "^8.11.11",
+    "@types/pg-copy-streams": "^1.2.5",
     "playwright": "^1.60.0",
     "ts-node": "^10.9.2",
     "tsx": "^4.21.0",
